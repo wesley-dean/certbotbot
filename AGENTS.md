@@ -217,3 +217,12 @@ catch locally correct architectural drift.
 Before releasing a derived project, review repository-facing documentation and
 GitHub templates for stale starter names, unrelated project references, broken
 links, or policies that no longer match the derived project's real contract.
+
+
+## certbotbot Project-Specific Governance
+
+The current executable is still template starter behavior; do not describe it as complete certificate functionality.  Read `doc/specification.md`, `doc/threat-model.md`, `doc/development-plan.md`, and `doc/handoff.md` before implementation.  Project-specific Accepted ADR-018 through ADR-024 govern identity, archives, backends, encryption, execution, releases, and shared coding standards.  They refine template ADRs without authorizing arbitrary consumer plugins.  `lib/plugins/` discovery is build-time only; official releases bundle implementations.
+
+The full `doc/standards/` snapshot is externally managed and authoritative wherever a standard applies.  Review relevant general and Bash standards before modifying governed content.  Accepted local ADRs or explicit local policy may refine imported rules; document conflicts visibly and never edit the imported standards locally.  Non-applicable language standards need not be followed; `doc/standards/examples/` is illustrative unless expressly made normative.
+
+Keep Make's direct checksum-verified bashdeps bootstrap, `dependencies.txt` for bash-doxygen, mktext, Bash-Minifier, adrctl, and bashlog, and the three standalone output flavors.  Consumers do not load arbitrary modules and do not require Certbot.  Security review must cover tar member validation, cloud/API credentials, private keys, GPG passphrase handling, and shared-storage concurrency.  No cross-platform distributed lock exists in v1.

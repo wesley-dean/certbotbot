@@ -1,0 +1,4 @@
+source = "https://github.com/wesley-dean/coding_standards.git"
+version = "coding_standards@v2.1.0"
+sha256 = "ee04401441a3206d5cdc2bdc2e6d5130ff278ddc1ecd641f1c01843aa0666020"
+destination = "doc/standards"

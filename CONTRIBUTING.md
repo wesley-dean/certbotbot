@@ -1,13 +1,10 @@
 # Contributing
 
-Contributions are welcome.  template-bash is intended to encode reusable Bash
-engineering practices rather than force every derived project into one product
-shape, so changes should distinguish between starter-wide lessons and behavior
-that belongs only in one derived project.
+Contributions are welcome.  certbotbot is a security-sensitive certificate-management project derived from template-bash.  Keep architectural changes explicit and reviewable.
 
 Before consequential work, please read:
 
-- `README.md` for the starter's purpose and build lifecycle;
+- `README.md` for certbotbot's purpose, intended behavior, and build lifecycle;
 - `doc/engineering-philosophy.md` for reusable engineering posture;
 - `doc/decisions.md` and the governing ADRs under `doc/adr/`;
 - `AGENTS.md` for the concise repository map;
@@ -68,3 +65,9 @@ copyright and related rights in the work worldwide are waived through the
 
 See [`LICENSE`](LICENSE) for the repository's license text.  By contributing, you
 agree that your contribution will be released under the same CC0 dedication.
+
+## Imported Coding Standards
+
+The released snapshot in `doc/standards/` is governing project policy for applicable files.  Review `.codingstandardrc` and relevant general, Bash, and security standards before modifying code, docs, tests, or CI.  Existing Accepted local ADRs and explicit policies may refine the imported standards.  Do not modify imported snapshot files; adopt a newer released snapshot through a separate reviewed update.
+
+Review `doc/specification.md`, `doc/threat-model.md`, and `doc/development-plan.md` for scope, constraints, and next work.  Certificate-management behavior remains unimplemented until subsequent PRs.  New DNS/storage providers must be in-tree, reviewed, and bundled into official release artifacts; no arbitrary runtime plugin distribution is supported.
