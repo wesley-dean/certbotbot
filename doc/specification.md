@@ -116,6 +116,30 @@ producer MUST verify that absolute paths in Certbot's renewal metadata survive
 restoration into a different private workspace before publishing archives.
 See ADR-025.
 
+## Private workspace and combined PEM assembly
+
+An internal workspace helper creates a fresh, owned, mode-0700 root and private
+`config/`, `work/`, and `logs/` directories under a trusted absolute
+temporary parent.  It records exactly one active local workspace, refuses
+unsafe cleanup targets, and provides explicit cleanup; the future producer
+orchestrator remains responsible for traps and lock lifecycle.
+
+A local PEM assembly helper requires a normalized lineage identity, owned
+non-symlinked Certbot root/lineage directories, and all four normal Certbot
+`live/<name>/` symlinks.  Each symlink's **literal relative target** must be
+`../../archive/<name>/<kind><positive serial>.pem`, where kind is `cert`,
+`chain`, `fullchain`, or `privkey`.  Each referenced versioned file must be
+an owned, readable, nonempty regular file; private keys must exclude all
+group/other access.  Preexisting output symlinks and unsafe directory
+permissions cause rejection before any output.  The helper generates the
+specified combined PEMs with 0600 mode using temporary local files and
+per-file atomic renames.
+
+This is structural validation of an already-produced trusted local lineage.
+It does not imply safety of extracting an untrusted tar archive, check PEM
+cryptographic correctness/key matching, or establish portability of
+`renewal/<name>.conf`.  Those checks must precede any production publication.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.

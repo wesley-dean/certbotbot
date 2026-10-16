@@ -42,6 +42,23 @@ state, validate every restored archive, and publish only after all requested
 certificates succeed.  A local lock does not prevent concurrent producers on
 different hosts or CI platforms.
 
+## Private workspace and combined PEM preparation (Phase 3B)
+
+The source now includes an internal private-workspace allocator and a local
+Certbot lineage validator/combined-PEM assembler.  A producer workspace has
+private `config/`, `work/`, and `logs/` directories.  The PEM assembler
+requires all four standard `live/<name>/` links to point to the expected
+`archive/<name>/` versioned files and requires private-key permissions that
+exclude group/other access.  It writes regular 0600 combined PEM files at
+`combined/<name>.pem` and `live/<name>/combined.pem`.
+
+These are internal, testable building blocks.  No live certificate operations
+are yet callable through ordinary issuance, and this module does **not**
+extract archives, verify cryptographic key-to-certificate matching, or repair
+Certbot renewal configuration paths.  Two local output renames are individually
+atomic, not a two-file transaction.  The producer must complete all later
+checks before remote publication.
+
 ## Archive format and deployment separation
 
 The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).
