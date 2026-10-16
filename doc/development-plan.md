@@ -184,7 +184,9 @@ ADR-034 permits CI-only invocation of actual Certbot 5.8.0
 `renew --cert-name` for a 90-day locally issued fixture restored
 under a different private workspace root.  The original workspace
 must be removed, Python socket connection APIs must be blocked by a
-test-specific guard, and no certificate, key, or renewal config bytes
+test-specific guard.  Certbot 5.8.0 may request ARI DNS resolution despite
+correctly deciding that no renewal is due; this DNS attempt is blocked,
+and any other socket use must fail.  No certificate, key, or config bytes
 may change.  Both the common-account archive and the selected
 domain archive must be restored before this check, with account-key
 identity preserved.  All three release artifact flavors run the test.

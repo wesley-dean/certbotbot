@@ -40,8 +40,9 @@ deleting the predecessor.  It runs real Certbot 5.8.0's selected-lineage
 not due for renewal, and verifies an explicit no-op decision and
 unchanged certificate, key, and renewal configuration.
 
-The harness intercepts Python socket connection APIs and fails if they
-are invoked.  It does not contain real ACME account credentials, send
+The harness blocks Python socket APIs.  Certbot 5.8.0 may attempt an
+ACME Renewal Information (ARI) DNS lookup even for a not-due lineage;
+the test permits that blocked lookup, but rejects unexpected socket calls.  It does not contain real ACME account credentials, send
 a DNS challenge, or prove an actual due renewal.  This is a test-only
 exception documented in ADR-034; normal public issuance stays disabled.
 

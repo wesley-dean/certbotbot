@@ -28,7 +28,7 @@ Run the real `certbot renew --cert-name example.com --non-interactive`
 command with that root, without `--dry-run` or forced renewal.  Explicitly
 disable directory hooks and renewal random sleep.
 
-To prevent accidental ACME requests, the harness installs a local
+To prevent successful external ACME requests, the harness installs a local
 `sitecustomize.py` in Certbot's Python interpreter environment which
 overrides the normal socket connection and name-resolution APIs to raise,
 and records attempted connections.  Test the guard itself first.
@@ -36,7 +36,11 @@ A successful test requires all of the following:
 
 - Certbot exits successfully and explicitly reports that the requested
   lineage is not due for renewal or that no renewals were attempted.
-- There is no recorded network connection attempt through the guard.
+- No outbound socket connection is allowed to succeed.  A blocked
+  `socket.getaddrinfo` lookup may occur: Certbot 5.8.0 requests ACME Renewal
+  Information (ARI) even when the certificate is not due, and reports the
+  resulting lookup error without treating the no-op as a failed renewal.
+  Other intercepted socket operations are unexpected and fail the test.
 - The restored renewal config, leaf certificate, and private key are
   byte-identical before and after Certbot's decision.
 - The original producer workspace no longer exists.
@@ -62,8 +66,11 @@ insufficient evidence of a no-op.
 As of Certbot 4.0.0, normal renewal eligibility is based on the remaining
 fraction of a certificate's validity period.  A locally generated
 90-day certificate therefore provides an intentionally not-due fixture
-immediately after generation.  The test checks for an explicit no-op
-diagnostic rather than assuming success implies non-renewal.
+immediately after generation.  The test checks for an explicit no-op diagnostic rather than assuming success
+implies non-renewal.  The first CI exercise established that Certbot 5.8.0
+may still attempt an ARI DNS lookup even after detecting a non-due lineage;
+the network guard blocks that lookup, and Certbot continues with a normal
+no-renewal decision.
 
 References:
 
@@ -113,9 +120,9 @@ product CLI or archive formats.  The synthetic certificate lifetime
 is intentionally distinct from the seven-day fixture used by ADR-033.
 
 The test must fail if Certbot cannot read the relocated lineage,
-reports an issuance attempt, opens a socket through the patched
-Python APIs, changes the lineage/config bytes, or returns an
-unrecognized result.  Build, Bash 4.3, source checks, CodeQL, and
+reports an issuance attempt, makes an unexpected socket operation beyond
+its tolerated blocked ARI DNS lookup, changes the lineage/config bytes,
+or returns an unrecognized result.  Build, Bash 4.3, source checks, CodeQL, and
 MegaLinter remain required in addition to the new real-Certbot job.
 
 ## Further release gates

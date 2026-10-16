@@ -307,7 +307,9 @@ fully reconstructed lineage after deleting the previous runner.
 A locally signed, 90-day certificate should be not due for renewal.
 Python network connection APIs are intercepted, directory hooks
 are disabled, and the test checks that no cert, key, or renewal config
-bytes are changed.  The common account's synthetic key bytes are
+bytes are changed.  Certbot 5.8.0 may attempt an ARI DNS lookup even for
+a non-due lineage; that DNS attempt is blocked and logged,
+while unexpected connect operations fail.  The common account's synthetic key bytes are
 preserved into the temporary Certbot config, but cannot authenticate
 to Let's Encrypt.  ADR-034 authorizes only this CI use.
 

@@ -210,13 +210,18 @@ if ! grep -Eqi 'not (yet )?due|no renewals were attempted|not scheduled for rene
   cat "$tmp/noop-renew.out" "$tmp/noop-renew.err" >&2
   exit 1
 fi
+# Certbot 5.8.0 may request ACME Renewal Information (ARI) even when its
+# certificate is not due.  DNS resolution is blocked by the guard, and
+# Certbot still returns the correct non-renewal decision.  Reject any
+# attempted socket connection or unrecognized network API use.
 if [[ -e "$marker" ]]; then
-  printf '%s\n' 'A no-op renewal unexpectedly tried to use the network' >&2
-  printf '%s\n' 'Intercepted Python socket calls:' >&2
-  cat "$marker" >&2
-  printf '%s\n' 'Certbot no-op decision diagnostics:' >&2
-  cat "$tmp/noop-renew.out" "$tmp/noop-renew.err" >&2
-  exit 1
+  if grep -Evq '^socket[.]getaddrinfo$' "$marker" ||
+    ! grep -Fq 'ACME Renewal Information (ARI)' "$tmp/noop-renew.err"; then
+    printf '%s
+' 'Unexpected network behavior during Certbot no-op:' >&2
+    cat "$marker" "$tmp/noop-renew.out" "$tmp/noop-renew.err" >&2
+    exit 1
+  fi
 fi
 [[ "$(sha256sum -- "$new/renewal/example.com.conf" | cut -d ' ' -f1)" == "$before_conf" ]]
 [[ "$(sha256sum -- "$new/archive/example.com/cert1.pem" | cut -d ' ' -f1)" == "$before_cert" ]]

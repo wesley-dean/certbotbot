@@ -223,7 +223,9 @@ environment remain part of the build/test supply-chain attack surface.
 ADR-034 permits a CI-only invocation of `certbot renew` against
 a locally generated certificate that is not due.  A Python-level
 socket guard is installed and self-tested, directory hooks are
-disabled, and absence of attempted network access is asserted.
+disabled, and only Certbot's observed, blocked ARI DNS lookup is permitted;
+unexpected socket calls are rejected.  A no-op renewal does not imply
+that Certbot refrains from making external requests when unrestricted.
 This is not OS-level network isolation, nor does it prove that
 external or native subprocesses could never make network requests.
 No real ACME credentials, DNS secrets, or S3 authorization are used.
