@@ -119,6 +119,24 @@ JSON contents nor selects an account with Certbot.  It does not merge common
 state into active configuration, enable ACME issuance, or upload storage
 objects.  No consumer needs the common archive.  See ADR-028.
 
+## Cryptographic certificate validation (pre-publication gate)
+
+The standalone artifact now contains an internal OpenSSL-based certificate
+validator.  It checks that the leaf certificate is currently valid, its
+private key is consistent and matches the leaf public key, its chain
+verifies for TLS server use against trusted roots, and both combined PEM
+files contain exactly the expected fullchain-plus-private-key bytes.
+This is the explicit cryptographic test requested in [issue #12]
+(https://github.com/wesley-dean/certbotbot/issues/12).
+An optional CA bundle supports controlled staging-root tests; ordinary
+production verification uses OpenSSL's configured trust roots.
+
+The validator is not yet wired into publication (which remains disabled).
+It does not prove SAN correspondence, correct web-server configuration,
+or other service-specific usability.  OpenSSL is a native runtime
+prerequisite for this eventual publication gate.  See ADR-029.
+
+
 ## Archive format and deployment separation
 
 The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).

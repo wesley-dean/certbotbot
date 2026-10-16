@@ -96,6 +96,25 @@ workspace between invocations.  Test failure on missing or corrupted
 shared account state when a domain lineage exists.  Execute serially
 until storage-backed locking is available.
 
+### Pre-publication certificate verification and environment selection
+
+Issue #12 is a release-critical runtime verification gate.  An internal
+OpenSSL validator is introduced under ADR-029 and MUST be wired into
+the eventual producer after PEM assembly and before publishing any
+objects.  Test valid EC/RSA keys, incorrect key pairs, expired/malformed
+certificates, untrusted/intermediate chains, and corrupt combined outputs.
+Add an orchestration-level negative test showing verification failure
+leaves existing S3 state unchanged.
+
+Issue #11 adds an explicit opt-in Let's Encrypt **staging** mode with
+production as the default.  Treat staging and production as separate
+certificate/account namespaces, even for an identical requested lineage.
+Ensure the correct ACME server and CA trust context are selected, and
+include both modes in fresh-workspace integration tests.  This is a
+pre-release requirement if staging is used for safe end-to-end testing;
+it does not justify opening arbitrary ACME URLs in the first release.
+
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.
