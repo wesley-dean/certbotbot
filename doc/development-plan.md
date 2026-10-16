@@ -46,6 +46,8 @@ Acceptance: `make deps`, `make deps-check`, `make build`, `make check`, and a sm
 
 Acceptance: no real network required, negative tests verify no provider dispatch or remote writes after invalid input, all three artifacts exhibit the same behavior.
 
+Phase 2 may be split into a preflight/registry PR and a follow-up for local serialization and mocked external commands.  The first PR deliberately leaves DNS/storage adapters inert and avoids claiming issuance.
+
 ## Phase 3: Certbot/Route53 issuance and renewal
 
 - Implement common account restore, conditional registration with `REGISTER_ACCOUNT=true`, `AGREE_TOS=true`, and `EMAIL` on registration.

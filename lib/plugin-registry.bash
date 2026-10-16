@@ -1,109 +1,69 @@
 # shellcheck shell=bash
 ## @file lib/plugin-registry.bash
-## @brief Provides the stable registry used by automatically discovered plugins.
+## @brief Registers built-in DNS and storage adapters by typed provider name.
 ## @details
-## The build appends plugin files after this core module in deterministic lexical
-## order.  Each plugin registers a logical name, a human-readable description,
-## and the function that implements the plugin.  Runtime dispatch therefore
-## depends on registry state rather than a central list of known plugin names.
-##
-## The registry deliberately owns only discovery metadata and dispatch.  A real
-## project may add richer capability metadata, lifecycle hooks, or typed plugin
-## categories, but those additions should extend this narrow contract rather than
-## introduce plugin-specific branches into unrelated core code.
+## Provider source files are discovered only by Make during artifact assembly.
+## They register fixed names here when the generated executable is loaded.
+## Registration does not source external files, inspect runtime directories, or
+## authorize consumers to install arbitrary plugins.  Backend implementations
+## run in the producer's Bash process and inherit its authority.  Keys are
+## constrained before associative-array use to avoid Bash subscript hazards.
 
-declare -a CERTBOTBOT_PLUGIN_NAMES=()
-declare -A CERTBOTBOT_PLUGIN_FUNCTIONS=()
-declare -A CERTBOTBOT_PLUGIN_DESCRIPTIONS=()
+declare -A CERTBOTBOT_PROVIDER_HANDLERS=()
+declare -a CERTBOTBOT_PROVIDER_NAMES=()
 
-## @fn certbotbot_scaffold_plugin_register()
-## @brief Registers one plugin implementation with the runtime registry.
-## @details
-## Registration is explicit even though source discovery is automatic.  This
-## gives each plugin control over its public logical name while keeping the build
-## independent of a hard-coded plugin inventory.  Duplicate names are rejected
-## because silent replacement would make behavior depend on lexical file order.
-##
-## @param name Stable logical plugin name exposed to callers.
-## @param function_name Bash function that implements the plugin.
-## @param description Human-readable one-line plugin description.
-## @retval 0 The plugin was registered.
-## @retval 64 A required argument was empty or the name was already registered.
-## @par Examples
-## @code
-## certbotbot_scaffold_plugin_register "noop" "certbotbot_scaffold_plugin_noop" "Do nothing"
-## @endcode
-certbotbot_scaffold_plugin_register() {
-  local name="${1:-}"
-  local function_name="${2:-}"
-  local description="${3:-}"
-
-  if [[ -z "${name}" || -z "${function_name}" || -z "${description}" ]]; then
-    printf '%s\n' 'plugin registration requires name, function, and description' >&2
-    return 64
-  fi
-
-  if [[ -n "${CERTBOTBOT_PLUGIN_FUNCTIONS[${name}]:-}" ]]; then
-    printf 'plugin already registered: %s\n' "${name}" >&2
-    return 64
-  fi
-
-  CERTBOTBOT_PLUGIN_NAMES+=("${name}")
-  CERTBOTBOT_PLUGIN_FUNCTIONS["${name}"]="${function_name}"
-  CERTBOTBOT_PLUGIN_DESCRIPTIONS["${name}"]="${description}"
-}
-
-## @fn certbotbot_scaffold_plugin_list()
-## @brief Prints registered plugins and their descriptions.
-## @details
-## Plugins are emitted in registration order.  The build sorts plugin source
-## paths lexically, making this output deterministic for a given source tree.
+## @fn certbotbot_provider_register()
+## @brief Registers a reviewed, statically included provider implementation.
+## @param category One of dns or storage.
+## @param name Stable lowercase built-in provider identifier.
+## @param handler Existing Bash function name for the provider.
+## @retval 0 Provider was registered.
+## @retval 64 The identifier or handler was invalid or registered already.
 ## @par Standard Output
-## One tab-separated plugin name and description per line.
-## @retval 0 The registry was printed successfully.
+## Nothing is written to STDOUT.
 ## @par Examples
 ## @code
-## certbotbot_scaffold_plugin_list
+## certbotbot_provider_register dns route53 certbotbot_dns_route53_run
 ## @endcode
-certbotbot_scaffold_plugin_list() {
-  local name
+certbotbot_provider_register() {
+  local category=${1:-} name=${2:-} handler=${3:-} key
 
-  for name in "${CERTBOTBOT_PLUGIN_NAMES[@]}"; do
-    printf '%s\t%s\n' "${name}" "${CERTBOTBOT_PLUGIN_DESCRIPTIONS[${name}]}"
-  done
+  if (( $# != 3 )) || [[ ! ${category} =~ ^(dns|storage)$ ]] ||
+    [[ ! ${name} =~ ^[a-z][a-z0-9_-]*$ ]] ||
+    [[ ! ${handler} =~ ^[a-zA-Z_][a-zA-Z_0-9]*$ ]]; then
+    printf '%s\n' 'invalid built-in provider registration' >&2
+    return 64
+  fi
+
+  if ! declare -F "${handler}" >/dev/null; then
+    printf 'provider handler missing: %s\n' "${handler}" >&2
+    return 64
+  fi
+
+  key="${category}:${name}"
+  if [[ -n ${CERTBOTBOT_PROVIDER_HANDLERS[${key}]+_} ]]; then
+    printf 'duplicate built-in provider: %s\n' "${key}" >&2
+    return 64
+  fi
+
+  CERTBOTBOT_PROVIDER_HANDLERS["${key}"]="${handler}"
+  CERTBOTBOT_PROVIDER_NAMES+=("${key}")
 }
 
-## @fn certbotbot_scaffold_plugin_run()
-## @brief Dispatches execution to a registered plugin by logical name.
-## @details
-## The dispatcher validates registry membership before performing an associative
-## array lookup.  Bash treats an empty associative-array subscript as an error,
-## so the explicit empty-name guard is part of the public invalid-input contract,
-## not merely defensive decoration.  Valid calls invoke the registered function
-## with all remaining arguments unchanged.
-## @param name Logical plugin name.
-## @param ... Arguments forwarded to the plugin implementation.
-## @retval 0 The selected plugin completed successfully.
-## @retval 69 No plugin with the requested name is registered.
-## @par Examples
-## @code
-## certbotbot_scaffold_plugin_run noop
-## @endcode
-certbotbot_scaffold_plugin_run() {
-  local name="${1:-}"
-  local function_name
-
-  shift || true
-  if [[ -z "${name}" ]]; then
-    printf '%s\n' 'unknown plugin: ' >&2
-    return 69
+## @fn certbotbot_provider_exists()
+## @brief Checks a registered category/name pair without evaluating it.
+## @param category Provider category.
+## @param name Provider identifier.
+## @retval 0 The provider exists in this release artifact.
+## @retval 1 The requested provider is absent or its identifier is invalid.
+## @par Standard Output
+## Nothing is written to STDOUT.
+certbotbot_provider_exists() {
+  local category=${1:-} name=${2:-} key
+  if (( $# != 2 )) || [[ ! ${category} =~ ^(dns|storage)$ ]] ||
+    [[ ! ${name} =~ ^[a-z][a-z0-9_-]*$ ]]; then
+    return 1
   fi
-
-  function_name="${CERTBOTBOT_PLUGIN_FUNCTIONS[${name}]:-}"
-  if [[ -z "${function_name}" ]]; then
-    printf 'unknown plugin: %s\n' "${name}" >&2
-    return 69
-  fi
-
-  "${function_name}" "$@"
+  key="${category}:${name}"
+  [[ -n ${CERTBOTBOT_PROVIDER_HANDLERS[${key}]+_} ]]
 }

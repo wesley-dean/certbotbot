@@ -34,7 +34,7 @@ jobs:
             printf '%s\n' 'make build unexpectedly succeeded without prepared dependencies' >&2
             exit 1
           fi
-          grep -F 'Missing build dependency vendor/bash-minifier.bash' "${stderr}"
+          grep -F 'Missing build dependency vendor/bashlog.bash' "${stderr}"
           test ! -e vendor
 
       - name: Verify documentation does not acquire missing adrctl
@@ -139,7 +139,7 @@ jobs:
           rm -rf vendor
           for artifact in dist/*.bash; do
             "${artifact}" --help >/dev/null
-            "${artifact}" run noop
+            "${artifact}" --validate foo.com www.foo.com
           done
 
       - name: Fail if Bats failed
