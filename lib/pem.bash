@@ -117,6 +117,12 @@ certbotbot_pem_assemble() {
   live_path="${live_dir}/combined.pem"
 
   certbotbot_pem_check_directory "${root}" || return 64
+  # Account keys elsewhere in the Certbot config root require full privacy.
+  local root_mode
+  if ! root_mode="$(stat -c '%a' -- "${root}")" ||
+    (( (8#${root_mode} & 8#77) != 0 )); then
+    return 64
+  fi
   certbotbot_pem_check_directory "${root}/archive" || return 64
   certbotbot_pem_check_directory "${root}/live" || return 64
   certbotbot_pem_check_directory "${archive_dir}" || return 64

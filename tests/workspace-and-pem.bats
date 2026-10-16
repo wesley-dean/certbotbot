@@ -120,6 +120,16 @@ create_lineage() {
   [ ! -e "${root}/live/example.com/combined.pem" ]
 }
 
+@test "PEM assembly refuses a publicly readable Certbot config root" {
+  local root="${BATS_TEST_TMPDIR}/config"
+  mkdir -m 0755 "${root}"
+  create_lineage "${root}" example.com
+  run bash -c 'source "$1" --version >/dev/null; certbotbot_pem_assemble "$2" example.com' \
+    _ "${CERTBOTBOT_ARTIFACT}" "${root}"
+  [ "${status}" -eq 64 ]
+  [ ! -e "${root}/combined/example.com.pem" ]
+}
+
 @test "PEM assembly refuses private keys readable by other users" {
   local root="${BATS_TEST_TMPDIR}/config"
   mkdir -m 0700 "${root}"
