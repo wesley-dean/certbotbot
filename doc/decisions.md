@@ -379,3 +379,15 @@ See [ADR-036](adr/ADR-036-exact-dns-san-verification.md).
 Isolated account and lineage restoration does not authorize installation into active Certbot configuration. Preparation and assessment remain non-activating until genuine staging account reuse, renewal and SAN-change evidence across independent workspaces, and a separate Accepted import/rollback decision. The public issuer and release gates remain disabled.
 
 See [ADR-037](adr/ADR-037-gated-active-certbot-import.md).
+
+### ADR-038: Strict, Non-Activating Restored Renewal-Option Policy
+
+Before a restored lineage passes private import assessment, the producer must
+validate the complete persisted Certbot renewal-option profile, not merely its
+account identity and five historical paths.  The initial Certbot 5.8.0
+Route53 allowlist accepts only explicitly reviewed fields, rejects unknown
+options and executable/plugin overrides, and permits the narrowly documented
+ARI retry scheduling update.  The policy does not authorize account import,
+Certbot execution, or S3 publication; those release gates remain closed.
+
+See [ADR-038](adr/ADR-038-restored-renewal-option-policy.md).
