@@ -107,8 +107,7 @@ certbotbot_renewal_path_preview() {
         esac
       else
         case "$key" in
-          archive_dir | cert | chain | fullchain | privkey |
-          config_dir | work_dir | logs_dir)
+          archive_dir | cert | chain | fullchain | privkey | config_dir | work_dir | logs_dir)
             return 64
             ;;
         esac
