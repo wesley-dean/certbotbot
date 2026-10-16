@@ -225,3 +225,9 @@ See [ADR-023](adr/ADR-023-build-artifacts-dependencies-and-execution-examples.md
 The project adopts coding_standards@v2.1.0 as a complete committed snapshot, with version and digest recorded in .codingstandardrc.  Relevant imported standards are mandatory unless an Accepted local ADR or explicit policy refines them.  Imported files must remain unmodified, and future updates require a reviewed release-specific refresh.  The standards do not become runtime dependencies or automatic update jobs.
 
 See [ADR-024](adr/ADR-024-released-coding-standards-governance.md).
+
+### ADR-025: Certbot State Portability and the Staged Issuance Boundary
+
+The built-in Route53 adapter constructs a DNS-only, named Certbot certonly invocation using a complete explicit SAN set and renewal-aware flags.  Producer workspace paths must be private, and archived renewal metadata must remain portable when restored on another host or into another transient directory.  A mocked adapter alone does not authorize public certificate issuance or publishing.  Real restore, no-op renewal, and changed-SAN integration evidence are required before enabling the production workflow.
+
+See [ADR-025](adr/ADR-025-certbot-state-portability-and-issuance-boundary.md).

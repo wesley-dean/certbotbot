@@ -98,6 +98,24 @@ Route53 adapter offers a read-only Certbot version probe and fixed DNS-01
 option elements.  None of these operations is wired into public issuance
 until the subsequent processing phases are implemented.
 
+## Certbot/Route53 issuance command contract
+
+The first built-in Route53 implementation prepares a `certbot certonly`
+operation using `--non-interactive`, `--dns-route53`,
+`--preferred-challenges dns`, explicit `--cert-name`, private separate
+`--config-dir`, `--work-dir`, and `--logs-dir` options,
+`--keep-until-expiring`, and `--renew-with-new-domains`.  Every normalized
+SAN uses a separate `-d` argv pair.  This permits SAN replacement without
+unconditional forced renewal for unchanged lineages.  The initial internal
+command adapter requires an explicit account email and acknowledged terms.
+
+This command adapter is callable by isolated tests but is **not** connected to
+the normal issuer yet.  When `REGISTER_ACCOUNT=false`, it fails closed until
+the producer can verify/select an existing restored ACME account.  The final
+producer MUST verify that absolute paths in Certbot's renewal metadata survive
+restoration into a different private workspace before publishing archives.
+See ADR-025.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.
