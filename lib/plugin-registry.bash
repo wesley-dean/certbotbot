@@ -12,11 +12,11 @@
 ## categories, but those additions should extend this narrow contract rather than
 ## introduce plugin-specific branches into unrelated core code.
 
-declare -a BASH_STARTER_PLUGIN_NAMES=()
-declare -A BASH_STARTER_PLUGIN_FUNCTIONS=()
-declare -A BASH_STARTER_PLUGIN_DESCRIPTIONS=()
+declare -a CERTBOTBOT_PLUGIN_NAMES=()
+declare -A CERTBOTBOT_PLUGIN_FUNCTIONS=()
+declare -A CERTBOTBOT_PLUGIN_DESCRIPTIONS=()
 
-## @fn bash_starter_plugin_register()
+## @fn certbotbot_scaffold_plugin_register()
 ## @brief Registers one plugin implementation with the runtime registry.
 ## @details
 ## Registration is explicit even though source discovery is automatic.  This
@@ -31,9 +31,9 @@ declare -A BASH_STARTER_PLUGIN_DESCRIPTIONS=()
 ## @retval 64 A required argument was empty or the name was already registered.
 ## @par Examples
 ## @code
-## bash_starter_plugin_register "noop" "bash_starter_plugin_noop" "Do nothing"
+## certbotbot_scaffold_plugin_register "noop" "certbotbot_scaffold_plugin_noop" "Do nothing"
 ## @endcode
-bash_starter_plugin_register() {
+certbotbot_scaffold_plugin_register() {
   local name="${1:-}"
   local function_name="${2:-}"
   local description="${3:-}"
@@ -43,17 +43,17 @@ bash_starter_plugin_register() {
     return 64
   fi
 
-  if [[ -n "${BASH_STARTER_PLUGIN_FUNCTIONS[${name}]:-}" ]]; then
+  if [[ -n "${CERTBOTBOT_PLUGIN_FUNCTIONS[${name}]:-}" ]]; then
     printf 'plugin already registered: %s\n' "${name}" >&2
     return 64
   fi
 
-  BASH_STARTER_PLUGIN_NAMES+=("${name}")
-  BASH_STARTER_PLUGIN_FUNCTIONS["${name}"]="${function_name}"
-  BASH_STARTER_PLUGIN_DESCRIPTIONS["${name}"]="${description}"
+  CERTBOTBOT_PLUGIN_NAMES+=("${name}")
+  CERTBOTBOT_PLUGIN_FUNCTIONS["${name}"]="${function_name}"
+  CERTBOTBOT_PLUGIN_DESCRIPTIONS["${name}"]="${description}"
 }
 
-## @fn bash_starter_plugin_list()
+## @fn certbotbot_scaffold_plugin_list()
 ## @brief Prints registered plugins and their descriptions.
 ## @details
 ## Plugins are emitted in registration order.  The build sorts plugin source
@@ -63,17 +63,17 @@ bash_starter_plugin_register() {
 ## @retval 0 The registry was printed successfully.
 ## @par Examples
 ## @code
-## bash_starter_plugin_list
+## certbotbot_scaffold_plugin_list
 ## @endcode
-bash_starter_plugin_list() {
+certbotbot_scaffold_plugin_list() {
   local name
 
-  for name in "${BASH_STARTER_PLUGIN_NAMES[@]}"; do
-    printf '%s\t%s\n' "${name}" "${BASH_STARTER_PLUGIN_DESCRIPTIONS[${name}]}"
+  for name in "${CERTBOTBOT_PLUGIN_NAMES[@]}"; do
+    printf '%s\t%s\n' "${name}" "${CERTBOTBOT_PLUGIN_DESCRIPTIONS[${name}]}"
   done
 }
 
-## @fn bash_starter_plugin_run()
+## @fn certbotbot_scaffold_plugin_run()
 ## @brief Dispatches execution to a registered plugin by logical name.
 ## @details
 ## The dispatcher validates registry membership before performing an associative
@@ -87,9 +87,9 @@ bash_starter_plugin_list() {
 ## @retval 69 No plugin with the requested name is registered.
 ## @par Examples
 ## @code
-## bash_starter_plugin_run noop
+## certbotbot_scaffold_plugin_run noop
 ## @endcode
-bash_starter_plugin_run() {
+certbotbot_scaffold_plugin_run() {
   local name="${1:-}"
   local function_name
 
@@ -99,7 +99,7 @@ bash_starter_plugin_run() {
     return 69
   fi
 
-  function_name="${BASH_STARTER_PLUGIN_FUNCTIONS[${name}]:-}"
+  function_name="${CERTBOTBOT_PLUGIN_FUNCTIONS[${name}]:-}"
   if [[ -z "${function_name}" ]]; then
     printf 'unknown plugin: %s\n' "${name}" >&2
     return 69

@@ -11,7 +11,7 @@
 ## Derived projects may keep, rename, replace, or delete this plugin once their
 ## own extension points are established.
 
-## @fn bash_starter_plugin_noop()
+## @fn certbotbot_scaffold_plugin_noop()
 ## @brief Completes successfully without producing output or changing state.
 ## @details
 ## The noop implementation intentionally ignores its arguments.  A real plugin
@@ -21,14 +21,14 @@
 ## @retval 0 Always.
 ## @par Examples
 ## @code
-## bash_starter_plugin_noop
+## certbotbot_scaffold_plugin_noop
 ## @endcode
-bash_starter_plugin_noop() {
+certbotbot_scaffold_plugin_noop() {
   : "$@"
   return 0
 }
 
-bash_starter_plugin_register \
+certbotbot_scaffold_plugin_register \
   "noop" \
-  "bash_starter_plugin_noop" \
+  "certbotbot_scaffold_plugin_noop" \
   "Reference plugin that performs no operation."

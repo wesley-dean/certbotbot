@@ -61,6 +61,8 @@ jobs:
           test -f vendor/bash-minifier.bash
           test -f vendor/doxygen-bash.awk
           test -f vendor/adrctl.bash
+          test -f vendor/mktext.bash
+          test -f vendor/bashlog.bash
 
       - name: Verify make all from fresh generated state
         run: |
@@ -161,7 +163,7 @@ jobs:
         run: |
           for artifact in dist/*.bash; do
             docker run --rm \
-              --env BASH_STARTER_ARTIFACT="/work/${artifact}" \
+              --env CERTBOTBOT_ARTIFACT="/work/${artifact}" \
               --volume "${GITHUB_WORKSPACE}:/work:ro" \
               --workdir /work \
               bash:4.3 \

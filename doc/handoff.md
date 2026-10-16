@@ -78,6 +78,10 @@ Use `doc/development-plan.md` as the ordered plan.  Phase 1 is build/dependency 
 
 These are bounded implementation design points, not invitations to change agreed product behavior without an ADR.
 
+## Phase 1 build foundation status
+
+Phase 1 is proposed through `agent/build/certbotbot-build-foundation`.  It changes the default project/build identity, enables future DNS/storage module discovery paths in Make, adds pinned mktext and bashlog release artifacts to the bashdeps manifest, updates scaffold metadata and tests, and gates automatic releases behind `CERTBOTBOT_RELEASE_ENABLED=true`.  It does not yet embed the new runtime libraries, remove the starter noop implementation, define provider interfaces, or perform ACME/S3 operations.  Do not enable automatic releases until the functional CLI and release validation are complete.
+
 ## Completion checklist
 
 - Documentation PR reviewed/merged; standards snapshot verified.
