@@ -80,6 +80,22 @@ the extracted filesystem (ADR-027).  It deliberately stops before merging
 into active Certbot state; common-account restoration, renewal metadata
 portability, and cryptographic verification remain separate work.
 
+Phase 4C adds an account-only common archive staging contract under ADR-028.
+It does not yet trust or select an ACME account, perform renewal metadata
+portability adjustments, merge restored state, or publish objects.
+
+### Cross-environment portability release gate
+
+Before enabling the public issuer, prove continuity across three fresh,
+distinct workspaces representing Jenkins, GitHub Actions, and EC2: first
+issuance, account reuse/no-op renewal, and subsequent SAN change or due
+renewal.  Compare restored ACME account identity, verify live links and
+renewal metadata after moving workspaces, and confirm consumers can use
+the domain archive without the common archive.  Delete each producer
+workspace between invocations.  Test failure on missing or corrupted
+shared account state when a domain lineage exists.  Execute serially
+until storage-backed locking is available.
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.

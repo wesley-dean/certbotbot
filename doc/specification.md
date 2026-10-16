@@ -176,6 +176,47 @@ portability, cryptographic key matching, staging-to-active integration, and
 all S3 publication remain separate release gates.  This helper is internal
 and does not change the public fail-closed issuance behavior.
 
+## Shared account-state staging boundary
+
+The initial common archive accepts only approved production and staging
+Let's Encrypt ACME v2 account directories.  Each account contains
+`meta.json`, `regr.json`, and `private_key.json`; account contents
+must not permit group/other access.  Hooks, unrelated files, linked paths,
+and lineage data are forbidden.  A common archive is copied into a private
+workspace, checked against a bounded GNU tar manifest, extracted into a
+fresh isolated directory, and independently inspected afterward.
+
+This is a structural and filesystem validation stage only.  JSON
+semantics, account validity/selection, ACME server association, portable
+Certbot renewal metadata, and controlled merging into active state remain
+future requirements.  A failed restoration must never initialize a new
+ACME account as if archived state had never existed.  Consumers continue
+to download only their own domain archives.  See ADR-028.
+
+## Stateless cross-run producer contract
+
+Shared object storage is the sole durable certificate-management state.
+A brand-new runner MUST reconstruct the same ACME account identity from the
+common archive and each selected certificate's lineage from its domain
+archive.  A previous runner's home directory, cached `/etc/letsencrypt`,
+temporary workspace, process identity, or local secret MUST NOT be required.
+Each runner supplies its own supported tools, AWS/Route53 authorization,
+configuration, and optional decryption secret.
+
+Acceptance requires sequential runs in **separate freshly created
+workspaces**: initial account registration and issuance on runner A;
+restore/account reuse and no-op renewal on runner B; a due renewal or SAN
+change on runner C.  Destroy the entire workspace between runs.  Confirm
+the same ACME account identity, restorable Certbot renewal configuration,
+and valid deployable outputs.  Existing lineage state with missing or
+corrupt common account state MUST fail without re-registering or publishing.
+
+The initial local and CI locks do not coordinate across Jenkins, GitHub
+Actions, and EC2.  Until a real storage-backed lease/fencing mechanism is
+implemented, independent writers against one archive namespace MUST be
+serialized externally.  Cross-run portability does not imply safe
+simultaneous execution.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.

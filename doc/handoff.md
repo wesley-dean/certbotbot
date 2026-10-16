@@ -182,3 +182,34 @@ metadata portability, test cryptographic certificate/private-key matching,
 and only then design the controlled merger into active workspace and
 eventual publishing.  No production issuance or object publishing path
 has been activated.
+
+## Phase 4C common ACME account archive staging
+
+The proposed PR on `agent/feat/isolated-acme-account-state` adds a separate
+strict account-only archive validator and isolated restorer.  It recognizes
+Let's Encrypt ACME v2 production/staging account paths containing complete
+`meta.json`, `regr.json`, and `private_key.json` triplets.  It refuses
+links, unknown config, renewal hooks, duplicate paths, incomplete
+registrations, and permissive key storage.  The producer-private copy
+is validated before extraction and filesystem-checked afterward.
+Stage disposal and negative tests are included.  These changes establish
+ADR-028 without connecting account state to the public issuer.
+
+The following production gates remain: actual Certbot account selection,
+renewal-config portability, certificate/key cryptographic matching,
+integration into active config, GPG encryption/decryption, S3 missing-object
+classification, publication sequencing, and live staging issuance.
+Do not enable the release gate.
+
+## Fresh-run producer portability acceptance
+
+The common archive exists to make ACME account identity portable between
+ephemeral, unrelated producer hosts.  Domain archives carry separate
+lineage history.  No machine-local Certbot registration or runner cache
+may be a necessary dependency for a later run.  ADR-028 and the product
+specification require a three-workspace test of issuance, account reuse,
+no-op renewal, and later SAN change or due renewal, with the previous
+workspace destroyed between runs.  If additional Certbot shared state
+proves necessary, the account-only archive policy must be amended under
+review.  Independent writers must remain externally serialized until
+storage-backed locking is available.

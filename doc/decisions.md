@@ -249,3 +249,16 @@ renewal portability or cryptographic certificate validity.  The common
 account archive and producer orchestration remain future work.
 
 See [ADR-027](adr/ADR-027-isolated-domain-archive-restoration.md).
+
+### ADR-028: Isolated, Account-Only Common ACME State
+
+The common archive may hold only complete Let's Encrypt ACME v2 production
+or staging account records and never certificate lineages, hooks, or
+arbitrary Certbot configuration.  Strict manifest validation, private
+copying, isolated extraction, and independent filesystem inspection
+protect the producer from malformed account archives.  Account JSON is
+not automatically trusted or selected after staging; actual ACME account
+verification and renewal portability are future release gates.  Consumers
+of issued certificates do not require or receive this common archive.
+
+See [ADR-028](adr/ADR-028-isolated-common-acme-account-state.md).
