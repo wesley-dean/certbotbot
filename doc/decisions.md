@@ -345,3 +345,17 @@ disposable CI fixtures.  Live ACME renewal, SAN changes, and archive
 publication remain separate release gates.
 
 See [ADR-034](adr/ADR-034-network-guarded-certbot-noop-renewal.md).
+
+### ADR-035: Three-Runner Continuity for State-Only Renewal Metadata
+
+A credential-free CI sequence may test three independent ephemeral
+Certbot workspaces, with the second runner repackaging a validated ARI
+retry scheduling update despite no certificate issuance.  The third
+runner must restore the resulting domain archive and original common
+account archive, preserving identity, key/certificate fingerprints,
+and ARI state while completing another real no-op decision.  The
+extension remains test-only, without S3 publication or real ACME
+account continuity.  Live due renewal, SAN changes, and a reviewed
+state-only publication policy remain separate gates.
+
+See [ADR-035](adr/ADR-035-three-run-ari-state-continuity.md).

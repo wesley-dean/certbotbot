@@ -239,3 +239,15 @@ a correct no-renewal-needed decision.  A stateless producer must not
 discard approved scheduling metadata merely because it did not
 reissue a certificate.  Safe, validated state-only archive publication
 remains unimplemented and must respect ADR-022 serialization and recovery.
+
+## Three-run ARI metadata continuity evidence
+
+ADR-035 extends the credential-free Certbot 5.8.0 no-op test to a
+third isolated workspace and tests that a retained ARI retry timestamp
+survives local archive repackaging and a second path relocation.
+Each preceding producer workspace is destroyed before C runs.
+The test uses only synthetic account data, a locally issued certificate,
+and the existing Python-level network guard; it is not a complete
+network sandbox, multi-cloud execution test, or remote publication
+authority.  It must never be interpreted as permission to upload
+unreviewed state-only changes or activate the public issuer.

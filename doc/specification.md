@@ -340,6 +340,24 @@ to renewal metadata after a blocked lookup.  A green result establishes no-op re
 compatibility only.  It does not prove ACME registration, due renewal,
 SAN changes, or S3 durability.  See ADR-034.
 
+## Three-run persistence of non-issuance metadata
+
+A follow-on disposable Certbot 5.8.0 test verifies more than a
+single no-op.  One ephemeral runner records a guarded ARI retry
+value after determining renewal is unnecessary, packages the
+accepted renewal state, and destroys its workspace.  A third,
+independent runner restores the archived lineage and common account,
+verifies the retained ARI value and key/certificate fingerprints,
+and asks Certbot to inspect and decide renewal eligibility again.
+No live ACME credential or remote storage mutation occurs.
+
+This is a **test-only** proof that the updated local archive can be
+reconstituted for subsequent no-op decisions, not a contract for
+automatically publishing ARI-only changes.  That publication decision,
+real account reuse, due renewal, and SAN updates remain release gates.
+See ADR-035.
+
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.
