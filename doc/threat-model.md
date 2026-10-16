@@ -256,7 +256,7 @@ unreviewed state-only changes or activate the public issuer.
 
 A trusted issuer chain and matching private key are insufficient if
 the leaf certificate identifies DNS names that differ from the
-operator's authoritative current request.  ADR-035 requires an exact
+operator's authoritative current request.  ADR-036 requires an exact
 set comparison of real X.509 DNS SANs, including the explicit apex
 and wildcard.  Missing, extra, duplicate, or non-DNS SANs fail closed,
 preventing a previously authorized but now removed SAN from silently
