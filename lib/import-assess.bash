@@ -140,3 +140,121 @@ certbotbot_import_assess_archives() {
   fi
   return "$result"
 }
+
+## @fn certbotbot_import_assess_batch()
+## @brief Assess multiple requested lineages against one common archive.
+## @details
+## The complete requested lineage/archive list is validated before archive
+## restoration begins. Duplicate lineage identities or repeated archive paths
+## are rejected. One private copy of the common archive is reused across the
+## sequential per-lineage assessments so a changed input path cannot silently
+## select different shared account bytes midway through the batch.
+##
+## Each domain archive is independently copied, validated, assessed, and
+## discarded by certbotbot_import_assess_archives(). The shared private copy
+## is discarded before return. Success means every requested lineage passed
+## non-activating assessment; it does not create an installable candidate,
+## retain stage paths, or authorize Certbot or S3 access.
+##
+## @param common_archive Absolute pathname of the common account archive.
+## @param environment production or staging ACME environment.
+## @param ... One or more (canonical lineage, domain archive) argument pairs.
+##
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## Nothing is written to STDOUT.
+## @par STDERR
+## Underlying validation and filesystem commands may issue diagnostics.
+##
+## @returns Nothing is written to STDOUT.
+## @retval 0 Every requested lineage passed the non-activating assessment.
+## @retval 64 Invalid request, unsafe files, or nonempty active configuration.
+## @retval 73 Local snapshot creation, copying, or cleanup failed.
+## @note Per-lineage validation may propagate further failure codes,
+## including 65 for a mismatched account or ACME environment. No stages
+## are left behind if the delegated per-lineage cleanup succeeds.
+## @see doc/adr/ADR-019-composable-state-archives-and-consumer-boundary.md
+## @see doc/adr/ADR-037-gated-active-certbot-import.md
+certbotbot_import_assess_batch() {
+  local common_archive=${1:-} environment=${2:-}
+  local mode='' item='' snapshot='' result=0 index=0 name='' archive=''
+  local -a requests=()
+  local -A names=() archives=()
+
+  # The list is a flat sequence of paired arguments, never parsed as shell
+  # words. A complete syntax and identity preflight precedes any tar read.
+  if (( $# < 4 || ($# - 2) % 2 != 0 )) ||
+    [[ -n ${CERTBOTBOT_COMMON_STAGE:-} ||
+      -n ${CERTBOTBOT_RESTORE_ROOT:-} ||
+      -n ${CERTBOTBOT_RENEWAL_PREVIEW:-} ]] ||
+    ! certbotbot_acme_validate_environment "$environment" ||
+    [[ $environment != "${ACME_ENVIRONMENT:-production}" ||
+      $common_archive != /* || ! -f $common_archive ||
+      -L $common_archive || ! -O $common_archive ||
+      ! -r $common_archive ||
+      -z ${CERTBOTBOT_WORKSPACE_ROOT:-} ||
+      -z ${CERTBOTBOT_WORKSPACE_CONFIG:-} ]]; then
+    return 64
+  fi
+
+  if [[ ! -d $CERTBOTBOT_WORKSPACE_ROOT ||
+    -L $CERTBOTBOT_WORKSPACE_ROOT ||
+    ! -O $CERTBOTBOT_WORKSPACE_ROOT ||
+    ! -d $CERTBOTBOT_WORKSPACE_CONFIG ||
+    -L $CERTBOTBOT_WORKSPACE_CONFIG ||
+    ! -O $CERTBOTBOT_WORKSPACE_CONFIG ]] ||
+    ! mode="$(stat -c '%a' -- "$CERTBOTBOT_WORKSPACE_ROOT")" ||
+    [[ $mode != 700 ]] ||
+    ! mode="$(stat -c '%a' -- "$CERTBOTBOT_WORKSPACE_CONFIG")" ||
+    [[ $mode != 700 ]]; then
+    return 64
+  fi
+
+  # A hidden file is as important as a visible one. The active directory
+  # must not already contain state belonging to another invocation.
+  item="$(find -P "$CERTBOTBOT_WORKSPACE_CONFIG" \
+    -mindepth 1 -print -quit)" || return 73
+  [[ -z $item ]] || return 64
+
+  shift 2
+  requests=("$@")
+  for (( index=0; index<${#requests[@]}; index+=2 )); do
+    name=${requests[index]}
+    archive=${requests[index+1]}
+    if ! certbotbot_validate_hostname "$name" ||
+      [[ $name == \*.* || $name != "${name,,}" ||
+        $archive != /* || ! -f $archive || -L $archive ||
+        ! -O $archive || ! -r $archive ||
+        $archive == "$common_archive" ]] ||
+      [[ -n ${names[$name]+_} || -n ${archives[$archive]+_} ]]; then
+      return 64
+    fi
+    names["$name"]=1
+    archives["$archive"]=1
+  done
+
+  # The local common snapshot is identical for every assessment in the
+  # batch. No remote storage or Certbot command runs through this helper.
+  snapshot="$(mktemp -- \
+    "$CERTBOTBOT_WORKSPACE_ROOT/.batch-common.XXXXXXXX")" || return 73
+  if ! (umask 077; cp -- "$common_archive" "$snapshot" &&
+    chmod 0600 -- "$snapshot"); then
+    rm -f -- "$snapshot" || return 73
+    return 73
+  fi
+
+  for (( index=0; index<${#requests[@]}; index+=2 )); do
+    name=${requests[index]}
+    archive=${requests[index+1]}
+    if certbotbot_import_assess_archives \
+      "$snapshot" "$archive" "$name" "$environment"; then
+      :
+    else
+      result=$?
+      break
+    fi
+  done
+  rm -f -- "$snapshot" || return 73
+  return "$result"
+}

@@ -190,3 +190,178 @@ RENEWAL
   ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN"
   [ "$status" -eq 0 ]
 }
+
+## Builds a second independent domain archive using the same common account.
+## Versioned leaf files and relative symlinks remain scoped to example.net.
+make_second_archive() {
+  local root="$ASSESS_SOURCE/domain-second" kind
+  export ASSESS_SECOND="$BATS_TEST_TMPDIR/example.net.tar.gz"
+  mkdir -p "$root"
+  cp -a "$ASSESS_SOURCE/domain/." "$root/"
+  mv "$root/archive/example.com" "$root/archive/example.net"
+  mv "$root/live/example.com" "$root/live/example.net"
+  mv "$root/renewal/example.com.conf" "$root/renewal/example.net.conf"
+  mv "$root/combined/example.com.pem" "$root/combined/example.net.pem"
+  for kind in cert chain fullchain privkey; do
+    rm "$root/live/example.net/$kind.pem"
+    ln -s "../../archive/example.net/${kind}1.pem" \
+      "$root/live/example.net/$kind.pem"
+  done
+  sed -i 's/example[.]com/example.net/g' \
+    "$root/renewal/example.net.conf"
+  tar -czf "$ASSESS_SECOND" -C "$root" archive live renewal combined
+}
+
+@test "batch accepts two lineages without altering active config" {
+  make_archives
+  make_second_archive
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_import_assess_batch "$2" production \
+      example.com "$3" example.net "$4" || exit 1
+    [[ -z "$CERTBOTBOT_COMMON_STAGE" &&
+      -z "$CERTBOTBOT_RESTORE_ROOT" &&
+      -z "$CERTBOTBOT_RENEWAL_PREVIEW" ]] || exit 1
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_CONFIG" \
+      -mindepth 1 -print -quit)" ]] || exit 1
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN" "$ASSESS_SECOND"
+  [ "$status" -eq 0 ]
+}
+
+@test "batch rejects a corrupt later domain and cleans previous stages" {
+  make_archives
+  make_second_archive
+  printf 'bad gzip\n' >"$ASSESS_SECOND"
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_import_assess_batch "$2" production \
+      example.com "$3" example.net "$4"
+    result=$?
+    [[ "$result" -ne 0 &&
+      -z "$CERTBOTBOT_COMMON_STAGE" &&
+      -z "$CERTBOTBOT_RESTORE_ROOT" &&
+      -z "$CERTBOTBOT_RENEWAL_PREVIEW" ]] || exit 1
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_CONFIG" \
+      -mindepth 1 -print -quit)" ]] || exit 1
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN" "$ASSESS_SECOND"
+  [ "$status" -eq 0 ]
+}
+
+@test "batch rejects duplicate lineage identities before restore" {
+  make_archives
+  make_second_archive
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_import_assess_batch "$2" production \
+      example.com "$3" example.com "$4"
+    result=$?
+    [[ "$result" -eq 64 ]] || exit 1
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN" "$ASSESS_SECOND"
+  [ "$status" -eq 0 ]
+}
+
+@test "batch rejects a repeated domain archive before restore" {
+  make_archives
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_import_assess_batch "$2" production \
+      example.com "$3" example.net "$3"
+    result=$?
+    [[ "$result" -eq 64 ]] || exit 1
+    [[ -z "$CERTBOTBOT_COMMON_STAGE" &&
+      -z "$CERTBOTBOT_RESTORE_ROOT" ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN"
+  [ "$status" -eq 0 ]
+}
+
+@test "batch rejects missing final archive before inspecting earlier domains" {
+  make_archives
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_import_assess_batch "$2" production \
+      example.com "$3" example.net "$4"
+    result=$?
+    [[ "$result" -eq 64 ]] || exit 1
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN" \
+    "$BATS_TEST_TMPDIR/missing.tar.gz"
+  [ "$status" -eq 0 ]
+}
+
+@test "batch rejects later wrong-authority lineage without residual stages" {
+  make_archives
+  make_second_archive
+  local root="$ASSESS_SOURCE/domain-second"
+  sed -i 's@https://acme-v02.api.letsencrypt.org/directory@https://acme-staging-v02.api.letsencrypt.org/directory@' \
+    "$root/renewal/example.net.conf"
+  tar -czf "$ASSESS_SECOND" -C "$root" archive live renewal combined
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_import_assess_batch "$2" production \
+      example.com "$3" example.net "$4"
+    result=$?
+    [[ "$result" -eq 65 &&
+      -z "$CERTBOTBOT_COMMON_STAGE" &&
+      -z "$CERTBOTBOT_RESTORE_ROOT" &&
+      -z "$CERTBOTBOT_RENEWAL_PREVIEW" ]] || exit 1
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_CONFIG" \
+      -mindepth 1 -print -quit)" ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN" "$ASSESS_SECOND"
+  [ "$status" -eq 0 ]
+}
+
+@test "batch preserves a hidden active file and refuses to assess" {
+  make_archives
+  make_second_archive
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    printf "untouched\n" >"$CERTBOTBOT_WORKSPACE_CONFIG/.marker"
+    certbotbot_import_assess_batch "$2" production \
+      example.com "$3" example.net "$4"
+    result=$?
+    [[ "$result" -eq 64 &&
+      "$(cat "$CERTBOTBOT_WORKSPACE_CONFIG/.marker")" == untouched ]] ||
+      exit 1
+    [[ -z "$CERTBOTBOT_COMMON_STAGE" &&
+      -z "$CERTBOTBOT_RESTORE_ROOT" ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN" "$ASSESS_SECOND"
+  [ "$status" -eq 0 ]
+}
+
+@test "batch requires complete domain path pairs" {
+  make_archives
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_import_assess_batch "$2" production example.com "$3" example.net
+    result=$?
+    [[ "$result" -eq 64 ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN"
+  [ "$status" -eq 0 ]
+}
