@@ -349,3 +349,20 @@ The helper does not enable the public issuer or S3 operations.  Real
 ACME staging account reuse, due renewal, SAN changes, validated
 state-only publishing, and distributed coordination remain unresolved
 release gates.
+
+## Phase 4I local archive-to-assessment preparation
+
+The internal `certbotbot_import_assess_archives` helper composes the existing
+common-account and single-lineage archive restorers with the ADR-037
+non-activating assessment. It rejects any preexisting caller-owned staging
+state, then checks privately restored filesystem state, the selected account,
+and renewal path portability. Both staging trees and any path preview are
+discarded even when validation fails. Tests use synthetic local tar archives
+and cover success, damaged domain input, mismatched ACME environment, wrong
+lineage, cleanup, and preservation of preexisting staged state across all
+three standalone artifact flavors.
+
+The helper does not populate the active Certbot configuration, authenticate
+an account with Let's Encrypt, contact S3, or publish certificates. It handles
+one lineage at a time; batch-wide assessment and eventual activation require
+separate reviewed work, as does real account reuse and due renewal evidence.
