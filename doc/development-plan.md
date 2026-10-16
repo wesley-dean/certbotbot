@@ -273,3 +273,7 @@ Acceptance: documented supported environment matrix, reviewed release artifacts,
 ## Handoff readiness conditions
 
 Before each phase, review branch baseline and inherited governance, capture assumptions, and create/update accepted ADRs for consequential behavior changes.  Never claim an example, unit test, or mocked result proves successful production issuance without end-to-end verification.
+
+### Phase 4I: controlled active-import boundary (ADR-037)
+
+Staged account and domain archive assessment remains non-activating while genuine ACME evidence is incomplete. Existing identity, archive, and path-preview validators may be composed into test-only preparation, but no preview is installed into active Certbot configuration. Before active import, demonstrate Let's Encrypt staging account registration and reuse, no-op renewal, and due renewal or changed SANs across independent workspaces. Review the complete renewal-option trust boundary. A subsequent Accepted ADR must define the active import and rollback mechanism. Normal issuance continues to fail with status 69, and automatic releases remain gated.
