@@ -162,6 +162,22 @@ safe archival after renewal.  These tests remain a release blocker
 under ADR-025.  The preview alone does not close that gate.
 
 
+### Phase 4F: supported Certbot read-only loader verification
+
+An isolated GitHub Actions workflow pins Certbot 5.8.0 and checks that
+its actual local `certificates` command can inspect a complete, synthetic
+lineage after the source workspace has been deleted and path-bearing
+renewal values have been relocated.  The harness uses the staged
+domain/common archive helpers, verifies original key bytes, and exercises
+all three standalone artifact variants.  ADR-033 permits test-only
+installation of the otherwise non-activating ADR-032 preview.
+
+This verifies only local Certbot loader compatibility.  The release
+still needs integration with **Certbot-issued** accounts and certificates,
+working Route53 staging DNS-01 challenges, no-op renewal, intended SAN
+changes, and preserved external state across Jenkins, Actions, and EC2.
+No public issuance or publication path is activated.
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.

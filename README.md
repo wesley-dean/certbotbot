@@ -16,6 +16,21 @@ storage locking is implemented.
 This is an end-to-end release requirement, **not yet implemented** by
 the current archive staging helpers.
 
+## Real Certbot read-only portability smoke test
+
+A separate CI workflow installs pinned Certbot 5.8.0 and exercises its
+local `certificates` command on the same synthetic lineage before and
+after archive reconstruction and renewal-path relocation.  The previous
+workspace is deleted before the second inspection, and both workspace
+content and key-byte continuity are checked.  The workflow uses no
+ACME/DNS/cloud credentials and runs across all three standalone scripts.
+
+The test is **limited to reading an imported lineage**.  Its account JSON
+is synthetic, the leaf certificate is self-signed, and it does not test
+Certbot account registration, a no-op renewal, SAN replacement, or
+deployment.  ADR-033 permits test-only installation of the preview;
+the product still cannot activate issuance or publication.
+
 ## Certificate inputs
 
 A single invocation may accept `certbotbot.bash foo.com www.foo.com` or `certbotbot.bash "foo.com www.foo.com"`.  A multi-line `CERTIFICATES` input describes one certificate per line:

@@ -308,6 +308,22 @@ ADR-025 remains the governing production portability contract.
 See ADR-032.
 
 
+## Read-only supported Certbot loader compatibility test
+
+An isolated CI job uses the actual Certbot 5.8.0 `certificates`
+subcommand to inspect a locally generated certificate lineage reconstructed
+with domain/common archive staging and the ADR-032 path preview under a
+second private absolute config root.  It deletes the first root before
+the final inspection, compares private-key fingerprints, and exercises all
+three standalone artifact flavors.  The test has no ACME or cloud access.
+
+This is **not** the ADR-025 proof of continued issuance and renewal:
+the account triplet is synthetic, the certificate is self-signed, and no
+ACME challenge, account reuse, no-op renewal, or SAN change occurs.
+Only a disposable integration-test harness may install the preview for
+the read-only Certbot command.  The public issuer must not install it.
+See ADR-033.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.
