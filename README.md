@@ -219,7 +219,7 @@ OpenSSL chain/private-key/combined-PEM validation (ADR-029).
 This is not yet wired into the public issuer or storage publisher,
 which remain disabled.  Before release, the producer must call **both**
 checks on every lineage after Certbot processing and before writing
-any archive, including state-only updates.  See ADR-035.
+any archive, including state-only updates.  See ADR-036.
 
 ## Cross-environment account/lineage consistency (Phase 4D)
 
