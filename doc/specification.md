@@ -256,7 +256,7 @@ SANs MUST fail before *any* object publication.  This is essential
 when a later run deliberately removes an existing additional SAN.
 The internal OpenSSL helper is implemented and tested without external
 calls, but the public issuer must still connect both verification
-functions as a mandatory pre-publication gate.  See ADR-035.
+functions as a mandatory pre-publication gate.  See ADR-036.
 
 ## Fixed ACME environment selection and object namespaces
 
@@ -369,7 +369,7 @@ This is a **test-only** proof that the updated local archive can be
 reconstituted for subsequent no-op decisions, not a contract for
 automatically publishing ARI-only changes.  That publication decision,
 real account reuse, due renewal, and SAN updates remain release gates.
-See ADR-035.
+See ADR-036.
 
 
 ## Producer processing algorithm
