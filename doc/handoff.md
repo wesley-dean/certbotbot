@@ -340,7 +340,7 @@ The proposed `agent/feat/verify-certificate-san-identity` PR adds
 module, with independent Bats checks for exact requested DNS SANs,
 case/order equivalence, unexpected or duplicate entries, missing
 apex/wildcard, extra non-DNS SAN types, and unsafe lineage links.
-ADR-035 requires the eventual issuer to invoke this **in addition**
+ADR-036 requires the eventual issuer to invoke this **in addition**
 to ADR-029's cryptographic chain/key/combined-PEM checks, against
 the newly requested SAN set before any publication, including
 state-only archive updates.
