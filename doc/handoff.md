@@ -366,3 +366,26 @@ The helper does not populate the active Certbot configuration, authenticate
 an account with Let's Encrypt, contact S3, or publish certificates. It handles
 one lineage at a time; batch-wide assessment and eventual activation require
 separate reviewed work, as does real account reuse and due renewal evidence.
+
+## Phase 4I complete-batch non-activating assessment
+
+The internal `certbotbot_import_assess_batch` helper now accepts an explicit
+common archive, selected ACME environment, and one or more canonical
+lineage/domain-archive pairs. It validates the complete pair list and rejects
+duplicate lineage identities, repeated archive paths, missing inputs,
+inconsistent ACME environment selection, and preexisting active configuration
+or staged state before opening a tar archive.
+
+The helper takes one mode-0600 private snapshot of the common archive and
+reuses those exact bytes for every independent per-domain assessment. The
+underlying archive-to-assessment helper validates, stages, and disposes each
+lineage sequentially. Later failures preserve the active configuration and
+leave no successful predecessor's staged state behind. The common snapshot
+is discarded on success and failure.
+
+This is not a persistent batch candidate, cryptographic certificate check,
+or active importer. The selected lineage identities and paths are passed as
+literal Bash arguments, without runtime plugin loading or shell evaluation.
+Genuine staging ACME account reuse, due renewal, SAN changes, account JSON
+verification, safe candidate assembly, and multi-object publication remain
+release-blocking. This work does not enable Certbot issuance or S3 writes.
