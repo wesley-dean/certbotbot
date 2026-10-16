@@ -389,3 +389,22 @@ literal Bash arguments, without runtime plugin loading or shell evaluation.
 Genuine staging ACME account reuse, due renewal, SAN changes, account JSON
 verification, safe candidate assembly, and multi-object publication remain
 release-blocking. This work does not enable Certbot issuance or S3 writes.
+
+## Phase 4I: strict persisted renewal-option assessment (ADR-038)
+
+The reviewed internal `certbotbot_renewal_policy_check` applies a narrowly
+enumerated Certbot 5.8.0 Route53 renewal-file profile after the staged
+account/lineage identity check and before the private renewal-path preview.
+It rejects unexpected sections, duplicate fields, executable hooks,
+unknown authenticators or plugin parameters, non-DNS challenge options,
+unapproved paths, and unsupported renewal timing overrides.  A recognized
+ARI-only retry timestamp is accepted, and the real-Certbot three-workspace
+smoke test checks the accepted syntax after its no-op metadata update.
+
+This is only static option validation against separately staged archives.
+The module deliberately does not parse or authenticate account JSON,
+invoke Certbot, install an active renewal file, or publish S3 objects.
+There is no new runtime dependency.  The additional checks are exercised
+for all three bundled artifacts with negative Bats tests.  Real Let's Encrypt
+staging account registration and authenticated three-run portability remain
+the next major release-blocking milestone.
