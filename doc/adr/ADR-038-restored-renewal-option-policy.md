@@ -18,17 +18,22 @@ configuration import, Certbot invocation, or publication.
 
 The accepted profile is:
 
-| Section | Keys | Allowed values |
-| --- | --- | --- |
-| Top level | `version` | Numeric `major.minor` or `major.minor.patch` |
-| Top level | `archive_dir`, `cert`, `chain`, `fullchain`, `privkey` | Nonempty absolute paths; ADR-032 independently verifies exact canonical same-lineage relationships |
-| `[renewalparams]` | `account` | 32–64 lowercase hexadecimal characters, checked against the staged account under ADR-031 |
-| `[renewalparams]` | `server` | Exact selected Let's Encrypt v2 production or staging directory URL |
-| `[renewalparams]` | `authenticator` | `dns-route53` only |
-| `[renewalparams]` | `key_type` | `ecdsa` or `rsa` |
-| `[renewalparams]` | `dns_route53_propagation_seconds` | Optional decimal whole number from 0 through 3600 |
-| `[renewalparams]` | `pref_challs` | Optional `dns-01` only |
-| `[acme_renewal_info]` | `ari_retry_after` | Optional, syntactically fixed `YYYY-MM-DDTHH:MM:SS` UTC-like value as exercised in the existing Certbot 5.8.0 no-op test |
+- **Top level:** `version` must be numeric `major.minor` or
+  `major.minor.patch`.  The mandatory `archive_dir`, `cert`, `chain`,
+  `fullchain`, and `privkey` fields must be nonempty absolute paths.
+  ADR-032 independently verifies their canonical same-lineage relationships.
+- **`[renewalparams]` identity:** `account` must be 32-64 lowercase
+  hexadecimal characters, and must match the account staged under ADR-031.
+  `server` must equal the selected Let's Encrypt production or staging
+  directory URL.  `authenticator` must be exactly `dns-route53`.
+- **`[renewalparams]` certificate:** `key_type` must be `ecdsa` or
+  `rsa`.
+- **`[renewalparams]` optional DNS settings:** `pref_challs` must
+  equal `dns-01` when present.  `dns_route53_propagation_seconds`
+  must be a decimal whole number from 0 through 3600 when present.
+- **`[acme_renewal_info]` optional metadata:** `ari_retry_after`
+  must be a syntactically fixed `YYYY-MM-DDTHH:MM:SS` value, matching
+  the form exercised in the current Certbot 5.8.0 no-op test.
 
 The six top-level fields and four core renewal parameters are mandatory.
 An ARI section, if present, contains exactly one `ari_retry_after`.
