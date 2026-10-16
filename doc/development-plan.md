@@ -75,6 +75,11 @@ ACME account state handling, and S3 publication.  The manifest preflight
 is not a production restore implementation and must never be treated as
 such.
 
+Phase 4B adds isolated per-domain staging and independent verification of
+the extracted filesystem (ADR-027).  It deliberately stops before merging
+into active Certbot state; common-account restoration, renewal metadata
+portability, and cryptographic verification remain separate work.
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.

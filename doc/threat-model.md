@@ -125,3 +125,13 @@ object into a private workspace, enforce decompression budgets, validate
 all extraction effects and actual key/certificate contents, and refuse to
 publish until restoration and renewal config portability are proven.
 The common ACME archive requires a separate policy.\n
+## Post-extraction staging boundary
+
+ADR-027 adds privately copied archive bytes, extraction only into a fresh
+isolated tree, and a separate filesystem enumeration/type/mode/symlink
+verification after GNU tar.  The staging helper does not write into active
+Certbot state and rejects malformed inputs.  It still trusts the producer
+user identity and installed GNU utilities and cannot guarantee protection
+against all decompression denial-of-service conditions, same-user races, or
+hostile renewal-file contents.  Successful staging is not permission to
+invoke Certbot or publish the archive.

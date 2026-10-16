@@ -73,6 +73,23 @@ does not prove that extraction, renewal metadata, or certificate/key
 cryptographic contents are safe.  No public issuance or S3 publication
 is enabled.  See ADR-026 for this explicit security boundary.
 
+## Isolated domain restoration (Phase 4B)
+
+An internal helper now copies one domain archive into the active producer's
+private workspace, invokes the strict domain manifest validator, and
+extracts that copy into a *new*, empty, 0700 staging directory.  It then
+independently enumerates the extracted filesystem, checks actual file types
+and paths, verifies expected relative Certbot live links, and confirms
+private-key-bearing file permissions.  A rejected archive leaves the active
+Certbot configuration untouched.  Successful staging must be explicitly
+discarded after use.
+
+This is not yet an operational restoration pipeline.  It does **not**
+merge staging into the producer's active config, interpret or normalize
+renewal configuration, restore the common ACME account archive, verify
+certificate/private-key cryptographic matching, or publish any object.
+The public issuing command remains disabled.  See ADR-027.
+
 ## Archive format and deployment separation
 
 The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).
