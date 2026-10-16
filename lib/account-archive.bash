@@ -168,8 +168,14 @@ certbotbot_common_inspect() {
   fi
   while IFS= read -r -d '' item && IFS= read -r -d '' type; do
     (( count += 1 ))
+    # find omits the directory's trailing slash; tar listings retain it.
+    # Preserve one canonical directory representation at the policy boundary.
+    local member="$item"
+    if [[ $type == d ]]; then
+      member="${item}/"
+    fi
     if (( count > 256 )) ||
-      ! certbotbot_common_member "$item" "$type"; then
+      ! certbotbot_common_member "$member" "$type"; then
       status=64
       break
     fi

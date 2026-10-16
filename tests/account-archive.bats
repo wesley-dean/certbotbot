@@ -164,6 +164,23 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/private_key.json
   [ "$status" -eq 0 ]
 }
 
+@test "post-restore inspection rejects unexpected account entries" {
+  create_account
+  pack_common
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit
+    certbotbot_common_restore "$2" || exit
+    printf "unexpected\\n" >"$CERTBOTBOT_COMMON_STAGE/foreign.txt"
+    certbotbot_common_inspect "$CERTBOTBOT_COMMON_STAGE"
+    rc=$?
+    certbotbot_common_discard || exit
+    certbotbot_workspace_destroy || exit
+    [[ "$rc" == 64 ]]
+  ' _ "$CERTBOTBOT_ARTIFACT" "$COMMON_TAR"
+  [ "$status" -eq 0 ]
+}
+
 @test "common archive remains unavailable to the public issuing command" {
   run "$CERTBOTBOT_ARTIFACT" example.com
   [ "$status" -eq 69 ]
