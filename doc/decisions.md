@@ -275,3 +275,16 @@ does not enable issuance: the producer must later invoke it on every
 publication path, with failure blocking all object mutations.
 
 See [ADR-029](adr/ADR-029-pre-publication-cryptographic-verification.md).
+
+### ADR-030: Production-Default Let's Encrypt Staging Selection and Storage Isolation
+
+The public CLI defaults to Let's Encrypt production but supports a fixed
+staging mode for nonproduction certificate testing.  Production preserves
+existing unprefixed S3 object keys, while staging uses a fixed `staging/`
+prefix for both common and domain archives, enforced at the S3 adapter
+boundary.  The two ACME directory URLs are fixed and cannot be replaced
+with arbitrary operator-supplied endpoints.  Actual issuance and
+publication still require account selection, trust-chain verification,
+and cross-workspace integration tests.
+
+See [ADR-030](adr/ADR-030-isolated-letsencrypt-environments.md).

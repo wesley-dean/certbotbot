@@ -169,3 +169,16 @@ Staging trust roots must be explicit rather than disabling verification.
 Issue #11 also requires physical/logical separation between staging and
 production object names: the same lineage must never allow test credentials
 or test certificates to replace production TLS material.
+
+## Production/staging ACME and archive separation
+
+A fixed production-default ACME selector now limits authority to two
+official Let's Encrypt directory URLs.  The storage adapter refuses
+a production object key while in staging mode and refuses staging-prefixed
+keys in production mode.  A staging test must not overwrite deployable
+production certificate data.  This logical namespace is not an IAM
+boundary: an AWS identity with broad S3 authority can still write
+unrelated objects, so bucket/prefix-scoped credentials are encouraged.
+Tests use fake AWS/Certbot commands; production operation is still
+disabled.  Real integration must verify account/renewal-server matching
+and must never add staging CA roots to production trust stores.

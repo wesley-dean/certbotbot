@@ -24,13 +24,28 @@
 certbotbot_storage_s3_validate_target() {
   local LC_ALL=C
   local bucket=${1:-} key=${2:-} endpoint=${S3_ENDPOINT_URL:-}
+  local environment=${ACME_ENVIRONMENT:-production} logical_key expected
 
   if (( $# != 2 )) ||
     [[ ! ${bucket} =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] ||
-    [[ ${bucket} == *..* ]] ||
-    [[ ! ${key} =~ ^[a-z0-9][a-z0-9.-]*-latest[.]tar[.]gz([.]enc)?$ ]] ||
-    [[ ${key} == *..* ]]; then
+    [[ ${bucket} == *..* ]]; then
     printf '%s\n' 'invalid S3 bucket or latest-object key' >&2
+    return 64
+  fi
+
+  # The S3 boundary enforces the environment namespace independently of
+  # the key builder.  It must never accept a production key in staging mode.
+  logical_key=${key}
+  if [[ ${environment} == staging ]]; then
+    if [[ ${key} != staging/* ]]; then
+      printf '%s\n' 'staging writes require a staging-prefixed key' >&2
+      return 64
+    fi
+    logical_key=${key#staging/}
+  fi
+  if ! expected="$(certbotbot_acme_object_key "${environment}" "${logical_key}")" ||
+    [[ ${key} != "${expected}" ]]; then
+    printf '%s\n' 'archive key does not belong to the selected ACME environment' >&2
     return 64
   fi
 

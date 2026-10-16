@@ -24,7 +24,7 @@ exit "${FAKE_CERTBOT_STATUS:-0}"
 FAKE
   chmod 0700 "${fake_dir}/aws" "${fake_dir}/certbot"
   export PATH="${fake_dir}:${PATH}"
-  unset S3_ENDPOINT_URL FAKE_AWS_STATUS FAKE_CERTBOT_STATUS
+  unset S3_ENDPOINT_URL FAKE_AWS_STATUS FAKE_CERTBOT_STATUS ACME_ENVIRONMENT
 }
 
 @test "preflight never runs installed external commands" {
@@ -191,6 +191,7 @@ FAKE
   expected="$(printf '<%s>\n' \
     certonly --non-interactive \
     --dns-route53 --preferred-challenges dns \
+    --server https://acme-v02.api.letsencrypt.org/directory \
     --cert-name example.com \
     --config-dir "${config}" --work-dir "${work}" --logs-dir "${logs}" \
     --keep-until-expiring --renew-with-new-domains --agree-tos \

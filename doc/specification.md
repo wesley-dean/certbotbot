@@ -244,6 +244,31 @@ verification trust roots.  No unreviewed arbitrary-ACME-endpoint option
 is part of that backlog issue.
 
 
+## Fixed ACME environment selection and object namespaces
+
+A single invocation selects `production` (default) or `staging` using
+`--staging`, `--acme-environment production|staging`, or
+`ACME_ENVIRONMENT`; CLI options override the environment variable.
+Conflicting mode flags are invalid.  Production uses the official
+`https://acme-v02.api.letsencrypt.org/directory` endpoint and staging
+uses `https://acme-staging-v02.api.letsencrypt.org/directory`.
+No arbitrary ACME server URL is supported.  The built-in Route53 adapter
+must pass the selected server as an explicit, quoted Certbot argument.
+
+Production archive keys remain `common-latest.tar.gz` and
+`<name>-latest.tar.gz` (with `.enc` equivalents).  Staging prefixes
+all such keys with `staging/`.  The S3 adapter MUST refuse unprefixed
+keys in staging mode and prefixed keys in production mode.  The common
+account object and every requested domain object must come from the same
+selected environment.  A production consumer must never receive a
+staging certificate.  See ADR-030.
+
+This is currently an internal command/key selection contract, not a live
+issuer.  Before release, separate restored account/renewal server checks,
+staging trust-root verification, and fresh-workspace interoperability
+must be proven in both environments.
+
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.

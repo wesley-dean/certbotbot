@@ -26,6 +26,8 @@ Options:
   --certificates-file FILE   Read one certificate group per nonblank line.
   --dns-backend NAME         Built-in DNS backend (default: route53).
   --storage-backend NAME     Built-in storage backend (default: s3).
+  --staging                  Use Let's Encrypt staging, not production.
+  --acme-environment MODE    production (default) or staging.
   --help                     Show help.
   --version                  Show build provenance.
 
@@ -64,6 +66,8 @@ certbotbot_version() {
 certbotbot_main() {
   local dns_backend=${DNS_BACKEND:-route53}
   local storage_backend=${STORAGE_BACKEND:-s3}
+  local acme_environment=${ACME_ENVIRONMENT:-production}
+  local cli_environment='' requested_environment=''
   local file='' input_mode='' name index
   local validate=false
   local -a arguments=()
@@ -88,6 +92,22 @@ certbotbot_main() {
         fi
         file=${2}
         shift
+        ;;
+      --staging | --acme-environment)
+        requested_environment=staging
+        if [[ "${1}" == --acme-environment ]]; then
+          if (( $# < 2 )) || [[ -z "${2}" ]]; then
+            bashlog_error 'the ACME environment option requires a value'
+            return 64
+          fi
+          requested_environment=${2}
+          shift
+        fi
+        if [[ -n "${cli_environment}" && "${cli_environment}" != "${requested_environment}" ]]; then
+          bashlog_error 'conflicting ACME environment options'
+          return 64
+        fi
+        cli_environment=${requested_environment}
         ;;
       --dns-backend | --storage-backend)
         if (( $# < 2 )) || [[ -z "${2}" ]]; then
@@ -116,6 +136,16 @@ certbotbot_main() {
     esac
     shift
   done
+
+  if [[ -n ${cli_environment} ]]; then
+    acme_environment=${cli_environment}
+  fi
+  if ! certbotbot_acme_validate_environment "${acme_environment}"; then
+    bashlog_error 'ACME environment must be production or staging'
+    return 64
+  fi
+  # Export the chosen environment to the assembled internal provider modules.
+  ACME_ENVIRONMENT=${acme_environment}
 
   if ! certbotbot_provider_exists dns "${dns_backend}" ||
     ! certbotbot_provider_exists storage "${storage_backend}"; then
