@@ -290,3 +290,16 @@ hooks, installer options, foreign credentials, and renewal timing controls
 fail closed.  Three artifact flavors, negative Bats tests, and the
 three-workspace network-guarded Certbot smoke test exercise the boundary.
 Normal issuance and object-store publication remain disabled.
+
+### Phase 4J: classified S3 retrieval (ADR-039)
+
+The internal S3 read path can now stage the entire selected common/domain
+object collection using the fixed production or staging namespace and
+typed object-presence results.  The only currently recognized missing-object
+signature is AWS CLI GetObject NoSuchKey; denied, ambiguous 404, and
+transport errors fail closed.  Newly requested domains may be absent when
+their common account exists, but a missing common archive alongside any
+existing domain is inconsistent.  Private bytes are not valid Certbot
+state until all existing archive and account identity checks succeed.
+The public issuer, GPG handling, S3 publication, and automatic release
+remain disabled until their separate prerequisites are met.
