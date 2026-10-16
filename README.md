@@ -26,6 +26,22 @@ The real output is tab-separated: the first field is the lineage identity, and t
 
 Preflight verifies input syntax and backend names only.  It is **not** a dry-run Certbot renewal and does not verify credentials, hosted zones, storage availability, or certificate validity.
 
+## Internal execution seams (Phase 2B)
+
+The build includes internal, mock-testable boundaries for `certbot --version`,
+S3-compatible object get/put, and an advisory, per-host `flock` lock keyed by
+the selected bucket and storage endpoint.  The S3 wrappers use separate
+arguments (never `eval`) and reject unexpected object keys and endpoint
+syntax.  The lock directory is private to its owning user and may be set with
+`CERTBOTBOT_LOCK_DIR`; by default it is in the user's runtime/state area.
+
+These operations are **not yet connected to normal certificate issuance**.
+`certbotbot.bash foo.com` still exits 69 without any remote side effects.
+The first implementation release must acquire a lock before reading remote
+state, validate every restored archive, and publish only after all requested
+certificates succeed.  A local lock does not prevent concurrent producers on
+different hosts or CI platforms.
+
 ## Archive format and deployment separation
 
 The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).

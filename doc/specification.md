@@ -79,6 +79,25 @@ The live symlinks MUST resolve after extracting that one archive into an otherwi
 
 Tar member validation MUST exclude absolute/traversal paths, unexpected links, special files, unrelated certificate lineages, and foreign owner/mode metadata that would subvert the extraction target.  Archive validation MUST precede extraction.
 
+## Internal adapter staging and local serialization
+
+The first internal execution layer provides a nonblocking host-local advisory
+lock.  The lock key derives from the storage bucket and configured endpoint;
+the directory must be owned by the local principal and be inaccessible to
+group/other users.  A simultaneous local request fails with status 75.
+This does not provide distributed fencing or protect against unrelated users
+and hosts.  The production orchestration must acquire it before reading
+remote state and release it on normal exit and signal handling where possible.
+
+The built-in S3 adapter exposes narrow `get` and `put` operations using the
+installed AWS CLI with separate argv elements and optional `S3_ENDPOINT_URL`.
+The initial supported key grammar is only latest `.tar.gz` / `.tar.gz.enc`
+objects.  Calls propagate their original errors and do not yet distinguish
+a confirmed missing object from an inaccessible or failed object.  The
+Route53 adapter offers a read-only Certbot version probe and fixed DNS-01
+option elements.  None of these operations is wired into public issuance
+until the subsequent processing phases are implemented.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.

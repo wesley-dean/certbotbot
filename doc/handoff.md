@@ -97,3 +97,29 @@ Remaining Phase 2 obligations include designing and implementing native host-loc
 - Consumer domain archives verified by extracting multiple separate archives into one TLS tree without Certbot or common archive.
 - GitHub Pages documentation generated from maintained ADR corpus.
 - Threat model updated to reflect evidence and residual risks prior to release.
+
+
+## Phase 2B local lock and command boundary PR
+
+The next focused change (`agent/feat/local-lock-and-command-boundaries`)
+adds `lib/locking.bash` and `lib/external-commands.bash` to the explicit
+Make source order.  The lock is nonblocking, uses the storage bucket and
+endpoint for its stable key, and requires an owned private lock directory.
+Local contention returns status 75; invalid lock paths or permissions fail
+without proceeding.  This is advisory serialization only for cooperating
+processes sharing a host and user identity.  The DNS and storage modules
+remain statically bundled, and each now exposes narrow, mock-testable
+subprocess boundaries: Route53 has a read-only `certbot --version` probe
+and fixed DNS challenge options; S3 supports authenticated `s3api get-object`
+and `put-object` calls with optional `S3_ENDPOINT_URL`.  Unexpected
+operations, unsafe object keys, and endpoint syntax are rejected.
+
+These internal functions can be exercised in isolation under PATH-injected
+fakes.  They remain **unreachable from normal issuance execution** until the
+renewal, state-restore, archive-validation, and publication steps exist.
+The public `--validate` command continues to avoid cloud/Certbot calls, and
+a normal issuance request continues to exit 69.  Staged S3 get/put calls
+do not yet classify 404 versus authorization/transport errors, and failed
+downloads must never be trusted; Phase 4 owns that state machine.
+The production workflow must acquire and release the local lock with
+appropriate traps.  Storage-backed locking remains backlog work.
