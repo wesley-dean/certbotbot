@@ -59,3 +59,84 @@ certbotbot_import_assess() {
   fi
   return "$result"
 }
+
+## @fn certbotbot_import_assess_archives()
+## @brief Restores and assesses one account/domain pair without activation.
+## @details
+## Both archives are frozen and independently checked by their existing
+## private staging helpers before the ADR-037 assessment. The helper owns
+## only the staging trees that it creates; callers must start with no
+## existing common, domain, or renewal-preview state. Regardless of success
+## or validation failure, it discards those trees before returning. The
+## caller continues to own the private producer workspace itself.
+##
+## No restored data are merged into config/, used by Certbot, or published.
+## This is one-lineage preparation only: a later orchestrator must validate
+## every selected lineage before making any active-state decision.
+##
+## @param common_archive Absolute pathname to a local common tar.gz archive.
+## @param domain_archive Absolute pathname to one local lineage tar.gz archive.
+## @param name Canonical requested certificate lineage.
+## @param environment Selected production or staging ACME environment.
+##
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## Nothing is written to STDOUT.
+## @par STDERR
+## Validation or extraction tools may emit diagnostics. Never log keys.
+##
+## @returns Nothing is written to STDOUT.
+## @retval 0 Both archives passed non-activating assessment and were discarded.
+## @retval 64 Invalid inputs or unsafe archive, stage, or workspace state.
+## @retval 65 Restored account or ACME environment does not match the lineage.
+## @retval 73 Local storage, extraction, inspection, or cleanup failed.
+## @note Archive validation and renewal inspection may propagate further
+## nonzero statuses. Cleanup errors take precedence over earlier failures.
+## @see doc/adr/ADR-027-isolated-domain-archive-restoration.md
+## @see doc/adr/ADR-028-isolated-common-acme-account-state.md
+## @see doc/adr/ADR-037-gated-active-certbot-import.md
+certbotbot_import_assess_archives() {
+  local common_archive=${1:-} domain_archive=${2:-}
+  local name=${3:-} environment=${4:-}
+  local result=0 cleanup_failed=false
+
+  # Do not discard stages that belong to another caller. This operation
+  # claims both staging slots only when neither has been used.
+  if (( $# != 4 )) ||
+    [[ -n ${CERTBOTBOT_COMMON_STAGE:-} ||
+      -n ${CERTBOTBOT_RESTORE_ROOT:-} ||
+      -n ${CERTBOTBOT_RENEWAL_PREVIEW:-} ]] ||
+    ! certbotbot_validate_hostname "$name" ||
+    [[ $name == \*.* || $name != "${name,,}" ]] ||
+    ! certbotbot_acme_validate_environment "$environment"; then
+    return 64
+  fi
+
+  if certbotbot_common_restore "$common_archive"; then
+    if certbotbot_restore_domain "$domain_archive" "$name"; then
+      certbotbot_import_assess "$name" "$environment" || result=$?
+    else
+      result=$?
+    fi
+  else
+    result=$?
+  fi
+
+  # Attempt all owned cleanups, even if an earlier operation failed. No
+  # staged account, renewal preview, or domain may become ambient state for
+  # a later request. Keep the original validation status when cleanup works.
+  if [[ -n ${CERTBOTBOT_RENEWAL_PREVIEW:-} ]]; then
+    certbotbot_renewal_preview_discard || cleanup_failed=true
+  fi
+  if [[ -n ${CERTBOTBOT_RESTORE_ROOT:-} ]]; then
+    certbotbot_restore_discard || cleanup_failed=true
+  fi
+  if [[ -n ${CERTBOTBOT_COMMON_STAGE:-} ]]; then
+    certbotbot_common_discard || cleanup_failed=true
+  fi
+  if [[ $cleanup_failed == true ]]; then
+    return 73
+  fi
+  return "$result"
+}
