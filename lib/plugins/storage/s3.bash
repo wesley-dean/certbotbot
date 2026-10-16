@@ -7,11 +7,12 @@
 ## storage bucket and selected endpoint, and pass arguments individually to
 ## the aws CLI.  Neither get nor put is called by the public entrypoint yet.
 ##
-## The adapter does not interpret an error as "object missing".  Phase 4 will
-## implement a separate typed existence/result contract after testing the
-## AWS CLI response behavior across S3 and S3-compatible endpoints.  A failed
-## get/put retains its original nonzero CLI status; the caller must treat
-## any failed download as untrusted and discard it.
+## The adapter does not interpret an error as "object missing".  The
+## separate internal retrieval module implements the ADR-039 typed result
+## contract, with a narrow confirmed NoSuchKey rule and private staging.
+## This primitive retains the original nonzero AWS CLI exit status; callers
+## must discard any failed or partial download without inspecting it as state.
+## @see doc/adr/ADR-039-typed-s3-state-retrieval.md
 
 ## @fn certbotbot_storage_s3_validate_target()
 ## @brief Validates a bucket, latest-object key, and endpoint configuration.
