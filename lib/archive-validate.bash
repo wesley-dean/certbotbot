@@ -30,7 +30,7 @@
 certbotbot_archive_validate_domain() {
   local LC_ALL=C
   local archive=${1:-} name=${2:-}
-  local manifest line mode type path target size_text size count=0 total=0
+  local manifest line mode type path target size_text size compressed_bytes count=0 total=0
   local serial kind remainder expected
   local -A seen=() members=() live_targets=()
   local -a kinds=(cert chain fullchain privkey)
@@ -48,10 +48,18 @@ certbotbot_archive_validate_domain() {
     return 69
   fi
 
-  # Listing is a metadata-only operation.  Using a bounded member policy
-  # does not eliminate compressed-stream resource exhaustion; see ADR-026.
-  if ! manifest="$(tar --list --gzip --verbose --file "${archive}" \
-    --full-time --numeric-owner --quoting-style=escape)"; then
+  # Limit compressed input and verbose listing size before retaining data
+  # in Bash.  GNU tar still decompresses to inspect member metadata.
+  if ! compressed_bytes="$(stat -c '%s' -- "${archive}")" ||
+    [[ ! ${compressed_bytes} =~ ^[0-9]{1,9}$ ]] ||
+    (( compressed_bytes > 67108864 )); then
+    printf '%s\n' 'compressed domain archive exceeds validation bounds' >&2
+    return 64
+  fi
+
+  if ! manifest="$(set -o pipefail; tar --list --gzip --verbose \
+    --file "${archive}" --full-time --numeric-owner \
+    --quoting-style=escape | head -c 2097152)"; then
     printf '%s\n' 'cannot read the certificate archive manifest' >&2
     return 69
   fi
@@ -102,10 +110,16 @@ certbotbot_archive_validate_domain() {
       target=''
     fi
 
-    if [[ -n ${seen[${path}]+_} ]] ||
-      [[ ${path} == *\\* || ${path} == /* || ${path} == ./* ||
+    # Validate the token before using it as an associative-array key.
+    # Malformed archive text must never become a Bash subscript expression.
+    if [[ ! ${path} =~ ^[a-z0-9./_-]+$ ]] ||
+      [[ ${path} == /* || ${path} == ./* ||
         ${path} == *../* || ${path} == *'/./'* ]]; then
-      printf '%s\n' 'duplicate or unsafe archive member' >&2
+      printf '%s\n' 'unsafe archive member name' >&2
+      return 64
+    fi
+    if [[ -n ${seen[${path}]+_} ]]; then
+      printf '%s\n' 'duplicate archive member name' >&2
       return 64
     fi
     seen["${path}"]=1
