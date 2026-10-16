@@ -16,7 +16,7 @@ authorize the production issuer to install or consume a rebased renewal file.
 
 The test runs in a dedicated GitHub Actions job with Certbot 5.8.0 installed
 into an ephemeral Python virtual environment.  A source workspace holds an
-OpenSSL-generated, short-lived self-signed X.509 certificate and a synthetic
+OpenSSL-generated, short-lived locally CA-signed X.509 certificate and a synthetic
 Certbot-shaped renewal configuration.  The test uses the same domain archive
 format and common-account structure as the producer and runs the actual
 certificate-archive validation and isolated restore helpers.  The shared

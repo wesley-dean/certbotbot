@@ -25,19 +25,32 @@ mkdir -m 0700 "$original" "$tmp/source/work" "$tmp/source/logs"
 mkdir -m 0700 "$original/archive" "$original/live" "$original/renewal" \
   "$original/combined" "$original/archive/example.com" "$original/live/example.com"
 
-# Locally created, short-lived self-signed X.509 fixture.  No real account,
-# challenge, server, or network endpoint is used.
+# Locally issued X.509 fixture with a private CA/issuer chain.  Certbot
+# validates fullchain == leaf + chain even for read-only inspection.
+# No real account, ACME challenge, server, or network endpoint is used.
+openssl ecparam -name prime256v1 -genkey -noout -out "$tmp/issuer.key"
+openssl req -new -x509 -key "$tmp/issuer.key" -days 7 \
+  -subj '/CN=Local fixture CA' \
+  -addext 'basicConstraints=critical,CA:TRUE' \
+  -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+  -out "$tmp/issuer.crt"
 openssl ecparam -name prime256v1 -genkey -noout \
   -out "$original/archive/example.com/privkey1.pem"
-openssl req -new -x509 \
-  -key "$original/archive/example.com/privkey1.pem" \
-  -days 7 -subj '/CN=example.com' \
-  -addext 'subjectAltName=DNS:example.com,DNS:*.example.com' \
+openssl req -new -key "$original/archive/example.com/privkey1.pem" \
+  -subj '/CN=example.com' -out "$tmp/leaf.csr"
+printf '%s\n' \
+  'basicConstraints=critical,CA:FALSE' \
+  'keyUsage=critical,digitalSignature' \
+  'extendedKeyUsage=serverAuth' \
+  'subjectAltName=DNS:example.com,DNS:*.example.com' >"$tmp/leaf.ext"
+openssl x509 -req -in "$tmp/leaf.csr" \
+  -CA "$tmp/issuer.crt" -CAkey "$tmp/issuer.key" \
+  -CAcreateserial -days 7 -extfile "$tmp/leaf.ext" \
   -out "$original/archive/example.com/cert1.pem"
-cp "$original/archive/example.com/cert1.pem" \
-  "$original/archive/example.com/chain1.pem"
-cp "$original/archive/example.com/cert1.pem" \
-  "$original/archive/example.com/fullchain1.pem"
+cp "$tmp/issuer.crt" "$original/archive/example.com/chain1.pem"
+cat "$original/archive/example.com/cert1.pem" \
+  "$original/archive/example.com/chain1.pem" \
+  >"$original/archive/example.com/fullchain1.pem"
 chmod 0600 -- "$original/archive/example.com/privkey1.pem"
 
 for kind in cert privkey chain fullchain; do
