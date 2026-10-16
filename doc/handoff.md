@@ -166,3 +166,19 @@ resulting filesystem, cryptographic key/certificate relationships, and
 Certbot renewal path portability.  The common account archive requires a
 separate structural and secret-handling policy.  Avoid using the manifest
 validator as a replacement for these gates.\n
+## Phase 4B isolated archive restoration
+
+The proposed branch `agent/feat/isolated-domain-archive-restoration`
+introduces `lib/archive-restore.bash` and ADR-027.  A producer-owned
+source archive is privately copied and validated before GNU tar extracts
+it into a new, empty, mode-0700 staging tree.  GNU find enumerates the
+resulting objects, and explicit lineage path/type/mode and PEM-link checks
+confirm the real filesystem matches the expected archive contract.
+Restoration does not overwrite or join the active Certbot config tree.
+A caller must explicitly dispose of accepted staging.
+
+Next: define a safe common ACME account archive contract, verify renewal
+metadata portability, test cryptographic certificate/private-key matching,
+and only then design the controlled merger into active workspace and
+eventual publishing.  No production issuance or object publishing path
+has been activated.

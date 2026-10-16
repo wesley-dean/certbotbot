@@ -237,3 +237,15 @@ See [ADR-025](adr/ADR-025-certbot-state-portability-and-issuance-boundary.md).
 Domain archives are inspected with a strict GNU tar metadata allowlist before any extraction.  The preflight permits only the requested lineage's expected directories, versioned PEM files, renewal metadata, and four canonical relative live symlinks, while rejecting unexpected links, traversal, duplicate members, and unsafe private-key-bearing modes.  This validation is a necessary but insufficient prerequisite to restoration because it neither extracts files nor proves their contents or renewal-state portability.  The common account archive and safe extraction require separate reviewed contracts.
 
 See [ADR-026](adr/ADR-026-validated-domain-archive-manifests.md).
+
+### ADR-027: Isolated Restoration of Validated Certificate Lineages
+
+Only a privately copied domain archive that passes ADR-026 manifest inspection
+may be extracted into a fresh, isolated producer staging directory.  Every
+resulting filesystem entry must independently match the expected lineage
+structure, including safe types, targets, and private-key permissions.
+Successful staging does not install data into active Certbot state or prove
+renewal portability or cryptographic certificate validity.  The common
+account archive and producer orchestration remain future work.
+
+See [ADR-027](adr/ADR-027-isolated-domain-archive-restoration.md).

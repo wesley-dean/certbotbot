@@ -158,6 +158,24 @@ result and Certbot renewal metadata, and perform cryptographic matching
 before any remote publication.  A separate allowlist is required for
 the common ACME account archive.  See ADR-026.
 
+## Isolated archive restoration boundary
+
+The internal domain restore helper requires an existing mode-0700 producer
+workspace.  It takes a private copy of an owned archive before inspection,
+performs the ADR-026 manifest validation, and extracts with GNU tar into a
+fresh empty owner-private staging directory using a restrictive umask and
+without adopting archived owner or permissive mode metadata.  It then
+enumerates every actual extracted filesystem entry without following
+symlinks, rejects unexpected paths/types or ownership, checks the four
+expected Certbot live symlinks, and verifies presence/permissions of the
+required lineage components.  Failures must not modify the active Certbot
+config directory.  The caller must discard successful staging explicitly.
+
+Validation of the **common** ACME account archive, renewed Certbot config
+portability, cryptographic key matching, staging-to-active integration, and
+all S3 publication remain separate release gates.  This helper is internal
+and does not change the public fail-closed issuance behavior.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.
