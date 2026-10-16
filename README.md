@@ -126,8 +126,7 @@ validator.  It checks that the leaf certificate is currently valid, its
 private key is consistent and matches the leaf public key, its chain
 verifies for TLS server use against trusted roots, and both combined PEM
 files contain exactly the expected fullchain-plus-private-key bytes.
-This is the explicit cryptographic test requested in [issue #12]
-(https://github.com/wesley-dean/certbotbot/issues/12).
+This is the explicit cryptographic test requested in [issue #12](https://github.com/wesley-dean/certbotbot/issues/12).
 An optional CA bundle supports controlled staging-root tests; ordinary
 production verification uses OpenSSL's configured trust roots.
 

@@ -52,8 +52,12 @@ EXT
 }
 
 verify_crypto() {
+  local bundle=$CRYPTO_CA
+  if (( $# > 0 )); then
+    bundle=$1
+  fi
   run bash -c 'source "$1" --version >/dev/null; certbotbot_crypto_verify_lineage "$2" example.com "$3"' \
-    _ "$CERTBOTBOT_ARTIFACT" "$CRYPTO_ROOT" "${1:-$CRYPTO_CA}"
+    _ "$CERTBOTBOT_ARTIFACT" "$CRYPTO_ROOT" "$bundle"
 }
 
 @test "trusted EC certificate and matching private key validate" {
