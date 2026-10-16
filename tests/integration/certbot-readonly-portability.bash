@@ -164,15 +164,17 @@ cat >"$tmp/no-network/sitecustomize.py" <<'PY'
 import os
 import socket
 
-def deny_network(*args, **kwargs):
-    with open(os.environ["CERTBOTBOT_NETWORK_MARKER"], "a", encoding="utf-8") as marker:
-        marker.write("attempted-network\n")
-    raise OSError("Unexpected network operation in a no-op renewal smoke test")
+def deny_network(operation):
+    def report(*args, **kwargs):
+        with open(os.environ["CERTBOTBOT_NETWORK_MARKER"], "a", encoding="utf-8") as marker:
+            marker.write(operation + "\n")
+        raise OSError("Unexpected network operation: " + operation)
+    return report
 
-socket.socket.connect = deny_network
-socket.socket.connect_ex = deny_network
-socket.create_connection = deny_network
-socket.getaddrinfo = deny_network
+socket.socket.connect = deny_network("socket.connect")
+socket.socket.connect_ex = deny_network("socket.connect_ex")
+socket.create_connection = deny_network("socket.create_connection")
+socket.getaddrinfo = deny_network("socket.getaddrinfo")
 PY
 marker="$tmp/network-attempts"
 # Sanity-check the guard before invoking Certbot.  No network call is made
@@ -210,6 +212,10 @@ if ! grep -Eqi 'not (yet )?due|no renewals were attempted|not scheduled for rene
 fi
 if [[ -e "$marker" ]]; then
   printf '%s\n' 'A no-op renewal unexpectedly tried to use the network' >&2
+  printf '%s\n' 'Intercepted Python socket calls:' >&2
+  cat "$marker" >&2
+  printf '%s\n' 'Certbot no-op decision diagnostics:' >&2
+  cat "$tmp/noop-renew.out" "$tmp/noop-renew.err" >&2
   exit 1
 fi
 [[ "$(sha256sum -- "$new/renewal/example.com.conf" | cut -d ' ' -f1)" == "$before_conf" ]]
