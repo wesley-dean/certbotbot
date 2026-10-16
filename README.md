@@ -296,3 +296,14 @@ Suspend all writers and use a private, restrictive local working directory.  Dow
 ## Safety and roadmap
 
 The producer handles TLS and ACME private keys, cloud credentials, and archives containing sensitive materials.  Review [the STRIDE threat model](doc/threat-model.md) before implementation or production use.  The first release will not claim atomic multi-object publishing or cross-platform locking.  [The development plan](doc/development-plan.md) divides work into reviewable phases.  See [CONTRIBUTING.md](CONTRIBUTING.md) for project standards.
+
+## Restored renewal-option safety gate
+
+The internal, non-activating restore assessment now checks the *entire*
+supported Certbot 5.8.0 Route53 renewal option profile against ADR-038.
+Unknown settings, executable hooks, unrelated plugin options, and unexpected
+renewal timing controls are refused; an explicitly documented ARI retry
+field is accepted.  This supplements the separate account/environment
+identity and historical-path checks.  It does **not** authenticate the
+restored account against Let's Encrypt, install Certbot state, or enable
+issuance.  Normal certificate requests continue to exit 69.
