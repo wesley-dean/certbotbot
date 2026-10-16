@@ -264,3 +264,19 @@ surviving in a new deployable archive.  The human-readable OpenSSL
 extension format is a compatibility constraint, not a reason to ignore
 unrecognized entries.  The helper still needs mandatory integration
 with every future S3 publication path.
+
+## Restored Certbot renewal-option execution boundary
+
+ADR-038 adds a read-only allowlist for every persisted setting in a
+restored lineage's renewal file before non-activating import assessment
+can succeed.  Certbot interprets renewal options as configuration with
+potential plugin, path, hook, and scheduling consequences; validating the
+tar member list and account identity alone is insufficient to trust them.
+Unknown fields, hook/installer directives, unapproved authenticators,
+and unsupported challenge or timing settings fail closed.  The accepted
+ARI retry field is a narrowly scoped metadata exception.
+
+This guard does not validate account JSON authenticity, demonstrate a
+live ACME account registration, or authorize active Certbot state import.
+Genuine staging account reuse, renewal, and separately reviewed activation
+remain mandatory before exposing the issuer.

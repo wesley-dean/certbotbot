@@ -277,3 +277,16 @@ Before each phase, review branch baseline and inherited governance, capture assu
 ### Phase 4I: controlled active-import boundary (ADR-037)
 
 Staged account and domain archive assessment remains non-activating while genuine ACME evidence is incomplete. Existing identity, archive, and path-preview validators may be composed into test-only preparation, but no preview is installed into active Certbot configuration. Before active import, demonstrate Let's Encrypt staging account registration and reuse, no-op renewal, and due renewal or changed SANs across independent workspaces. Review the complete renewal-option trust boundary. A subsequent Accepted ADR must define the active import and rollback mechanism. Normal issuance continues to fail with status 69, and automatic releases remain gated.
+
+### Phase 4I: restored renewal-option allowlist (ADR-038)
+
+The internal archive-to-assessment flow now checks the entire supported
+Certbot 5.8.0 Route53 renewal configuration profile, including optional
+DNS-only tuning and recognized ARI retry scheduling, before preparing a
+non-activating renewal-path preview.  This complements ADR-031's account
+identity and ADR-032's canonical path requirements but does not replace
+live account registration evidence.  Unsupported persisted settings,
+hooks, installer options, foreign credentials, and renewal timing controls
+fail closed.  Three artifact flavors, negative Bats tests, and the
+three-workspace network-guarded Certbot smoke test exercise the boundary.
+Normal issuance and object-store publication remain disabled.

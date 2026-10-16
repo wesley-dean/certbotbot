@@ -50,6 +50,8 @@ certbotbot_import_assess() {
   certbotbot_common_inspect "$CERTBOTBOT_COMMON_STAGE" || return $?
   certbotbot_restore_inspect_tree "$CERTBOTBOT_RESTORE_ROOT" "$name" ||
     return $?
+  # Refuse unreviewed Certbot options before producing any path preview.
+  certbotbot_renewal_policy_check "$name" "$environment" || return $?
   certbotbot_renewal_path_preview "$name" "$environment" || return $?
 
   # The preflight is deliberately non-activating. Never leave a path preview

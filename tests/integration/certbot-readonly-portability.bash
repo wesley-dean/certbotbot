@@ -118,6 +118,8 @@ export CERTBOTBOT_TMPDIR="$tmp/new-parent"
 certbotbot_workspace_create
 certbotbot_restore_domain "$tmp/archives/example.com-latest.tar.gz" example.com
 certbotbot_common_restore "$tmp/archives/common-latest.tar.gz"
+# The entire restored renewal option profile must pass before test-only import.
+certbotbot_renewal_policy_check example.com production
 certbotbot_renewal_path_preview example.com production
 
 # This import is STRICTLY TEST-ONLY and read-only from Certbot's perspective.
@@ -267,6 +269,8 @@ export CERTBOTBOT_TMPDIR="$tmp/third-parent"
 certbotbot_workspace_create
 certbotbot_restore_domain "$tmp/archives/post-noop-domain.tar.gz" example.com
 certbotbot_common_restore "$tmp/archives/common-latest.tar.gz"
+# The entire restored renewal option profile must pass before test-only import.
+certbotbot_renewal_policy_check example.com production
 certbotbot_renewal_path_preview example.com production
 third="$CERTBOTBOT_WORKSPACE_CONFIG"
 for directory in archive live combined; do
