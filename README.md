@@ -1,228 +1,298 @@
-# Bash Starter Repository
+# certbotbot
 
-This repository is a starter for maintainable, documented, tested, and
-releasable Bash projects.  It consolidates engineering patterns proven across
-adrctl, bashdeps, Bootstrap, mktext, and bashlog while keeping the starter small
-enough to adapt rather than turning it into a framework.
+certbotbot is a planned standalone Bash tool for issuing and renewing Let's Encrypt TLS certificates through DNS-01 validation.  It restores shared ACME account state and separately managed certificate-lineage state from object storage, uses Certbot to obtain or renew only the requested certificates, generates combined PEM files, and publishes directly installable per-domain archives.  The current executable supports a deliberately side-effect-free `--validate` mode and statically bundled DNS/storage adapter registration.  **Certificate issuance and S3 persistence are not yet implemented**: a normal certificate request fails with status 69.  The automatic release workflow remains gated by the explicit repository variable `CERTBOTBOT_RELEASE_ENABLED=true`.  See [implementation plan](doc/development-plan.md) and [handoff](doc/handoff.md).
 
-The maintained source is modular.  `make build` assembles that source into three
-standalone consumer representations.  The starter also demonstrates deterministic
-plugin discovery and runtime registration, but that plugin model is an example to
-evaluate rather than a requirement every derived project should preserve.
+## Portable producer state
 
-## Adapt the Starter
+The common archive is the portable, authoritative ACME account state, not
+an optional backup.  A future working issuer must start from an empty
+filesystem on Jenkins, GitHub Actions, or EC2 and function from the
+shared common and requested domain archives plus its normal external
+configuration and credentials.  The preceding runner's local Certbot files
+must never be necessary.  These runners may operate **sequentially**;
+cross-platform concurrent writers are unsupported until distributed
+storage locking is implemented.
 
-A new project should normally begin by changing `PROJECT_NAME` in the Makefile,
-replacing the example CLI and noop behavior as appropriate, and reviewing the
-starter ADRs to decide which decisions remain applicable.  `PROJECT_NAME` must
-be one non-empty whitespace-free word; conventional names such as `my-tool`,
-`my_tool`, or `my.tool` keep generated filenames and Make targets predictable.
-Maintained Bash source filenames, including plugin filenames under
-`lib/plugins/`, must also be whitespace-free as documented by ADR-004.
+This is an end-to-end release requirement, **not yet implemented** by
+the current archive staging helpers.
 
-The CI and release workflows discover generated Bash artifacts from `dist/`
-rather than hard-code `template-bash`, so changing `PROJECT_NAME` does not
-require corresponding artifact-name edits in those workflows.
+## Real Certbot read-only portability smoke test
 
-Delete starter behavior that does not belong in the derived project; do not
-preserve it merely because it came from the template.  The template intentionally
-provides starter files rather than placeholder-only empty directories.
+A separate CI workflow installs pinned Certbot 5.8.0 and exercises its
+local `certificates` command on the same synthetic lineage before and
+after archive reconstruction and renewal-path relocation.  The previous
+workspace is deleted before the second inspection, and both workspace
+content and key-byte continuity are checked.  The workflow uses no
+ACME/DNS/cloud credentials and runs across all three standalone scripts.
 
-Before a derived project's first release, review repository-facing files such as
-`README.md`, `CONTRIBUTING.md`, `SUPPORT.md`, `SECURITY.md`, issue templates, and
-the pull-request template.  These are part of the project surface and should not
-retain stale template names, unrelated links, or policies copied from another
-repository.
+The test is **limited to reading an imported lineage**.  Its account JSON
+is synthetic, the leaf certificate is self-signed, and it does not test
+Certbot account registration, a no-op renewal, SAN replacement, or
+deployment.  ADR-033 permits test-only installation of the preview;
+the product still cannot activate issuance or publication.
 
-## Engineering Posture
+## Certbot no-op renewal across independent workspaces
 
-The reusable engineering philosophy is documented in
-[`doc/engineering-philosophy.md`](doc/engineering-philosophy.md).  It is guidance
-for areas where a more specific Accepted ADR does not already govern.
+An opt-in, credential-free CI test reconstructs a domain archive and a
+synthetic common-account archive on a completely new workspace after
+deleting the predecessor.  It runs real Certbot 5.8.0's selected-lineage
+`renew` command for a freshly generated 90-day certificate that is
+not due for renewal, and verifies an explicit no-op decision and
+unchanged certificate/key bytes and identity/path settings.  Certbot
+may legitimately append an ARI retry-after scheduling field without
+renewing the certificate; the test validates and locally repacks it.
 
-Recurring principles include:
+The harness blocks Python socket APIs.  Certbot 5.8.0 may attempt an
+ACME Renewal Information (ARI) DNS lookup even for a not-due lineage;
+the test permits that blocked lookup, but rejects unexpected socket calls.  It does not contain real ACME account credentials, send
+a DNS challenge, or prove an actual due renewal.  This is a test-only
+exception documented in ADR-034; normal public issuance stays disabled.
 
-- respect developer agency and make important policy choices explicit;
-- prefer bounded contracts and explicit APIs over hidden inference;
-- state both promises and non-promises for consequential behavior;
-- apply UNIX composition principles deliberately rather than ceremonially;
-- keep stdout, stderr, files, exit status, and side effects intentional;
-- treat readability and auditability as correctness properties;
-- distinguish modular maintained source from product-specific runtime plugin
-  architecture;
-- keep public surfaces conservative;
-- treat every dependency as an expansion of the trusted computing base and a new
-  attack surface;
-- make network and external-command boundaries visible; and
-- avoid claiming boundaries the Bash runtime does not actually provide.
+## Three-workspace ARI continuity test
 
-These principles are not substitutes for project-specific decisions.  When a
-derived project needs a different contract, record the divergence rather than
-preserving a starter convention by inertia.
+The real-Certbot integration suite now also models a **third independent
+producer run**.  Runner A creates the synthetic account and lineage,
+runner B restores those archives and makes a real Certbot no-renewal
+decision, and runner C restores B's updated domain archive after
+both preceding workspaces have been destroyed.  Certbot must still
+recognize the lineage and decide not to renew.  The common account
+key, certificate, and private key must remain identical, and any
+accepted ARI scheduling state must survive the second archival cycle.
 
-## Threat Modeling
+The test remains credential-free and test-only.  It does not prove
+real ACME renewal, S3 persistence, SAN updates, or execution across
+different cloud providers.  See ADR-035.
 
-[`doc/threat-modeling.md`](doc/threat-modeling.md) provides a reusable exercise for
-projects that handle sensitive data, untrusted input, destructive operations,
-privileged files, network access, release credentials, dynamic loading, or other
-security-relevant authority.
 
-The exercise asks projects to identify assets, trusted computing base, trust
-boundaries, data and authority flows, threat actors and failure sources,
-mitigations, evidence, residual risk, and review triggers.  It includes a Mermaid
-trust-boundary diagram template so maintained Markdown can keep architecture and
-security reasoning reviewable as text.
+## Certificate inputs
 
-Threat modeling is not a blanket declaration that a project is secure.  Its value
-is making assumptions and changes in trust or authority visible before they are
-normalized as ordinary implementation details.
-
-## Build Lifecycle
-
-The canonical orchestration interface is Make:
-
-- `make deps` synchronizes repository dependencies and may use the network.
-- `make deps-check` verifies prepared dependency state offline.
-- `make build` creates release artifacts from maintained source and prepared
-  dependencies without synchronizing dependencies.
-- `make all` runs `deps` and then `build`, so it may use the network.
-- `make check` runs Bash syntax validation and ShellCheck.
-- `make format` runs shfmt with `-i 2 -bn -ci -sr -kp`.
-- `make test` runs Bats against every artifact flavor.
-- `make test-report` writes JUnit reports under `test-results/`.
-- `make adr-index` generates linked ADR navigation from prepared adrctl state.
-- `make docs` generates Doxygen HTML under `doc/reference/` from prepared
-  dependency state.
-- `make clean` removes build, test-report, generated ADR-navigation, and
-  reference-documentation output.
-- `make distclean` additionally removes prepared repository dependencies.
-
-Repository dependencies are scripts, libraries, filters, and assets.  bashdeps
-does not install system tools or operating-system packages.  The Makefile
-bootstraps only bashdeps directly; bashdeps manages Bash-Minifier, the
-bash-doxygen filter, and adrctl through `dependencies.txt`.
-
-Dependency acquisition and dependency trust are distinct questions.  Pinning and
-checksums help establish that expected bytes were acquired; they do not establish
-that those bytes are behaviorally safe or appropriately trusted with project data
-and authority.  See ADR-005 and ADR-015.
-
-## Source Modularity
-
-The starter demonstrates an explicit core source order plus deterministic
-additive discovery under `lib/plugins/`.  The more general architectural lesson is
-that maintained implementation should be split into responsibility-focused
-modules, semantically important ordering should remain explicit, and assembled
-consumer artifacts should remain deterministic and standalone.
-
-The runtime registry and noop plugin are teaching material for projects that need
-name-to-implementation dispatch.  A derived project may remove the registry,
-reinterpret additive modules, enumerate every module explicitly, or eliminate
-plugin discovery when direct functions are clearer.  Modularity does not imply a
-runtime extension system.
-
-See ADR-004 and ADR-014.
-
-## Release Artifacts
-
-For the default project name, `make build` produces:
+A single invocation may accept `certbotbot.bash foo.com www.foo.com` or `certbotbot.bash "foo.com www.foo.com"`.  A multi-line `CERTIFICATES` input describes one certificate per line:
 
 ```text
-dist/template-bash.dev.bash
-dist/template-bash.dev.bash.sha256
-dist/template-bash.bash
-dist/template-bash.bash.sha256
-dist/template-bash.min.bash
-dist/template-bash.min.bash.sha256
+foo.com www.foo.com
+bar.com mail.bar.com
 ```
 
-The `.sha256` files use conventional SHA-256 checksum-file syntax.  New builds
-and releases publish only `.sha256` checksum companions.  Historical releases
-that contain `.256` companions remain valid for those release versions; consumers
-that automate across release generations should prefer `.sha256` and use `.256`
-only when the preferred companion is confirmed absent.
+The first hostname supplies a certificate name.  Both its apex and `*.` wildcard are always requested, even when the first token is wildcard-only.  Remaining SANs are literal.  Omitted certificates are left alone; the tool will not delete or renew unrelated lineages.  Certbot decides when unchanged certificates need renewal; the wrapper has no fixed expiration threshold.
 
-The development artifact retains the verbose Doxygen commentary used for
-maintenance.  The ordinary artifact removes full-line comments while preserving
-the shebang and behavior.  The minified artifact is derived from the ordinary
-artifact with the pinned Bash-Minifier dependency.  All three include executable
-version, build-date, and build-commit provenance and are expected to satisfy the
-same behavior tests.
+## Production and staging selection (issue #11)
 
-For reproducibility, the default build date comes from the current Git commit
-rather than the wall clock.  Local builds made while maintained source is dirty
-mark the build commit with a `-dirty` suffix so generated provenance does not
-imply that modified bytes came solely from the named commit.
+Production is the default.  Use `--staging` or
+`--acme-environment staging`, or set `ACME_ENVIRONMENT=staging`, to
+select the fixed Let's Encrypt staging ACME API.  The explicit
+`--acme-environment production` option selects production.  Invalid
+modes or contradictory CLI flags fail closed.
 
-## Documentation and Architectural Decisions
+Staging uses separate S3 object keys in the same configured bucket:
+`staging/common-latest.tar.gz` and
+`staging/<name>-latest.tar.gz` (including `.enc` equivalents).
+Production retains existing unprefixed object keys for compatibility.
+The S3 adapter refuses cross-mode keys.  Operators may also enforce
+separation through IAM or different buckets.
 
-This project deliberately treats documentation as part of the engineering
-architecture.  Different documents have different jobs:
+**Staging-issued certificates are not trusted by ordinary browsers or
+clients.**  The future verification workflow must use a dedicated staging
+CA bundle; never add test roots to an ordinary production trust store.
+Mode selection is now present, but actual issuance and publication
+remain disabled pending integration and security gates.  See ADR-030.
 
-- `README.md` provides public orientation and starter lifecycle guidance;
-- `doc/engineering-philosophy.md` summarizes reusable engineering posture;
-- `doc/decisions.md` provides a concise architectural discovery map;
-- ADRs under `doc/adr/` preserve durable reasoning, alternatives, tradeoffs,
-  consequences, and operational constraints;
-- a project specification describes normative observable behavior when a derived
-  project needs one;
-- `doc/threat-modeling.md` provides a reusable security-analysis exercise;
-- `AGENTS.md` is the concise contributor-oriented operational map;
-- maintained Bash follows the normative Doxygen standard in
-  `doc/documentation-standard.md`; and
-- tests provide executable evidence for documented contracts.
 
-Generated Doxygen output is written to `doc/reference/` and is not committed.  The
-Doxygen landing page at `doc/adr/README.md` is also generated state: maintained
-framing lives in `doc/adr/README.intro.md` and `doc/adr/README.outro.md`, while the
-linked ADR list is derived from the current corpus by the pinned adrctl release.
-The generated README may therefore be absent from a fresh checkout.
+## Certificate request preflight (Phase 2)
 
-ADR-012 defines the current `.sha256` checksum companion naming and historical
-`.256` read-compatibility policy.  ADR-013 treats repository-facing documentation
-as maintained product surface.  ADR-014 separates modular source assembly from
-runtime plugin architecture.  ADR-015 treats dependencies as explicit attack
-surface.  ADR-016 establishes threat-modeling expectations for security-relevant
-changes.  ADR-017 governs the ephemeral ADR landing-page model.
+Use `--validate` to normalize and inspect certificate groups without contacting Certbot, AWS, or an ACME server:
 
-Use `doc/decisions.md` as the always-present concise ADR map.  `make adr-index` or
-`make docs` generates the linked `doc/adr/README.md` used by the published
-reference site.
+```text
+certbotbot.bash --validate foo.com www.foo.com
+foo.com    foo.com *.foo.com www.foo.com
+```
 
-## Testing
+The real output is tab-separated: the first field is the lineage identity, and the second contains space-separated SANs.  `CERTIFICATES` may contain multiple physical lines, or `--certificates-file FILE` may read them from a local file.  Positional arguments, a file, and the environment input are mutually exclusive.  Blank physical lines are ignored, but an entirely empty request is rejected.  Provider identifiers may be selected with `--dns-backend` and `--storage-backend`, or `DNS_BACKEND`/`STORAGE_BACKEND`; only `route53` and `s3` are registered in this version.
 
-Bats tests live under `tests/` and are intentionally behavior-oriented.  The
-starter tests its example help/version interface, plugin discovery and dispatch,
-artifact executability, checksum companions, and invalid input behavior.  A
-derived project should add focused tests for its real contracts rather than grow
-a few oversized fixtures.
+Preflight verifies input syntax and backend names only.  It is **not** a dry-run Certbot renewal and does not verify credentials, hosted zones, storage availability, or certificate validity.
 
-The default compatibility floor is Bash 4.3.  Release CI should validate
-representative behavior under that version in addition to the primary runner.
+## Internal execution seams (Phase 2B)
 
-Security-sensitive behavior should use negative assertions where appropriate.
-Proving that an expected value appears is not enough when the contract also
-requires that sensitive, unsafe, or forbidden output never appears elsewhere.
+The build includes internal, mock-testable boundaries for `certbot --version`,
+S3-compatible object get/put, and an advisory, per-host `flock` lock keyed by
+the selected bucket and storage endpoint.  The S3 wrappers use separate
+arguments (never `eval`) and reject unexpected object keys and endpoint
+syntax.  The lock directory is private to its owning user and may be set with
+`CERTBOTBOT_LOCK_DIR`; by default it is in the user's runtime/state area.
 
-## Releases and Conventional Commits
+Route53 now also has an internal, mock-testable `certonly` command adapter with named lineages, separate SAN arguments, and DNS-only challenge selection.  This includes Certbot renewal-aware flags but does not yet solve persistent renewal-configuration path portability.  These operations are **not yet connected to normal certificate issuance**.
+`certbotbot.bash foo.com` still exits 69 without any remote side effects.
+The first implementation release must acquire a lock before reading remote
+state, validate every restored archive, and publish only after all requested
+certificates succeed.  A local lock does not prevent concurrent producers on
+different hosts or CI platforms.
 
-The release workflow uses Conventional Commits with
-`bitshifted/git-auto-semver`.  `feat` increments the minor version,
-`BREAKING CHANGE` increments the major version, and supported maintenance commit
-types increment the patch version.  The workflow calculates the version without
-creating a tag, validates and attests the exact release artifacts, and creates
-the release/tag only after validation succeeds.
+## Private workspace and combined PEM preparation (Phase 3B)
 
-## Existing Repository Tooling
+The source now includes an internal private-workspace allocator and a local
+Certbot lineage validator/combined-PEM assembler.  A producer workspace has
+private `config/`, `work/`, and `logs/` directories.  The PEM assembler
+requires all four standard `live/<name>/` links to point to the expected
+`archive/<name>/` versioned files and requires private-key permissions that
+exclude group/other access.  It writes regular 0600 combined PEM files at
+`combined/<name>.pem` and `live/<name>/combined.pem`.
 
-The upstream template's MegaLinter, CodeQL, Scorecard, Dependabot, issue
-management, and related configuration is intentionally retained unless it
-conflicts with the Bash build architecture.  Projects may tune those controls to
-match repository visibility and available GitHub features.
+These are internal, testable building blocks.  No live certificate operations
+are yet callable through ordinary issuance, and this module does **not**
+extract archives, verify cryptographic key-to-certificate matching, or repair
+Certbot renewal configuration paths.  Two local output renames are individually
+atomic, not a two-file transaction.  The producer must complete all later
+checks before remote publication.
 
-## License and Contributions
+## Domain archive manifest validation (Phase 4A)
 
-This project is dedicated to the public domain under CC0 1.0 Universal.  See
-`LICENSE` and `CONTRIBUTING.md` for details, `SUPPORT.md` for ordinary support,
-`SECURITY.md` for vulnerability reporting, and `CODE_OF_CONDUCT.md` for the
-project's expectations for respectful collaboration.
+The internal domain archive validator now inspects the GNU tar manifest
+without extracting any contents.  It accepts only the requested lineage's
+versioned PEMs, four expected Certbot live symlinks, renewal configuration,
+and both combined PEM files.  Unexpected paths, traversal, duplicate
+members, special file types, missing symlink targets, and unsafe private-key
+modes are rejected.  The validator is covered by hostile-archive tests.
+
+**This does not yet implement archive restoration.**  Preflight listing
+does not prove that extraction, renewal metadata, or certificate/key
+cryptographic contents are safe.  No public issuance or S3 publication
+is enabled.  See ADR-026 for this explicit security boundary.
+
+## Isolated domain restoration (Phase 4B)
+
+An internal helper now copies one domain archive into the active producer's
+private workspace, invokes the strict domain manifest validator, and
+extracts that copy into a *new*, empty, 0700 staging directory.  It then
+independently enumerates the extracted filesystem, checks actual file types
+and paths, verifies expected relative Certbot live links, and confirms
+private-key-bearing file permissions.  A rejected archive leaves the active
+Certbot configuration untouched.  Successful staging must be explicitly
+discarded after use.
+
+This is not yet an operational restoration pipeline.  It does **not**
+merge staging into the producer's active config, interpret or normalize
+renewal configuration, restore the common ACME account archive, verify
+certificate/private-key cryptographic matching, or publish any object.
+The public issuing command remains disabled.  See ADR-027.
+
+## Shared ACME account archive staging (Phase 4C)
+
+The internal common-state adapter recognizes Certbot's Let's Encrypt ACME
+v2 account directories and their three required JSON files.  It rejects
+unknown configuration, renewal hooks, symlinks, unexpected entries, missing
+account keys, and insecure file modes.  It takes a private copy, validates
+the tar contents, extracts into an isolated staging directory, and checks
+the real extracted filesystem again.  Accepted staging must be explicitly
+discarded after use.
+
+This is not yet an operational account restore.  It neither parses account
+JSON contents nor selects an account with Certbot.  It does not merge common
+state into active configuration, enable ACME issuance, or upload storage
+objects.  No consumer needs the common archive.  See ADR-028.
+
+## Cryptographic certificate validation (pre-publication gate)
+
+The standalone artifact now contains an internal OpenSSL-based certificate
+validator.  It checks that the leaf certificate is currently valid, its
+private key is consistent and matches the leaf public key, its chain
+verifies for TLS server use against trusted roots, and both combined PEM
+files contain exactly the expected fullchain-plus-private-key bytes.
+This is the explicit cryptographic test requested in [issue #12](https://github.com/wesley-dean/certbotbot/issues/12).
+An optional CA bundle supports controlled staging-root tests; ordinary
+production verification uses OpenSSL's configured trust roots.
+
+The validator is not yet wired into publication (which remains disabled).
+It does not prove SAN correspondence, correct web-server configuration,
+or other service-specific usability.  OpenSSL is a native runtime
+prerequisite for this eventual publication gate.  See ADR-029.
+
+
+## Exact certificate DNS SAN verification (Phase 4H)
+
+The standalone artifacts include an additional internal certificate identity
+validator.  Given a normalized requested lineage and its SANs, it reads
+the actual X.509 leaf certificate and requires exactly those DNS SANs,
+with no missing, extra, duplicate, or non-DNS identities.  DNS name
+case and certificate ordering are ignored; the apex and leading
+wildcard are both mandatory.  This check complements the existing
+OpenSSL chain/private-key/combined-PEM validation (ADR-029).
+
+This is not yet wired into the public issuer or storage publisher,
+which remain disabled.  Before release, the producer must call **both**
+checks on every lineage after Certbot processing and before writing
+any archive, including state-only updates.  See ADR-036.
+
+## Cross-environment account/lineage consistency (Phase 4D)
+
+A read-only internal check now inspects restored Certbot renewal metadata
+and confirms that it references the selected Let's Encrypt production or
+staging URL, a `dns-route53` authenticator, and a matching complete
+account directory under that same authority.  Duplicate identity fields,
+missing account files, symlinked secrets, and hook directives are rejected.
+
+This is **not** full Certbot account selection or renewal-state portability.
+It does not interpret account JSON, repair absolute `archive_dir` or
+`live/` references, or execute Certbot.  No production issuance or
+publishing becomes available from this change.  See ADR-031.
+
+
+## Renewal path portability preview (Phase 4E)
+
+An internal helper can now validate the five absolute paths in a staged
+Certbot renewal configuration and emit an owner-private copy rebased onto
+the current producer's config directory.  It first requires the
+restored account/environment identity check and a consistent original
+lineage root.  An inconsistent or dangerous legacy path fails closed.
+The original restored file remains unchanged, and the preview must be
+explicitly discarded.
+
+**This is not operational renewal migration.**  The preview is never
+installed into active Certbot configuration or passed to Certbot.
+Real Certbot no-op renewal and SAN-change tests across independent
+workspaces are mandatory before choosing this as the release strategy.
+See ADR-032 and ADR-025.
+
+
+## Archive format and deployment separation
+
+The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).
+
+Deployment hosts need only the selected domain archives.  They extract trusted, validated archives under `/etc/letsencrypt` and run their own service post-install scripts/reloads.  The common archive, Certbot, ACME account, and certbotbot executable are **not required** on those hosts.  Live files require no post-extraction rewriting.
+
+With a nonempty `GPG_PASSPHRASE`, all common and domain objects use GPG symmetric AES-256 and the `.tar.gz.enc` suffix.  Without one, objects remain plaintext `.tar.gz`.  Both modes are explicit, with no silent fallback.  [The full specification](doc/specification.md) defines the intended validation and fail-closed semantics.
+
+## Initial backends and execution
+
+Only Route53 DNS-01 authentication and S3-compatible object storage are planned in the first release.  An optional `S3_ENDPOINT_URL` supports endpoints such as MinIO, subject to integration testing.  Backend source files are discoverable at **build time** and bundled into all three release artifacts.  No arbitrary consumer runtime plugins are supported.
+
+Native standalone execution is first-class.  Optional Jenkins, GitHub Actions, and Docker runners call the same Bash executable.  Examples will live at `examples/Jenkinsfile` and `examples/certbotbot.yml`; the existing `.github/workflows/static.yml` generates reference documentation for GitHub Pages.  Independent writers must be serialized operationally until storage-backed distributed locking is implemented.
+
+## Build and release contracts
+
+GNU Make directly bootstraps one pinned verified `vendor/bashdeps.bash`.  `dependencies.txt` manages the released or pinned bash-doxygen, mktext, Bash-Minifier, adrctl, and bashlog dependencies.  `make deps` may fetch files, while `make deps-check`, `make build`, and `make docs` remain offline after dependency preparation.
+
+The eventual release will contain:
+
+```text
+dist/certbotbot.dev.bash
+dist/certbotbot.dev.bash.sha256
+dist/certbotbot.bash
+dist/certbotbot.bash.sha256
+dist/certbotbot.min.bash
+dist/certbotbot.min.bash.sha256
+```
+
+The `.dev.bash` version retains all maintained Doxygen comments; the ordinary artifact removes full-line comments; the minified artifact derives from the ordinary version.  All three must behave equivalently.
+
+## Project governance
+
+This project adopts the verified `coding_standards@v2.1.0` release from [wesley-dean/coding_standards](https://github.com/wesley-dean/coding_standards), materialized at [doc/standards](doc/standards/).  [`.codingstandardrc`](.codingstandardrc) records its immutable version and released archive digest.  Applicable imported standards govern maintained work unless an Accepted local ADR or explicit local policy refines them.  Never edit imported standards locally.
+
+Start with [AGENTS.md](AGENTS.md), [doc/decisions.md](doc/decisions.md), [doc/specification.md](doc/specification.md), [doc/threat-model.md](doc/threat-model.md), and [doc/handoff.md](doc/handoff.md).  The original template decisions remain in `doc/adr/` and project-specific decisions begin at ADR-018.
+
+## Plaintext / GPG migration (planned operational procedure)
+
+Suspend all writers and use a private, restrictive local working directory.  Download **all** affected common and domain archives from a consistent generation.  Convert each with interactive GPG: for plaintext-to-encrypted use `gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 --output foo.com-latest.tar.gz.enc foo.com-latest.tar.gz`; for encrypted-to-plaintext use `gpg --batch --yes --pinentry-mode loopback --decrypt --output foo.com-latest.tar.gz foo.com-latest.tar.gz.enc`.  Verify the converted archive contents in a disposable directory before publishing them with the new suffix, update `GPG_PASSPHRASE` consistently in all producers/consumers, verify restoration, and remove old objects only after confirmation.  Bucket versioning is strongly recommended for recovery, but historical plaintext versions may remain retrievable and need separate retention/deletion controls.  Do not place passphrases in commands or logs.  This is a manual procedure, **not yet a released migration feature**.
+
+## Safety and roadmap
+
+The producer handles TLS and ACME private keys, cloud credentials, and archives containing sensitive materials.  Review [the STRIDE threat model](doc/threat-model.md) before implementation or production use.  The first release will not claim atomic multi-object publishing or cross-platform locking.  [The development plan](doc/development-plan.md) divides work into reviewable phases.  See [CONTRIBUTING.md](CONTRIBUTING.md) for project standards.

@@ -16,6 +16,9 @@ concurrency:
 
 jobs:
   versioning:
+    # No certbotbot release until the actual certificate workflow is validated.
+    # Opt in by setting the repository variable CERTBOTBOT_RELEASE_ENABLED=true.
+    if: ${{ vars.CERTBOTBOT_RELEASE_ENABLED == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       artifact-metadata: write
@@ -67,7 +70,7 @@ jobs:
         run: |
           for artifact in dist/*.bash; do
             docker run --rm \
-              --env BASH_STARTER_ARTIFACT="/work/${artifact}" \
+              --env CERTBOTBOT_ARTIFACT="/work/${artifact}" \
               --volume "${GITHUB_WORKSPACE}:/work:ro" \
               --workdir /work \
               bash:4.3 \

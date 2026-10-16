@@ -1,5 +1,5 @@
-PROJECT_NAME           = "$(BASH_STARTER_DOXYGEN_PROJECT_NAME)"
-PROJECT_BRIEF          = "Reference documentation for a modular Bash project"
+PROJECT_NAME           = "$(CERTBOTBOT_DOXYGEN_PROJECT_NAME)"
+PROJECT_BRIEF          = "Reference documentation for certbotbot"
 OUTPUT_DIRECTORY       = doc/reference
 CREATE_SUBDIRS         = NO
 GENERATE_HTML          = YES

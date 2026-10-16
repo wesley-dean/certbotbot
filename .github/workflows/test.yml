@@ -34,7 +34,7 @@ jobs:
             printf '%s\n' 'make build unexpectedly succeeded without prepared dependencies' >&2
             exit 1
           fi
-          grep -F 'Missing build dependency vendor/bash-minifier.bash' "${stderr}"
+          grep -F 'Missing build dependency vendor/bashlog.bash' "${stderr}"
           test ! -e vendor
 
       - name: Verify documentation does not acquire missing adrctl
@@ -61,6 +61,8 @@ jobs:
           test -f vendor/bash-minifier.bash
           test -f vendor/doxygen-bash.awk
           test -f vendor/adrctl.bash
+          test -f vendor/mktext.bash
+          test -f vendor/bashlog.bash
 
       - name: Verify make all from fresh generated state
         run: |
@@ -137,7 +139,7 @@ jobs:
           rm -rf vendor
           for artifact in dist/*.bash; do
             "${artifact}" --help >/dev/null
-            "${artifact}" run noop
+            "${artifact}" --validate foo.com www.foo.com
           done
 
       - name: Fail if Bats failed
@@ -161,7 +163,7 @@ jobs:
         run: |
           for artifact in dist/*.bash; do
             docker run --rm \
-              --env BASH_STARTER_ARTIFACT="/work/${artifact}" \
+              --env CERTBOTBOT_ARTIFACT="/work/${artifact}" \
               --volume "${GITHUB_WORKSPACE}:/work:ro" \
               --workdir /work \
               bash:4.3 \
