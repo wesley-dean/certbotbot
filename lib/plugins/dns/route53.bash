@@ -123,17 +123,14 @@ certbotbot_dns_route53_issue() {
   fi
 
   certbotbot_dns_route53_challenge_args
-  certbot_args=(certonly
-    --non-interactive
-    "${CERTBOTBOT_DNS_CHALLENGE_ARGS[@]}"
-    --cert-name "${name}"
-    --config-dir "${config_dir}"
-    --work-dir "${work_dir}"
-    --logs-dir "${logs_dir}"
-    --keep-until-expiring
-    --renew-with-new-domains
-    --agree-tos
-    --email "${email}")
+  # Keep each Bash array assignment on one physical line: Bash-Minifier's
+  # pinned release does not preserve multiline compound array initializers.
+  certbot_args=(certonly --non-interactive)
+  certbot_args+=("${CERTBOTBOT_DNS_CHALLENGE_ARGS[@]}")
+  certbot_args+=(--cert-name "${name}" --config-dir "${config_dir}")
+  certbot_args+=(--work-dir "${work_dir}" --logs-dir "${logs_dir}")
+  certbot_args+=(--keep-until-expiring --renew-with-new-domains --agree-tos)
+  certbot_args+=(--email "${email}")
   for san in "$@"; do
     certbot_args+=(-d "${san}")
   done
