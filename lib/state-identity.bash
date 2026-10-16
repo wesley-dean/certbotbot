@@ -41,7 +41,7 @@ certbotbot_state_verify_identity() {
   local account='' authenticator='' expected='' host='' dir=''
   local mode='' bytes='' stripped='' lines=0
   local trimmed_line='' comment_marker=''
-  printf -v comment_marker '%b' '\\043'
+  printf -v comment_marker '%b' '\043'
   local -A seen=()
   local -a files=(meta.json regr.json private_key.json)
 
