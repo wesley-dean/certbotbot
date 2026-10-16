@@ -100,3 +100,16 @@ public executable still has no issuance path.  A successful mock invocation
 does not establish portability of imported Certbot renewal metadata, validate
 potential hooks in restored state, or demonstrate real ACME issuance.  ADR-025
 requires restore-to-new-workspace integration tests before activation.
+
+## Local producer workspace and PEM assembly
+
+Private mktemp directories and independently private Certbot subdirectories
+now form the intended producer staging boundary.  The local PEM assembly
+module checks literal standard Certbot live-link targets, owner/type/readability
+of target files, private-key file modes, and preexisting output symlinks before
+assembling regular 0600 combined PEMs.  The module does **not** trust or
+extract raw archives and does not validate certificate/key cryptographic
+correspondence.  Its owner checks do not defend against an attacker with
+the producer user's credentials.  No producer workflow yet calls the module,
+so this is tested local functionality rather than an end-to-end security
+claim.\n
