@@ -23,8 +23,7 @@ CERTBOTBOT_RESTORE_ROOT=''
 ## Nothing is read from STDIN.
 ## @returns Nothing is written to STDOUT.
 certbotbot_restore_inspect_tree() {
-  local root=$1 name=$2 item type path kind mode count=0 manifest
-  local -A required=()
+  local root=${1:-} name=${2:-} mode manifest status=0
   if (( $# != 2 )) || ! certbotbot_validate_hostname "$name" ||
     [[ $name == \*.* || $name != "${name,,}" ||
       $root != /* || ! -d $root || -L $root || ! -O $root ]]; then
@@ -42,40 +41,60 @@ certbotbot_restore_inspect_tree() {
     rm -f -- "$manifest"
     return 73
   fi
+  if certbotbot_restore_inspect_entries "$root" "$name" "$manifest"; then
+    status=0
+  else
+    status=$?
+  fi
+  rm -f -- "$manifest"
+  return "$status"
+}
+
+## @fn certbotbot_restore_inspect_entries()
+## @brief Parses a completed GNU find manifest and validates extracted data.
+## @param root Root of the isolated extracted tree.
+## @param name Canonical lineage identity.
+## @param manifest Private NUL-delimited relative pathname/type pairs.
+## @retval 0 Enumerated paths and expected lineage symlinks are valid.
+## @retval 64 An unexpected entry or missing lineage object was detected.
+## @retval 73 Local file metadata could not be inspected.
+## @par STDIN
+## Nothing is read from STDIN.
+## @returns Nothing is written to STDOUT.
+## @note This internal helper must not delete its input while reading it.
+certbotbot_restore_inspect_entries() {
+  local root=${1:-} name=${2:-} manifest=${3:-}
+  local item type path kind mode count=0
+  local -A required=()
   while IFS= read -r -d '' item && IFS= read -r -d '' type; do
     (( count += 1 ))
     if (( count > 4096 )) || [[ ! $item =~ ^[a-z0-9./_-]+$ ||
       $item == /* || $item == ./* || $item == *../* ||
       $item == *'/./'* ]]; then
-      rm -f -- "$manifest"
-      return 64
+            return 64
     fi
     path="$root/$item"
     if [[ ! -O $path ]]; then
-      rm -f -- "$manifest"
-      return 64
+            return 64
     fi
     case "$type" in
       d)
         case "$item" in
           archive | "archive/$name" | live | "live/$name" | renewal | combined) ;;
-          *) rm -f -- "$manifest"; return 64 ;;
+          *) return 64 ;;
         esac
         if [[ -L $path ]]; then
-          rm -f -- "$manifest"
-          return 64
+                    return 64
         fi
         ;;
       f)
         if [[ -L $path || ! -s $path ]]; then
-          rm -f -- "$manifest"
-          return 64
+                    return 64
         fi
         if [[ $item == "archive/$name/"* ]]; then
           local leaf=${item#"archive/$name/"}
           if [[ ! $leaf =~ ^(cert|chain|fullchain|privkey)[1-9][0-9]*[.]pem$ ]]; then
-            rm -f -- "$manifest"
-            return 64
+                        return 64
           fi
           kind=${BASH_REMATCH[1]}
         elif [[ $item == "renewal/$name.conf" ]]; then
@@ -88,40 +107,33 @@ certbotbot_restore_inspect_tree() {
           kind=combined
           required[combined]=1
         else
-          rm -f -- "$manifest"
-          return 64
+                    return 64
         fi
         if [[ $kind == privkey || $kind == combined ]]; then
           mode="$(stat -c '%a' -- "$path")" || {
-            rm -f -- "$manifest"
-            return 73
+                        return 73
           }
           if [[ ! $mode =~ ^[0-7]{3,4}$ ]] ||
             (( (8#$mode & 8#77) != 0 )); then
-            rm -f -- "$manifest"
-            return 64
+                        return 64
           fi
         fi
         ;;
       l)
         if [[ $item != "live/$name/"* ]]; then
-          rm -f -- "$manifest"
-          return 64
+                    return 64
         fi
         kind=${item#"live/$name/"}
         if [[ ! $kind =~ ^(cert|chain|fullchain|privkey)[.]pem$ ]]; then
-          rm -f -- "$manifest"
-          return 64
+                    return 64
         fi
         ;;
       *)
-        rm -f -- "$manifest"
-        return 64
+                return 64
         ;;
     esac
   done <"$manifest"
-  rm -f -- "$manifest"
-
+  
   for kind in cert chain fullchain privkey; do
     certbotbot_pem_check_link "$root" "$name" "$kind" || return 64
   done
