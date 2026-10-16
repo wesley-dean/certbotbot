@@ -1,19 +1,125 @@
 # shellcheck shell=bash
 ## @file lib/plugins/storage/s3.bash
-## @brief Registers the built-in S3 object-storage implementation placeholder.
+## @brief Implements bounded S3 get/put adapter operations for later producers.
 ## @details
-## This reviewed source module is concatenated into the release at build time.
-## A future implementation will distinguish missing objects from failed reads,
-## and use S3_ENDPOINT_URL for operator-trusted S3-compatible endpoints.
-## No object access or modification is performed in the current phase.
+## This built-in module is concatenated into release artifacts during Make.
+## The initial commands accept exact latest-object keys only, validate the
+## storage bucket and selected endpoint, and pass arguments individually to
+## the aws CLI.  Neither get nor put is called by the public entrypoint yet.
+##
+## The adapter does not interpret an error as "object missing".  Phase 4 will
+## implement a separate typed existence/result contract after testing the
+## AWS CLI response behavior across S3 and S3-compatible endpoints.  A failed
+## get/put retains its original nonzero CLI status; the caller must treat
+## any failed download as untrusted and discard it.
+
+## @fn certbotbot_storage_s3_validate_target()
+## @brief Validates a bucket, latest-object key, and endpoint configuration.
+## @param bucket Target bucket name.
+## @param key Exact common or per-certificate latest archive object name.
+## @retval 0 All supplied values are within the initial adapter grammar.
+## @retval 64 A value is outside the supported grammar.
+## @par Standard Output
+## Nothing is written to STDOUT.
+certbotbot_storage_s3_validate_target() {
+  local LC_ALL=C
+  local bucket=${1:-} key=${2:-} endpoint=${S3_ENDPOINT_URL:-}
+
+  if (( $# != 2 )) ||
+    [[ ! ${bucket} =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] ||
+    [[ ${bucket} == *..* ]] ||
+    [[ ! ${key} =~ ^[a-z0-9][a-z0-9.-]*-latest[.]tar[.]gz([.]enc)?$ ]] ||
+    [[ ${key} == *..* ]]; then
+    printf '%s\n' 'invalid S3 bucket or latest-object key' >&2
+    return 64
+  fi
+
+  if [[ -n ${endpoint} ]] &&
+    [[ ! ${endpoint} =~ ^https?://[^[:space:]@/?#]+(/[^[:space:]?#]*)?$ ]]; then
+    printf '%s\n' 'invalid S3 endpoint URL' >&2
+    return 64
+  fi
+}
+
+## @fn certbotbot_storage_s3_get()
+## @brief Downloads one selected object to a producer-owned absolute pathname.
+## @details
+## The producer must stage the output in a private work directory and fully
+## validate the object before extraction or use.  On failure, AWS CLI may leave
+## a partial local file; this function makes no "object missing" inference.
+## @param bucket Object-storage bucket.
+## @param key Canonical latest-object key.
+## @param destination Absolute local staging filename; may contain spaces.
+## @retval 0 AWS CLI confirmed download success.
+## @retval 64 Arguments or target configuration were invalid.
+## @note Other statuses propagate directly from the AWS CLI.
+## @par Standard Output
+## Nothing is written to STDOUT.
+certbotbot_storage_s3_get() {
+  local bucket=${1:-} key=${2:-} destination=${3:-}
+  local -a options=()
+
+  if (( $# != 3 )) || [[ ${destination} != /* || -L ${destination} ]]; then
+    printf '%s\n' 'invalid S3 download destination' >&2
+    return 64
+  fi
+  certbotbot_storage_s3_validate_target "${bucket}" "${key}" || return $?
+
+  if [[ -n ${S3_ENDPOINT_URL:-} ]]; then
+    options=(--endpoint-url "${S3_ENDPOINT_URL}")
+  fi
+  certbotbot_command_aws "${options[@]}" s3api get-object \
+    --bucket "${bucket}" --key "${key}" "${destination}" >/dev/null
+}
+
+## @fn certbotbot_storage_s3_put()
+## @brief Uploads a prepared ordinary regular file under one latest-object key.
+## @details
+## The producing workflow owns archive validation, encryption, and publication
+## ordering.  This operation does not inspect archive bytes or select fallback
+## encryption formats; it only transfers an already approved local file.
+## @param bucket Object-storage bucket.
+## @param key Canonical latest-object key.
+## @param source Absolute local staging filename; may contain spaces.
+## @retval 0 AWS CLI confirmed upload success.
+## @retval 64 Arguments or source were invalid.
+## @note Other statuses propagate directly from the AWS CLI.
+## @par Standard Output
+## Nothing is written to STDOUT.
+certbotbot_storage_s3_put() {
+  local bucket=${1:-} key=${2:-} source=${3:-}
+  local -a options=()
+
+  if (( $# != 3 )) || [[ ${source} != /* || ! -f ${source} ||
+    ! -r ${source} || -L ${source} ]]; then
+    printf '%s\n' 'invalid S3 upload source' >&2
+    return 64
+  fi
+  certbotbot_storage_s3_validate_target "${bucket}" "${key}" || return $?
+
+  if [[ -n ${S3_ENDPOINT_URL:-} ]]; then
+    options=(--endpoint-url "${S3_ENDPOINT_URL}")
+  fi
+  certbotbot_command_aws "${options[@]}" s3api put-object \
+    --bucket "${bucket}" --key "${key}" --body "${source}" >/dev/null
+}
 
 ## @fn certbotbot_storage_s3_run()
-## @brief Rejects object operations until the S3 adapter is implemented.
-## @retval 69 The provider's storage operation is not implemented.
+## @brief Dispatches the built-in storage adapter's internal get/put operations.
+## @param operation Either get or put, or an unsupported future operation.
+## @param args Operation-specific validated arguments.
+## @retval 64 Unsupported operation.
+## @note Other statuses are propagated unchanged from selected operations.
 ## @par Standard Output
 ## Nothing is written to STDOUT.
 certbotbot_storage_s3_run() {
-  return 69
+  local operation=${1:-}
+  shift || return 64
+  case "${operation}" in
+    get) certbotbot_storage_s3_get "$@" ;;
+    put) certbotbot_storage_s3_put "$@" ;;
+    *) return 64 ;;
+  esac
 }
 
 certbotbot_provider_register storage s3 certbotbot_storage_s3_run

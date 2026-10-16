@@ -69,6 +69,19 @@ A custom S3 endpoint can redirect credentials and certificates to a different se
 
 Only the pinned released bashdeps bootstrap is directly downloaded by Make.  Bashdeps handles declared artifacts and validates committed digests.  The coding standards snapshot is a separate reviewed governance artifact.  Generated release files must retain provenance and pass all-flavor tests and checksum verification.  Untrusted PRs must not receive issuance/release credentials.
 
+## Initial implementation evidence and remaining integration gap
+
+Build-time included providers expose validated S3 get/put argv construction,
+a read-only Certbot probe, and a host-local advisory lock.  PATH-injected
+fake-executable tests exercise argument preservation, fail-closed invalid
+object/endpoint behavior, and local lock contention.  At this stage no
+production-run orchestration calls them.  In particular, the S3 adapter
+does **not** yet implement missing-versus-failed classification, safe
+archive restoration, atomic local downloads, or publication rollback.
+The local lock is not a distributed lease.  Future certificate orchestration
+must be reviewed for explicit lock lifecycle, private workspace handling,
+and fail-closed object classification before cloud credentials are usable.
+
 ## Explicit non-goals and residual risk
 
 The first release does not promise atomic multi-object publication, cross-platform locking, cryptographic publisher authentication, safe execution on a compromised producer host, secure erasure of memory/swap, or automatic consumer deployment rollback.  Storage provider outages and LetsEncrypt service/rate-limit changes can prevent renewal.  The consuming server's root filesystem, service credentials, and post-install behavior are its own responsibility.
