@@ -213,6 +213,21 @@ test does not implement remote publication of ARI-only changes or
 satisfy due-renewal, SAN update, and real account requirements.
 
 
+### Phase 4H: exact DNS SAN verification before publishing
+
+ADR-035 establishes a second independently testable OpenSSL gate that
+compares the actual leaf's DNS SAN set with the current normalized
+request.  It rejects missing, unexpected, duplicated, malformed,
+and non-DNS identities; the CN cannot substitute for an absent SAN.
+The apex/wildcard identities are independently required, and
+additional SANs are neither inferred nor silently retained.
+
+Before live issuance or any state-only archive update becomes active,
+the issuer must run **both** this check and ADR-029's chain/private-key
+check against the current request.  Negative integration tests must
+prove every failed check prevents all S3 writes.  The current helper
+does not enable public issuance.
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.

@@ -206,6 +206,21 @@ or other service-specific usability.  OpenSSL is a native runtime
 prerequisite for this eventual publication gate.  See ADR-029.
 
 
+## Exact certificate DNS SAN verification (Phase 4H)
+
+The standalone artifacts include an additional internal certificate identity
+validator.  Given a normalized requested lineage and its SANs, it reads
+the actual X.509 leaf certificate and requires exactly those DNS SANs,
+with no missing, extra, duplicate, or non-DNS identities.  DNS name
+case and certificate ordering are ignored; the apex and leading
+wildcard are both mandatory.  This check complements the existing
+OpenSSL chain/private-key/combined-PEM validation (ADR-029).
+
+This is not yet wired into the public issuer or storage publisher,
+which remain disabled.  Before release, the producer must call **both**
+checks on every lineage after Certbot processing and before writing
+any archive, including state-only updates.  See ADR-035.
+
 ## Cross-environment account/lineage consistency (Phase 4D)
 
 A read-only internal check now inspects restored Certbot renewal metadata

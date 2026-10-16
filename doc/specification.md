@@ -244,6 +244,20 @@ verification trust roots.  No unreviewed arbitrary-ACME-endpoint option
 is part of that backlog issue.
 
 
+## Exact certificate SAN-to-request correspondence
+
+In addition to the ADR-029 cryptographic gate, the producer MUST verify
+that the leaf X.509 certificate contains exactly the authoritative
+requested DNS SANs for its lineage, not merely a matching CN or some
+subset.  The input parser's normalized apex, wildcard, and explicitly
+requested additional names form an unordered set.  DNS names compare
+case-insensitively, but missing, extra, duplicate, malformed, or non-DNS
+SANs MUST fail before *any* object publication.  This is essential
+when a later run deliberately removes an existing additional SAN.
+The internal OpenSSL helper is implemented and tested without external
+calls, but the public issuer must still connect both verification
+functions as a mandatory pre-publication gate.  See ADR-035.
+
 ## Fixed ACME environment selection and object namespaces
 
 A single invocation selects `production` (default) or `staging` using

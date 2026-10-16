@@ -359,3 +359,17 @@ account continuity.  Live due renewal, SAN changes, and a reviewed
 state-only publication policy remain separate gates.
 
 See [ADR-035](adr/ADR-035-three-run-ari-state-continuity.md).
+
+### ADR-035: Exact Requested DNS SAN Set Before Certificate Publication
+
+Every deployable leaf certificate must contain exactly the requested
+normalized DNS SAN set for its lineage, including both the explicit
+apex and wildcard.  The independent OpenSSL validator treats DNS
+name case and certificate entry order as irrelevant, but refuses
+missing, extra, duplicate, malformed, or non-DNS identities.
+Certificate CN matching and a successful Certbot exit status do
+not satisfy this contract.  The producer must invoke this check
+alongside the existing cryptographic verifier before any object
+mutation, including state-only archive publication.
+
+See [ADR-035](adr/ADR-035-exact-dns-san-verification.md).

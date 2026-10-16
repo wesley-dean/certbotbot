@@ -142,3 +142,132 @@ certbotbot_crypto_verify_lineage() {
   fi
   return "$result"
 }
+
+## @fn certbotbot_crypto_verify_sans()
+## @brief Confirms the leaf certificate's DNS SAN set matches the request.
+## @details
+## The normalized request, not the certificate's subject CN, authorizes
+## the set of names in a deployable lineage.  OpenSSL emits the SAN extension
+## as human-readable text; this intentionally narrow parser only accepts
+## its ordinary DNS-name listing, and fails closed on unknown fields or
+## formatting.  DNS names are case-insensitive, whereas an additional,
+## omitted, or repeated entry is never silently accepted.
+##
+## This helper does not perform chain, expiry, or private-key verification.
+## The issuer must also invoke certbotbot_crypto_verify_lineage() before
+## any publication, and preserve the requested SAN set through that gate.
+## @param config_dir Existing owner-private Certbot configuration directory.
+## @param name Canonical lineage identity without a leading wildcard.
+## @param sans One or more separately quoted canonical request DNS names.
+## @retval 0 Every requested DNS SAN appears exactly once and no others exist.
+## @retval 64 Unsafe local inputs, paths, or invalid requested SAN identity.
+## @retval 65 Missing, mismatched, duplicated, or unrecognized X.509 SANs.
+## @retval 69 OpenSSL is unavailable.
+## @par STDIN
+## Nothing is read from STDIN.
+## @returns Nothing is written to STDOUT.
+## @note The authority of the request remains ADR-018; certificate CN
+## fallback and wildcard-as-apex equivalence are deliberately forbidden.
+## @see doc/adr/ADR-035-exact-dns-san-verification.md
+certbotbot_crypto_verify_sans() {
+  local LC_ALL=C
+  local root=${1:-} name=${2:-}
+  local san='' cert='' output='' line='' text='' field='' dns='' mode=''
+  local headers=0
+  local -A requested=() observed=()
+  local -a fields=()
+  if (( $# < 4 )) ||
+    ! certbotbot_validate_hostname "$name" ||
+    [[ $name == \*.* || $name != "${name,,}" ||
+      $root != /* || -L $root ]]; then
+    return 64
+  fi
+
+  if ! certbotbot_pem_check_directory "$root"; then
+    return 64
+  fi
+  mode="$(stat -c '%a' -- "$root")" || return 64
+  if [[ ! $mode =~ ^[0-7]{3,4}$ ]] ||
+    (( (8#$mode & 8#77) != 0 )); then
+    return 64
+  fi
+  if ! certbotbot_pem_check_directory "$root/live" ||
+    ! certbotbot_pem_check_directory "$root/live/$name" ||
+    ! certbotbot_pem_check_directory "$root/archive" ||
+    ! certbotbot_pem_check_directory "$root/archive/$name" ||
+    ! certbotbot_pem_check_link "$root" "$name" cert; then
+    return 64
+  fi
+  cert="$root/live/$name/cert.pem"
+  shift 2
+  for san in "$@"; do
+    if ! certbotbot_validate_hostname "$san" ||
+      [[ $san != "${san,,}" || -n ${requested[$san]+_} ]]; then
+      return 64
+    fi
+    requested["$san"]=1
+  done
+  if [[ -z ${requested[$name]+_} ||
+    -z ${requested[*.$name]+_} ]]; then
+    return 64
+  fi
+  if ! command -v openssl >/dev/null 2>&1; then
+    return 69
+  fi
+  if ! output="$(openssl x509 -in "$cert" -noout \
+    -ext subjectAltName 2>/dev/null)"; then
+    return 65
+  fi
+
+  # OpenSSL normally renders one header and comma-delimited DNS entries.
+  # Refuse every other extension presentation or non-DNS SAN type.
+  while IFS= read -r line || [[ -n $line ]]; do
+    # OpenSSL includes trailing whitespace after its SAN extension header.
+    # Normalize that presentation detail before evaluating exact headers.
+    line=${line%"${line##*[![:space:]]}"}
+    if [[ $line == 'X509v3 Subject Alternative Name:'* ]]; then
+      (( headers += 1 ))
+      if (( headers != 1 )) ||
+        [[ $line != 'X509v3 Subject Alternative Name:' &&
+          $line != 'X509v3 Subject Alternative Name: critical' ]]; then
+        return 65
+      fi
+      continue
+    fi
+    if (( headers != 1 )) || [[ -z $line || $line == *$'\r'* ]]; then
+      return 65
+    fi
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    if [[ -z $line ]]; then
+      return 65
+    fi
+    text+="$line "
+  done <<<"$output"
+  if (( headers != 1 )) || [[ -z $text ]]; then
+    return 65
+  fi
+  text=${text% }
+  if [[ $text == ,* || $text == *, ]]; then
+    return 65
+  fi
+  IFS=',' read -r -a fields <<<"$text"
+  if (( ${#fields[@]} != ${#requested[@]} )); then
+    return 65
+  fi
+  for field in "${fields[@]}"; do
+    field=${field#"${field%%[![:space:]]*}"}
+    field=${field%"${field##*[![:space:]]}"}
+    if [[ $field != DNS:* ]]; then
+      return 65
+    fi
+    dns=${field#DNS:}
+    dns=${dns,,}
+    if ! certbotbot_validate_hostname "$dns" ||
+      [[ -z ${requested[$dns]+_} || -n ${observed[$dns]+_} ]]; then
+      return 65
+    fi
+    observed["$dns"]=1
+  done
+  return 0
+}

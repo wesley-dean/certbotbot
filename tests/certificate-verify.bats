@@ -133,3 +133,118 @@ verify_crypto() {
   run "$CERTBOTBOT_ARTIFACT" example.com
   [ "$status" -eq 69 ]
 }
+
+## Rewrite the local CA-signed leaf with a chosen SAN extension.  Only the
+## dedicated SAN tests use this; combined PEMs remain intentionally stale.
+reissue_san_leaf() {
+  local value=${1:-}
+  local ext="$BATS_TEST_TMPDIR/san-override.ext"
+  printf '%s\n' \
+    'basicConstraints=critical,CA:FALSE' \
+    'keyUsage=critical,digitalSignature' \
+    'extendedKeyUsage=serverAuth' >"$ext"
+  if [[ -n $value ]]; then
+    printf 'subjectAltName=%s\n' "$value" >>"$ext"
+  fi
+  openssl x509 -req -in "$BATS_TEST_TMPDIR/request.csr" \
+    -CA "$CRYPTO_CA" -CAkey "$BATS_TEST_TMPDIR/ca.key" \
+    -CAcreateserial -days 2 -extfile "$ext" \
+    -out "$CRYPTO_ROOT/archive/example.com/cert1.pem" >/dev/null 2>&1
+}
+
+verify_sans() {
+  run bash -c '
+    source "$1" --version >/dev/null
+    root=$2
+    shift 2
+    certbotbot_crypto_verify_sans "$root" example.com "$@"
+  ' _ "$CERTBOTBOT_ARTIFACT" "$CRYPTO_ROOT" "$@"
+}
+
+@test "X.509 DNS SANs exactly match the requested apex and wildcard" {
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "SAN set matching ignores expected order, never adds names" {
+  verify_sans '*.example.com' example.com
+  [ "$status" -eq 0 ]
+}
+
+@test "X.509 DNS SAN comparison is case-insensitive" {
+  reissue_san_leaf 'DNS:EXAMPLE.COM,DNS:*.EXAMPLE.COM'
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 0 ]
+}
+
+@test "certificate SAN with unexpected extra DNS name is rejected" {
+  reissue_san_leaf 'DNS:example.com,DNS:*.example.com,DNS:other.example.com'
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 65 ]
+}
+
+@test "certificate missing the mandatory wildcard SAN is rejected" {
+  reissue_san_leaf 'DNS:example.com'
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 65 ]
+}
+
+@test "certificate missing the mandatory apex SAN is rejected" {
+  reissue_san_leaf 'DNS:*.example.com'
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 65 ]
+}
+
+@test "subject common name cannot replace a missing DNS SAN extension" {
+  reissue_san_leaf ''
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 65 ]
+}
+
+@test "duplicated certificate DNS SAN cannot satisfy two requested names" {
+  reissue_san_leaf 'DNS:example.com,DNS:*.example.com,DNS:example.com'
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 65 ]
+}
+
+@test "certificate with non-DNS SAN fails closed even with matching DNS names" {
+  reissue_san_leaf 'DNS:example.com,DNS:*.example.com,IP:127.0.0.1'
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 65 ]
+}
+
+@test "certificate wildcard for another level cannot replace intended wildcard" {
+  reissue_san_leaf 'DNS:example.com,DNS:*.sub.example.com'
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 65 ]
+}
+
+@test "requested additional DNS name must also appear exactly" {
+  verify_sans example.com '*.example.com' www.example.com
+  [ "$status" -eq 65 ]
+  reissue_san_leaf 'DNS:example.com,DNS:*.example.com,DNS:www.example.com'
+  verify_sans example.com '*.example.com' www.example.com
+  [ "$status" -eq 0 ]
+}
+
+@test "caller cannot omit mandatory apex or wildcard" {
+  verify_sans example.com
+  [ "$status" -eq 64 ]
+  verify_sans '*.example.com' www.example.com
+  [ "$status" -eq 64 ]
+}
+
+@test "caller cannot pass repeated requested SANs or uppercase input" {
+  verify_sans example.com '*.example.com' example.com
+  [ "$status" -eq 64 ]
+  verify_sans EXAMPLE.COM '*.example.com'
+  [ "$status" -eq 64 ]
+}
+
+@test "SAN validation rejects unsafe live certificate symlink" {
+  rm "$CRYPTO_ROOT/live/example.com/cert.pem"
+  ln -s /etc/passwd "$CRYPTO_ROOT/live/example.com/cert.pem"
+  verify_sans example.com '*.example.com'
+  [ "$status" -eq 64 ]
+}
