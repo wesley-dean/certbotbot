@@ -281,3 +281,19 @@ Next: test real Certbot-generated config/lineage state across
 independent workspace paths, actual account reuse, no-op renewal and
 SAN change, without modifying production archives.  Make a new
 governing decision before activating any preview in the issuer.
+
+## Phase 4F read-only real Certbot compatibility
+
+The proposed `agent/test/real-certbot-portability-smoke` PR adds
+a credential-free GitHub Actions job with pinned Certbot 5.8.0.
+The test creates short-lived local certificate fixtures, produces
+and validates both archive types, relocates the renewal paths into
+another private workspace, destroys the original workspace, and
+requires actual Certbot's `certificates` command to list the
+lineage.  It runs for every artifact flavor.  ADR-033 authorizes
+this read-only **test-only** exception to ADR-032's non-activation rule.
+
+Actual ACME renewal continuity is still unproven: test account JSON
+is synthetic and no DNS challenge, renewal, SAN update, or S3 write
+is performed.  Continue to fail closed on the normal public command
+and leave the release gate disabled.

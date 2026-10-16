@@ -315,3 +315,17 @@ Certbot state.  ADR-025 still requires real-version no-op renewal,
 SAN changes, and account continuity before activation.
 
 See [ADR-032](adr/ADR-032-validated-renewal-path-preview.md).
+
+### ADR-033: Read-Only Certbot Portability Compatibility Test
+
+A dedicated CI job may use a real, version-pinned Certbot binary to
+inspect a locally generated lineage after it has been archived,
+restored, and relocated under an independent ephemeral configuration
+root.  This is a narrow test-only exception to ADR-032's rule against
+presenting path previews to Certbot; the product still cannot install
+them or invoke issuance.  Synthetic ACME account metadata and
+self-signed certificates mean that a successful listing does not
+demonstrate real registration, renewal, or SAN changes.  Those remain
+mandatory integration gates under ADR-025.
+
+See [ADR-033](adr/ADR-033-readonly-certbot-portability-test.md).

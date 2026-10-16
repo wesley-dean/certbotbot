@@ -206,3 +206,14 @@ and conflicts with restored ACME identity cause rejection.  The
 remaining renewal options are not yet proven safe for execution,
 and Certbot must not consume the preview before real-version
 portability and hook-safety integration tests succeed.
+
+## Read-only Certbot import compatibility testing
+
+ADR-033 permits an isolated, credential-free CI harness to install a
+relocated renewal preview only into disposable test state for the real
+Certbot `certificates` inspection command.  This does not authorize
+active issuer installation or renewal.  The test uses synthetic account
+metadata and locally generated locally CA-signed test certificates, so no external
+registration or chain trust is implied.  Pinning Certbot does not fully
+pin transitive Python packages, and dependencies installed in a CI
+environment remain part of the build/test supply-chain attack surface.
