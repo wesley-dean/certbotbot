@@ -158,6 +158,20 @@ or other service-specific usability.  OpenSSL is a native runtime
 prerequisite for this eventual publication gate.  See ADR-029.
 
 
+## Cross-environment account/lineage consistency (Phase 4D)
+
+A read-only internal check now inspects restored Certbot renewal metadata
+and confirms that it references the selected Let's Encrypt production or
+staging URL, a `dns-route53` authenticator, and a matching complete
+account directory under that same authority.  Duplicate identity fields,
+missing account files, symlinked secrets, and hook directives are rejected.
+
+This is **not** full Certbot account selection or renewal-state portability.
+It does not interpret account JSON, repair absolute `archive_dir` or
+`live/` references, or execute Certbot.  No production issuance or
+publishing becomes available from this change.  See ADR-031.
+
+
 ## Archive format and deployment separation
 
 The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).

@@ -288,3 +288,16 @@ publication still require account selection, trust-chain verification,
 and cross-workspace integration tests.
 
 See [ADR-030](adr/ADR-030-isolated-letsencrypt-environments.md).
+
+### ADR-031: Read-Only Account and Lineage ACME Identity Validation
+
+A restored lineage's renewal metadata must agree with the selected
+production or staging Let's Encrypt endpoint and reference a complete
+private account record under the matching authority.  Ambiguous
+identity values, unexpected sections, or hook directives fail closed.
+This internal validation does not interpret account JSON, repair
+absolute renewal paths, or actually select the account in Certbot.
+Further integration and portability testing remain mandatory before
+issuance or publication.
+
+See [ADR-031](adr/ADR-031-restored-acme-account-and-lineage-identity.md).

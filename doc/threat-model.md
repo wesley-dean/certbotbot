@@ -182,3 +182,15 @@ unrelated objects, so bucket/prefix-scoped credentials are encouraged.
 Tests use fake AWS/Certbot commands; production operation is still
 disabled.  Real integration must verify account/renewal-server matching
 and must never add staging CA roots to production trust stores.
+
+## Restored ACME identity consistency
+
+ADR-031 adds a read-only inspection boundary before any restored
+lineage can be given to Certbot.  Renewal metadata must name the
+selected ACME authority, Route53 authenticator, and an available
+owner-private account triplet for that same authority.  Unknown
+sections, ambiguous identities, symlinked account keys, and hook
+directives are rejected.  The helper does not verify JSON registration,
+Certbot's eventual account selection, or the safety and portability
+of other renewal configuration fields.  It must not be treated as
+permission to run unreviewed restored Certbot metadata.
