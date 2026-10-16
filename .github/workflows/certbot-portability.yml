@@ -41,5 +41,5 @@ jobs:
                           dist/certbotbot.bash \
                           dist/certbotbot.min.bash; do
             CERTBOTBOT_ARTIFACT="${GITHUB_WORKSPACE}/${artifact}" \
-              bash -x tests/integration/certbot-readonly-portability.bash
+              bash tests/integration/certbot-readonly-portability.bash
           done

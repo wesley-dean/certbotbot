@@ -76,7 +76,11 @@ old_digest="$(sha256sum "$original/archive/example.com/privkey1.pem" | cut -d ' 
 "$CERTBOT" certificates --non-interactive --config-dir "$original" \
   --work-dir "$tmp/source/work" --logs-dir "$tmp/source/logs" \
   >"$tmp/first-certs.out" 2>"$tmp/first-certs.err"
-grep -Fq 'Certificate Name: example.com' "$tmp/first-certs.out"
+if ! grep -Fq 'Certificate Name: example.com' "$tmp/first-certs.out"; then
+  printf '%s\n' 'Certbot did not recognize the local source lineage:' >&2
+  cat "$tmp/first-certs.out" "$tmp/first-certs.err" >&2
+  exit 1
+fi
 
 tar -czf "$tmp/archives/example.com-latest.tar.gz" \
   -C "$original" archive live renewal combined
