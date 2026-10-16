@@ -140,6 +140,24 @@ It does not imply safety of extracting an untrusted tar archive, check PEM
 cryptographic correctness/key matching, or establish portability of
 `renewal/<name>.conf`.  Those checks must precede any production publication.
 
+## Per-certificate archive manifest validation
+
+Before a downloaded archive can be extracted, an internal preflight checks
+the GNU tar listing against a narrow allowlist for one canonical lineage.
+Only expected relative directories, versioned Certbot PEM regular files,
+four standard relative live symlinks, the single renewal configuration,
+and the two combined PEM regular files may appear.  Every live symlink
+must point to an archived versioned regular file in the same lineage.
+Duplicate names, hard links, special files, traversal, unrelated lineages,
+permissive key-bearing file modes, missing required members, excessive
+member counts, and oversized declared member data cause failure.
+
+This validator reads metadata only.  A later implementation must safely
+stage and extract into an isolated filesystem, independently verify the
+result and Certbot renewal metadata, and perform cryptographic matching
+before any remote publication.  A separate allowlist is required for
+the common ACME account archive.  See ADR-026.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.

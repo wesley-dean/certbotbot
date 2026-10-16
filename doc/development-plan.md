@@ -69,6 +69,12 @@ Acceptance: integration tests against Let's Encrypt staging with scoped Route53 
 
 Acceptance: extract two independently produced domain archives into one fresh directory and verify keys/certs/relative symlinks, combined PEM ordering, and non-overlapping members; no Certbot on consumer.  Test unsuccessful storage reads and uploads.
 
+Phase 4 may be split into a strict per-domain tar manifest preflight
+(ADR-026), safe staged extraction and post-extraction verification, shared
+ACME account state handling, and S3 publication.  The manifest preflight
+is not a production restore implementation and must never be treated as
+such.
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.
