@@ -332,3 +332,20 @@ continuity, read-only Certbot loading, and another no-op decision.
 ADR-035 documents the expanded test-only contract.  The public
 issuer, live account registration, S3 publication, and release gate
 remain untouched.
+
+## Phase 4H exact certificate SAN identity
+
+The proposed `agent/feat/verify-certificate-san-identity` PR adds
+`certbotbot_crypto_verify_sans` to the existing OpenSSL verification
+module, with independent Bats checks for exact requested DNS SANs,
+case/order equivalence, unexpected or duplicate entries, missing
+apex/wildcard, extra non-DNS SAN types, and unsafe lineage links.
+ADR-035 requires the eventual issuer to invoke this **in addition**
+to ADR-029's cryptographic chain/key/combined-PEM checks, against
+the newly requested SAN set before any publication, including
+state-only archive updates.
+
+The helper does not enable the public issuer or S3 operations.  Real
+ACME staging account reuse, due renewal, SAN changes, validated
+state-only publishing, and distributed coordination remain unresolved
+release gates.

@@ -251,3 +251,16 @@ and the existing Python-level network guard; it is not a complete
 network sandbox, multi-cloud execution test, or remote publication
 authority.  It must never be interpreted as permission to upload
 unreviewed state-only changes or activate the public issuer.
+
+## Exact X.509 DNS SAN identity before archive publication
+
+A trusted issuer chain and matching private key are insufficient if
+the leaf certificate identifies DNS names that differ from the
+operator's authoritative current request.  ADR-035 requires an exact
+set comparison of real X.509 DNS SANs, including the explicit apex
+and wildcard.  Missing, extra, duplicate, or non-DNS SANs fail closed,
+preventing a previously authorized but now removed SAN from silently
+surviving in a new deployable archive.  The human-readable OpenSSL
+extension format is a compatibility constraint, not a reason to ignore
+unrecognized entries.  The helper still needs mandatory integration
+with every future S3 publication path.
