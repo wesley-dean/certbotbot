@@ -166,3 +166,54 @@ run_preview() {
   run "$CERTBOTBOT_ARTIFACT" example.com
   [ "$status" -eq 69 ]
 }
+
+## The Phase 4I assessment remains read-only and leaves no preview behind.
+make_assess_domain_fixture() {
+  local kind
+  mkdir -m 0700 -p "$PORTABLE_DOMAIN_STAGE/archive/example.com" \
+    "$PORTABLE_DOMAIN_STAGE/live/example.com" "$PORTABLE_DOMAIN_STAGE/combined"
+  for kind in cert chain fullchain privkey; do
+    printf 'fixture %s\n' "$kind" >"$PORTABLE_DOMAIN_STAGE/archive/example.com/${kind}1.pem"
+    ln -s "../../archive/example.com/${kind}1.pem" \
+      "$PORTABLE_DOMAIN_STAGE/live/example.com/$kind.pem"
+  done
+  printf 'combined fixture\n' >"$PORTABLE_DOMAIN_STAGE/combined/example.com.pem"
+  cp "$PORTABLE_DOMAIN_STAGE/combined/example.com.pem" \
+    "$PORTABLE_DOMAIN_STAGE/live/example.com/combined.pem"
+  chmod 0600 "$PORTABLE_DOMAIN_STAGE/archive/example.com/privkey1.pem" \
+    "$PORTABLE_DOMAIN_STAGE/combined/example.com.pem" \
+    "$PORTABLE_DOMAIN_STAGE/live/example.com/combined.pem"
+}
+
+@test "Phase 4I assessment accepts private stages but never populates active config" {
+  make_assess_domain_fixture
+  run env CERTBOTBOT_TMPDIR="$PORTABLE_TEMP" bash -c '
+    source "$1" --version >/dev/null
+    CERTBOTBOT_COMMON_STAGE=$2
+    CERTBOTBOT_RESTORE_ROOT=$3
+    certbotbot_workspace_create || exit
+    certbotbot_import_assess example.com production || exit
+    [[ -z "$CERTBOTBOT_RENEWAL_PREVIEW" ]] || exit
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_CONFIG" -mindepth 1 -print -quit)" ]] || exit
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$PORTABLE_ACCOUNT_STAGE" "$PORTABLE_DOMAIN_STAGE"
+  [ "$status" -eq 0 ]
+}
+
+@test "Phase 4I assessment rejects populated active config without replacing it" {
+  make_assess_domain_fixture
+  run env CERTBOTBOT_TMPDIR="$PORTABLE_TEMP" bash -c '
+    source "$1" --version >/dev/null
+    CERTBOTBOT_COMMON_STAGE=$2
+    CERTBOTBOT_RESTORE_ROOT=$3
+    certbotbot_workspace_create || exit
+    printf "preserve\n" >"$CERTBOTBOT_WORKSPACE_CONFIG/.marker"
+    certbotbot_import_assess example.com production
+    rc=$?
+    [[ "$rc" -eq 64 ]] || exit
+    [[ "$(cat "$CERTBOTBOT_WORKSPACE_CONFIG/.marker")" == preserve ]] || exit
+    [[ -z "$CERTBOTBOT_RENEWAL_PREVIEW" ]] || exit
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$PORTABLE_ACCOUNT_STAGE" "$PORTABLE_DOMAIN_STAGE"
+  [ "$status" -eq 0 ]
+}
