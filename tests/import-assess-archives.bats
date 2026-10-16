@@ -155,3 +155,38 @@ RENEWAL
   run "$CERTBOTBOT_ARTIFACT" example.com
   [ "$status" -eq 69 ]
 }
+
+@test "invalid common archive never attempts to install domain state" {
+  make_archives
+  printf 'invalid\n' >"$ASSESS_COMMON"
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit
+    certbotbot_import_assess_archives "$2" "$3" example.com production
+    result=$?
+    [[ "$result" -ne 0 && -z "$CERTBOTBOT_COMMON_STAGE" &&
+      -z "$CERTBOTBOT_RESTORE_ROOT" ]] || exit 1
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_CONFIG" -mindepth 1 -print -quit)" ]] ||
+      exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN"
+  [ "$status" -eq 0 ]
+}
+
+@test "a hidden active config marker is preserved on failed assessment" {
+  make_archives
+  run bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit
+    printf "original\n" >"$CERTBOTBOT_WORKSPACE_CONFIG/.marker"
+    certbotbot_import_assess_archives "$2" "$3" example.com production
+    result=$?
+    [[ "$result" -eq 64 ]] || exit 1
+    [[ "$(cat "$CERTBOTBOT_WORKSPACE_CONFIG/.marker")" == original ]] || exit 1
+    [[ -z "$CERTBOTBOT_COMMON_STAGE" &&
+      -z "$CERTBOTBOT_RESTORE_ROOT" &&
+      -z "$CERTBOTBOT_RENEWAL_PREVIEW" ]] || exit 1
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSESS_COMMON" "$ASSESS_DOMAIN"
+  [ "$status" -eq 0 ]
+}
