@@ -31,7 +31,7 @@ CERTBOTBOT_LOCK_FD=''
 ## @note Lock contention never falls back to proceeding without a lock.
 certbotbot_lock_acquire() {
   local bucket=${1:-} endpoint=${2:-}
-  local root digest mode fd path old_umask result
+  local root digest mode fd path old_umask
   local -a digest_args=()
 
   if (( $# != 2 )) || [[ -z ${bucket} || -n ${CERTBOTBOT_LOCK_FD} ]]; then

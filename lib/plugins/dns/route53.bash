@@ -17,6 +17,8 @@ declare -a CERTBOTBOT_DNS_CHALLENGE_ARGS=()
 ## @par Standard Output
 ## Nothing is written to STDOUT.
 certbotbot_dns_route53_challenge_args() {
+  # The array is consumed by other modules after standalone assembly.
+  # shellcheck disable=SC2034
   CERTBOTBOT_DNS_CHALLENGE_ARGS=(--dns-route53 --preferred-challenges dns)
 }
 
