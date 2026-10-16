@@ -1,4 +1,4 @@
-# ADR-035: Exact Requested DNS SAN Set Before Certificate Publication
+# ADR-036: Exact Requested DNS SAN Set Before Certificate Publication
 
 Date: 2026-10-16
 

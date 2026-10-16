@@ -215,7 +215,7 @@ satisfy due-renewal, SAN update, and real account requirements.
 
 ### Phase 4H: exact DNS SAN verification before publishing
 
-ADR-035 establishes a second independently testable OpenSSL gate that
+ADR-036 establishes a second independently testable OpenSSL gate that
 compares the actual leaf's DNS SAN set with the current normalized
 request.  It rejects missing, unexpected, duplicated, malformed,
 and non-DNS identities; the CN cannot substitute for an absent SAN.

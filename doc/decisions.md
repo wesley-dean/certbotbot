@@ -360,7 +360,7 @@ state-only publication policy remain separate gates.
 
 See [ADR-035](adr/ADR-035-three-run-ari-state-continuity.md).
 
-### ADR-035: Exact Requested DNS SAN Set Before Certificate Publication
+### ADR-036: Exact Requested DNS SAN Set Before Certificate Publication
 
 Every deployable leaf certificate must contain exactly the requested
 normalized DNS SAN set for its lineage, including both the explicit
@@ -372,4 +372,4 @@ not satisfy this contract.  The producer must invoke this check
 alongside the existing cryptographic verifier before any object
 mutation, including state-only archive publication.
 
-See [ADR-035](adr/ADR-035-exact-dns-san-verification.md).
+See [ADR-036](adr/ADR-036-exact-dns-san-verification.md).
