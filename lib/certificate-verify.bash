@@ -222,6 +222,9 @@ certbotbot_crypto_verify_sans() {
   # OpenSSL normally renders one header and comma-delimited DNS entries.
   # Refuse every other extension presentation or non-DNS SAN type.
   while IFS= read -r line || [[ -n $line ]]; do
+    # OpenSSL includes trailing whitespace after its SAN extension header.
+    # Normalize that presentation detail before evaluating exact headers.
+    line=${line%"${line##*[![:space:]]}"}
     if [[ $line == 'X509v3 Subject Alternative Name:'* ]]; then
       (( headers += 1 ))
       if (( headers != 1 )) ||
