@@ -58,8 +58,7 @@ certbotbot_restore_inspect_tree() {
     case "$type" in
       d)
         case "$item" in
-          archive | "archive/$name" | live | "live/$name" |
-          renewal | combined) ;;
+          archive | "archive/$name" | live | "live/$name" | renewal | combined) ;;
           *) rm -f -- "$manifest"; return 64 ;;
         esac
         if [[ -L $path ]]; then
