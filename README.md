@@ -172,6 +172,23 @@ It does not interpret account JSON, repair absolute `archive_dir` or
 publishing becomes available from this change.  See ADR-031.
 
 
+## Renewal path portability preview (Phase 4E)
+
+An internal helper can now validate the five absolute paths in a staged
+Certbot renewal configuration and emit an owner-private copy rebased onto
+the current producer's config directory.  It first requires the
+restored account/environment identity check and a consistent original
+lineage root.  An inconsistent or dangerous legacy path fails closed.
+The original restored file remains unchanged, and the preview must be
+explicitly discarded.
+
+**This is not operational renewal migration.**  The preview is never
+installed into active Certbot configuration or passed to Certbot.
+Real Certbot no-op renewal and SAN-change tests across independent
+workspaces are mandatory before choosing this as the release strategy.
+See ADR-032 and ADR-025.
+
+
 ## Archive format and deployment separation
 
 The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).

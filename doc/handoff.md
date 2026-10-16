@@ -265,3 +265,19 @@ registration status, renewal-config absolute path portability,
 independent workspace integration, certificate SAN validation,
 verification invocation before publication, S3 consistency, optional
 GPG handling, and release preparation.  Do not enable issuance yet.
+
+## Phase 4E isolated renewal path relocation candidate
+
+The proposed `agent/feat/preview-portable-renewal-paths` PR adds
+`lib/renewal-paths.bash`, Bats fixtures, and ADR-032.
+The helper reuses the account identity guard from ADR-031, insists
+that the five Certbot path-bearing renewal fields share exactly one
+former absolute root and lineage, and emits a new private preview
+for the current workspace.  It never modifies the archived source,
+calls Certbot, or enables the public issuing path.
+The preview must not be used as proof that renewal is portable.
+
+Next: test real Certbot-generated config/lineage state across
+independent workspace paths, actual account reuse, no-op renewal and
+SAN change, without modifying production archives.  Make a new
+governing decision before activating any preview in the issuer.
