@@ -19,7 +19,7 @@ CORE_SOURCE_FILES := lib/plugin-registry.bash lib/input.bash \
                      lib/workspace.bash lib/pem.bash lib/archive-validate.bash \
                      lib/archive-restore.bash lib/account-archive.bash lib/certificate-verify.bash \
                      lib/acme-environment.bash lib/state-identity.bash \
-                     lib/renewal-paths.bash
+                     lib/renewal-paths.bash lib/import-assess.bash
 ## Plugins are discovered exclusively from maintained source at build time.
 ## Official provider modules are bundled into each standalone release artifact.
 PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash) \
