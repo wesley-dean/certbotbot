@@ -82,7 +82,11 @@ certbotbot_workspace_destroy() {
     return 73
   fi
   CERTBOTBOT_WORKSPACE_ROOT=''
+  # These caller-facing paths are consumed after standalone artifact assembly.
+  # shellcheck disable=SC2034
   CERTBOTBOT_WORKSPACE_CONFIG=''
+  # shellcheck disable=SC2034
   CERTBOTBOT_WORKSPACE_WORK=''
+  # shellcheck disable=SC2034
   CERTBOTBOT_WORKSPACE_LOGS=''
 }
