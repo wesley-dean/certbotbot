@@ -64,7 +64,7 @@ certbotbot_version() {
 certbotbot_main() {
   local dns_backend=${DNS_BACKEND:-route53}
   local storage_backend=${STORAGE_BACKEND:-s3}
-  local file= input_mode= name index
+  local file='' input_mode='' name index
   local validate=false
   local -a arguments=()
 
@@ -128,7 +128,7 @@ certbotbot_main() {
       bashlog_error 'a certificates file cannot be combined with other input'
       return 64
     fi
-    input_mode=file
+    input_mode='file'
     if ! certbotbot_input_parse "${input_mode}" "${file}"; then
       return 64
     fi
