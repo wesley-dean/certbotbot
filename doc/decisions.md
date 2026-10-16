@@ -373,3 +373,9 @@ alongside the existing cryptographic verifier before any object
 mutation, including state-only archive publication.
 
 See [ADR-036](adr/ADR-036-exact-dns-san-verification.md).
+
+### ADR-037: Gate Active Certbot State Import on Verified Portability
+
+Isolated account and lineage restoration does not authorize installation into active Certbot configuration. Preparation and assessment remain non-activating until genuine staging account reuse, renewal and SAN-change evidence across independent workspaces, and a separate Accepted import/rollback decision. The public issuer and release gates remain disabled.
+
+See [ADR-037](adr/ADR-037-gated-active-certbot-import.md).
