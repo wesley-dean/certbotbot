@@ -318,3 +318,17 @@ to Let's Encrypt.  ADR-034 authorizes only this CI use.
 True ACME staging account registration, due renewal, SAN change, and
 storage publication remain release-blocking.  Do not connect the
 test-only import to the public issuer.
+
+## Phase 4H three-run ARI state portability
+
+The proposed `agent/test/three-run-portable-ari-continuity` PR extends
+the credential-free Certbot 5.8.0 integration harness.  A creates
+synthetic portable archives; B restores those, records a guarded
+ARI metadata update during a real no-op decision, repackages its
+domain archive, and deletes its workspace.  C restores A's common
+archive and B's updated domain archive in another fresh private
+workspace and verifies the ARI value, account/certificate/key byte
+continuity, read-only Certbot loading, and another no-op decision.
+ADR-035 documents the expanded test-only contract.  The public
+issuer, live account registration, S3 publication, and release gate
+remain untouched.

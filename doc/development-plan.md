@@ -197,6 +197,22 @@ This does **not** close the release gate for real ACME account reuse,
 due renewal, SAN changes, or publication.  Those require environment-
 protected staging credentials and independent end-to-end validation.
 
+### Phase 4H: repeated fresh-run continuity of ARI metadata
+
+Extend the real Certbot 5.8.0 compatibility job to three independent
+workspaces.  B restores the initial account and lineage, records a
+guarded ARI scheduling change while making a no-op renewal decision,
+and repackages the domain archive.  C validates and stages only
+the common archive from A and the updated domain archive from B.
+After A and B have both been destroyed, C must inspect the lineage
+and make another real no-op decision with the original account,
+certificate/key material, and retained ARI scheduling metadata.
+
+ADR-035 governs this isolated testing extension.  A successful
+test does not implement remote publication of ARI-only changes or
+satisfy due-renewal, SAN update, and real account requirements.
+
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.

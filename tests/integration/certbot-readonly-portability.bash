@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# A credential-free Certbot 5.8.0 portability and no-op renewal smoke test.
+# A three-workspace Certbot 5.8.0 no-op and ARI continuity smoke test.
 # Synthetic account records cannot establish ACME registration validity.
 # This exercises read-only inspection and a no-op renewal decision after relocating
-# one validated certificate lineage between disposable producer workspaces.
+# one validated certificate lineage across three disposable producer workspaces.
 
 set -euo pipefail
 umask 077
@@ -249,8 +249,77 @@ tar -xOzf "$tmp/archives/post-noop-domain.tar.gz" \
 [[ "$(sha256sum -- "$new/archive/example.com/cert1.pem" | cut -d ' ' -f1)" == "$before_cert" ]]
 [[ "$(sha256sum -- "$new/archive/example.com/privkey1.pem" | cut -d ' ' -f1)" == "$before_key" ]]
 
+# Capture B's non-certificate ARI scheduling metadata and remove all of
+# runner B's files.  The last archive now is the only durable lineage state.
+ari_b="$(sed -n '/^\[acme_renewal_info\]/,$p' "$new/renewal/example.com.conf")"
+[[ "$ari_b" == $'[acme_renewal_info]\nari_retry_after = '* ]]
+runner_b="$CERTBOTBOT_WORKSPACE_ROOT"
 certbotbot_renewal_preview_discard
 certbotbot_restore_discard
 certbotbot_common_discard
 certbotbot_workspace_destroy
-printf '%s\n' 'Real Certbot 5.8.0 lineage loading and offline no-op renewal passed across isolated workspaces'
+[[ ! -e "$runner_b" && ! -e "$original" ]]
+
+# Runner C restores ONLY the common archive from A and the updated domain
+# archive from B.  No predecessor filesystem is available for Certbot.
+mkdir -m 0700 "$tmp/third-parent"
+export CERTBOTBOT_TMPDIR="$tmp/third-parent"
+certbotbot_workspace_create
+certbotbot_restore_domain "$tmp/archives/post-noop-domain.tar.gz" example.com
+certbotbot_common_restore "$tmp/archives/common-latest.tar.gz"
+certbotbot_renewal_path_preview example.com production
+third="$CERTBOTBOT_WORKSPACE_CONFIG"
+for directory in archive live combined; do
+  cp -a -- "$CERTBOTBOT_RESTORE_ROOT/$directory" "$third/$directory"
+done
+cp -a -- "$CERTBOTBOT_COMMON_STAGE/accounts" "$third/accounts"
+mkdir -m 0700 "$third/renewal"
+cp -- "$CERTBOTBOT_RENEWAL_PREVIEW" "$third/renewal/example.com.conf"
+chmod 0600 -- "$third/renewal/example.com.conf"
+
+# Relocation affects only the five paths.  ARI is the same as written by
+# runner B, while all certificate/account key bytes are unchanged.
+ari_c="$(sed -n '/^\[acme_renewal_info\]/,$p' "$third/renewal/example.com.conf")"
+[[ "$ari_c" == "$ari_b" ]]
+[[ "$(sha256sum -- "$third/archive/example.com/cert1.pem" | cut -d ' ' -f1)" == "$before_cert" ]]
+[[ "$(sha256sum -- "$third/archive/example.com/privkey1.pem" | cut -d ' ' -f1)" == "$before_key" ]]
+[[ "$(sha256sum -- "$third/accounts/acme-v02.api.letsencrypt.org/directory/$account/private_key.json" | cut -d ' ' -f1)" == "$old_account_digest" ]]
+
+"$CERTBOT" certificates --non-interactive --config-dir "$third" \
+  --work-dir "$CERTBOTBOT_WORKSPACE_WORK" \
+  --logs-dir "$CERTBOTBOT_WORKSPACE_LOGS" \
+  >"$tmp/third-certs.out" 2>"$tmp/third-certs.err"
+grep -Fq 'Certificate Name: example.com' "$tmp/third-certs.out"
+rm -f -- "$marker"
+if ! env PYTHONPATH="$tmp/no-network" CERTBOTBOT_NETWORK_MARKER="$marker" \
+  "$CERTBOT" renew --non-interactive --cert-name example.com \
+  --no-directory-hooks --no-random-sleep-on-renew \
+  --config-dir "$third" --work-dir "$CERTBOTBOT_WORKSPACE_WORK" \
+  --logs-dir "$CERTBOTBOT_WORKSPACE_LOGS" \
+  >"$tmp/third-renew.out" 2>"$tmp/third-renew.err"; then
+  printf '%s\n' 'Third-run Certbot no-op failed:' >&2
+  cat "$tmp/third-renew.out" "$tmp/third-renew.err" >&2
+  exit 1
+fi
+if ! grep -Eqi 'not (yet )?due|no renewals were attempted|not scheduled for renewal' \
+  "$tmp/third-renew.out" "$tmp/third-renew.err"; then
+  printf '%s\n' 'Third-run Certbot did not report no-renewal decision:' >&2
+  cat "$tmp/third-renew.out" "$tmp/third-renew.err" >&2
+  exit 1
+fi
+if [[ -e "$marker" ]] &&
+  { grep -Evq '^socket[.]getaddrinfo$' "$marker" ||
+    ! grep -Fq 'ACME Renewal Information (ARI)' "$tmp/third-renew.err"; }; then
+  printf '%s\n' 'Unexpected third-run socket activity:' >&2
+  cat "$marker" "$tmp/third-renew.out" "$tmp/third-renew.err" >&2
+  exit 1
+fi
+[[ "$(sha256sum -- "$third/archive/example.com/cert1.pem" | cut -d ' ' -f1)" == "$before_cert" ]]
+[[ "$(sha256sum -- "$third/archive/example.com/privkey1.pem" | cut -d ' ' -f1)" == "$before_key" ]]
+
+certbotbot_renewal_preview_discard
+certbotbot_restore_discard
+certbotbot_common_discard
+certbotbot_workspace_destroy
+[[ -z "$(find "$tmp/new-parent" "$tmp/third-parent" -mindepth 1 -print)" ]]
+printf '%s\n' 'Certbot 5.8.0 no-op/ARI continuity passed across three independent runs'

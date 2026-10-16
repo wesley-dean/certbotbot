@@ -48,6 +48,22 @@ the test permits that blocked lookup, but rejects unexpected socket calls.  It d
 a DNS challenge, or prove an actual due renewal.  This is a test-only
 exception documented in ADR-034; normal public issuance stays disabled.
 
+## Three-workspace ARI continuity test
+
+The real-Certbot integration suite now also models a **third independent
+producer run**.  Runner A creates the synthetic account and lineage,
+runner B restores those archives and makes a real Certbot no-renewal
+decision, and runner C restores B's updated domain archive after
+both preceding workspaces have been destroyed.  Certbot must still
+recognize the lineage and decide not to renew.  The common account
+key, certificate, and private key must remain identical, and any
+accepted ARI scheduling state must survive the second archival cycle.
+
+The test remains credential-free and test-only.  It does not prove
+real ACME renewal, S3 persistence, SAN updates, or execution across
+different cloud providers.  See ADR-035.
+
+
 ## Certificate inputs
 
 A single invocation may accept `certbotbot.bash foo.com www.foo.com` or `certbotbot.bash "foo.com www.foo.com"`.  A multi-line `CERTIFICATES` input describes one certificate per line:
