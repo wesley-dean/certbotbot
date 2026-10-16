@@ -248,3 +248,20 @@ restored account/renewal-server consistency, provide a controlled
 staging CA bundle for ADR-029 certificate verification, and prove
 continuity on independent ephemeral workers.  Staging certificates are
 not production-trusted.  Do not enable automatic releases yet.
+
+## Phase 4D account/lineage identity verification
+
+The proposed `agent/feat/verify-restored-acme-environment` PR adds
+`lib/state-identity.bash` and ADR-031.  It checks one restored
+`renewal/<name>.conf` for unique `server`, `account`, and
+`authenticator` values, then verifies the referenced private account
+triplet under the selected production/staging authority.  It rejects
+cross-environment renewal state, ambiguous identity, missing account
+keys, unrecognized sections, and hook directives.  The change is
+read-only and tests use synthetic restored state without network calls.
+
+The unresolved release gates remain Certbot account selection and
+registration status, renewal-config absolute path portability,
+independent workspace integration, certificate SAN validation,
+verification invocation before publication, S3 consistency, optional
+GPG handling, and release preparation.  Do not enable issuance yet.

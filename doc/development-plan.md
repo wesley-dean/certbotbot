@@ -131,6 +131,21 @@ valid staging certificate is not publicly trusted and must never replace
 the production archive with the same lineage identity.
 
 
+### Phase 4D: verify restored account/environment identity
+
+ADR-031 adds an internal read-only check that a staged lineage renewal
+file references the exact selected production/staging Let's Encrypt
+server and a complete restored account in the correct authority
+directory.  Duplicate critical fields, missing account files,
+unknown authentication, and unsafe hook metadata fail closed.
+
+This check must be used by the future issuer before Certbot, but it does
+not itself select the account or solve renewal path portability.  The
+next integration step must prove account selection, safe renewal metadata,
+and fully portable paths across freshly created runner workspaces.
+No live issuer or release gate is enabled by this step.
+
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.

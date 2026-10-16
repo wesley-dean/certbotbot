@@ -269,6 +269,25 @@ staging trust-root verification, and fresh-workspace interoperability
 must be proven in both environments.
 
 
+## Restored account/lineage ACME identity gate
+
+Before presenting restored state to Certbot, the producer MUST confirm
+that `renewal/<name>.conf` contains unique
+`[renewalparams]` values for `server`, `account`, and
+`authenticator`, corresponding to the selected Let's Encrypt authority,
+one available private account file triplet, and `dns-route53`.
+A mismatched staging/production server, absent account, or duplicate
+critical fields MUST fail closed without any Certbot or S3 side effects.
+External renewal files are parsed as data only and never sourced or
+executed.  Hook directives are not accepted during this identity preflight.
+
+This read-only guard does not guarantee valid account JSON,
+registration state, Certbot account selection, safe renewal options,
+or portable absolute paths in renewal metadata.  Those further
+semantic and integration checks remain prerequisites to enabling
+issuance.  See ADR-031.
+
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.
