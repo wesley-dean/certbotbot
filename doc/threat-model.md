@@ -157,3 +157,15 @@ Cross-platform scheduling remains an operational single-writer requirement,
 since local and per-CI locks do not coordinate all runners.  The complete
 continuity claim requires fresh-workspace integration, not merely valid
 tar archive structure.
+
+## Cryptographic publication verification and test/prod isolation
+
+Structural validation does not prove the private key matches the leaf
+certificate, that the certificate chain validates to a trusted CA, or
+that the combined PEM outputs retain the validated bytes.  ADR-029
+introduces a runtime OpenSSL gate that MUST precede any remote publication.
+It uses a private verification workspace and has no cloud side effects.
+Staging trust roots must be explicit rather than disabling verification.
+Issue #11 also requires physical/logical separation between staging and
+production object names: the same lineage must never allow test credentials
+or test certificates to replace production TLS material.

@@ -213,3 +213,19 @@ workspace destroyed between runs.  If additional Certbot shared state
 proves necessary, the account-only archive policy must be amended under
 review.  Independent writers must remain externally serialized until
 storage-backed locking is available.
+
+## Certificate-testing and CA-environment backlog (issues #11/#12)
+
+Issue #12 defines a shipped cryptographic verification gate prior to
+object publication, not merely CI testing.  ADR-029 introduces a
+standalone OpenSSL-based validator and tests for certificate/key match,
+trusted chain, current validity, and exact combined PEMs.  Its presence
+is **not** evidence of a working issuer until it is called on the
+publication path and a negative S3-preservation test passes.
+
+Issue #11 requests production by default with a deliberate Let's Encrypt
+staging toggle.  Staging account identities and certificate objects MUST
+not collide with production objects of the same lineage.  A reviewable
+follow-up must define mode-specific storage namespaces and trust anchors
+before production use.  Do not conflate valid staging certificates with
+certificates trusted by production clients.

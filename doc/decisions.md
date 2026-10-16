@@ -262,3 +262,16 @@ verification and renewal portability are future release gates.  Consumers
 of issued certificates do not require or receive this common archive.
 
 See [ADR-028](adr/ADR-028-isolated-common-acme-account-state.md).
+
+### ADR-029: Pre-Publication Cryptographic Certificate Verification
+
+Certificate archives cannot be published solely because Certbot succeeded
+or the files match the expected directory layout.  An OpenSSL runtime gate
+must validate current X.509 validity, the private-key/public-key match,
+TLS-server certificate-chain trust, and exact combined PEM outputs.
+The gate accepts explicit trusted roots for staging while retaining the
+normal system trust configuration for production.  Its isolated presence
+does not enable issuance: the producer must later invoke it on every
+publication path, with failure blocking all object mutations.
+
+See [ADR-029](adr/ADR-029-pre-publication-cryptographic-verification.md).

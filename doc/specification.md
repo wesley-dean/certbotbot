@@ -217,6 +217,33 @@ implemented, independent writers against one archive namespace MUST be
 serialized externally.  Cross-run portability does not imply safe
 simultaneous execution.
 
+## Pre-publication cryptographic verification
+
+Every selected lineage MUST pass an explicit OpenSSL verification step
+after PEM assembly and before any S3 object is overwritten.  This
+verifies leaf X.509 validity at the current time, private-key integrity,
+public-key correspondence (algorithm independent), chain verification for
+TLS server use against trusted roots, first fullchain certificate matching
+the leaf, and exact restrictive combined PEM contents.  Any failure MUST
+prevent publication.  The producer MUST additionally reconcile the
+actual certificate SANs with the requested names before publishing.
+Verification is not a claim of compatibility with individual services.
+
+A custom trusted CA bundle is allowed for controlled staging roots.
+OpenSSL's configured trust store is used otherwise.  The final runtime
+image/native prerequisites MUST include OpenSSL.  This gate implements
+issue #12 and ADR-029; the initial internal function alone does not
+activate certificate issuance.
+
+Issue #11 separately requires an opt-in Let's Encrypt staging mode,
+defaulting to production.  The future mode switch MUST isolate account
+selection and **staging vs production archive keys/namespaces**, so
+testing can never overwrite a production certificate archive by sharing
+the same lineage identifier.  It must also determine the correct
+verification trust roots.  No unreviewed arbitrary-ACME-endpoint option
+is part of that backlog issue.
+
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.
