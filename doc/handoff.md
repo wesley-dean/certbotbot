@@ -148,3 +148,21 @@ resists traversal, symlink pivoting, hostile metadata, and unsupported tar
 entry types.  Do not interpret the current local PEM link checks as a general
 untrusted-archive safety validator.  Cryptographic certificate/private-key
 matching and portable Certbot renewal metadata remain outstanding.\n
+## Phase 4A domain archive manifest preflight
+
+The PR proposed on `agent/feat/validate-domain-archive-layout` adds
+`lib/archive-validate.bash` with a strict GNU tar verbose-manifest
+allowlist for a *single* requested certificate lineage, plus hostile-tar
+Bats tests and governing ADR-026.  It does not extract, decrypt, download,
+upload, or enable issuance.  It rejects unknown member names, traversal,
+hard links, special entries, duplicate members, invalid symlinks,
+missing required files, unsafe key/combined PEM modes, and unbounded
+declared file sizes/counts.  No guarantee of immunity to all compressed
+stream denial-of-service attacks is made.
+
+Next implementation work must add an independently reviewed safe extraction
+strategy into an isolated, freshly owned staging directory, then verify the
+resulting filesystem, cryptographic key/certificate relationships, and
+Certbot renewal path portability.  The common account archive requires a
+separate structural and secret-handling policy.  Avoid using the manifest
+validator as a replacement for these gates.\n

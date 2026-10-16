@@ -231,3 +231,9 @@ See [ADR-024](adr/ADR-024-released-coding-standards-governance.md).
 The built-in Route53 adapter constructs a DNS-only, named Certbot certonly invocation using a complete explicit SAN set and renewal-aware flags.  Producer workspace paths must be private, and archived renewal metadata must remain portable when restored on another host or into another transient directory.  A mocked adapter alone does not authorize public certificate issuance or publishing.  Real restore, no-op renewal, and changed-SAN integration evidence are required before enabling the production workflow.
 
 See [ADR-025](adr/ADR-025-certbot-state-portability-and-issuance-boundary.md).
+
+### ADR-026: Strict Pre-Extraction Validation of Domain Archive Manifests
+
+Domain archives are inspected with a strict GNU tar metadata allowlist before any extraction.  The preflight permits only the requested lineage's expected directories, versioned PEM files, renewal metadata, and four canonical relative live symlinks, while rejecting unexpected links, traversal, duplicate members, and unsafe private-key-bearing modes.  This validation is a necessary but insufficient prerequisite to restoration because it neither extracts files nor proves their contents or renewal-state portability.  The common account archive and safe extraction require separate reviewed contracts.
+
+See [ADR-026](adr/ADR-026-validated-domain-archive-manifests.md).

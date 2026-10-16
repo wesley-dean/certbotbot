@@ -113,3 +113,15 @@ correspondence.  Its owner checks do not defend against an attacker with
 the producer user's credentials.  No producer workflow yet calls the module,
 so this is tested local functionality rather than an end-to-end security
 claim.\n
+## Domain archive pre-extraction listing boundary
+
+The internal domain-only tar validator rejects noncanonical lineage
+members, cross-lineage or absolute symlink targets, dangerous entry types,
+duplicate paths, missing required state, and permissive key-bearing file
+modes.  This metadata inspection is non-mutating.  Archive listings can
+themselves be resource intensive; metadata inspection does not guarantee
+safe extraction or content integrity.  The producer must copy the downloaded
+object into a private workspace, enforce decompression budgets, validate
+all extraction effects and actual key/certificate contents, and refuse to
+publish until restoration and renewal config portability are proven.
+The common ACME archive requires a separate policy.\n

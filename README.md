@@ -59,6 +59,20 @@ Certbot renewal configuration paths.  Two local output renames are individually
 atomic, not a two-file transaction.  The producer must complete all later
 checks before remote publication.
 
+## Domain archive manifest validation (Phase 4A)
+
+The internal domain archive validator now inspects the GNU tar manifest
+without extracting any contents.  It accepts only the requested lineage's
+versioned PEMs, four expected Certbot live symlinks, renewal configuration,
+and both combined PEM files.  Unexpected paths, traversal, duplicate
+members, special file types, missing symlink targets, and unsafe private-key
+modes are rejected.  The validator is covered by hostile-archive tests.
+
+**This does not yet implement archive restoration.**  Preflight listing
+does not prove that extraction, renewal metadata, or certificate/key
+cryptographic contents are safe.  No public issuance or S3 publication
+is enabled.  See ADR-026 for this explicit security boundary.
+
 ## Archive format and deployment separation
 
 The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).
