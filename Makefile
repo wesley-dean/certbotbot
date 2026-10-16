@@ -3,7 +3,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
-PROJECT_NAME ?= template-bash
+PROJECT_NAME ?= certbotbot
 ifneq ($(words $(PROJECT_NAME)),1)
 $(error PROJECT_NAME must be one non-empty whitespace-free word)
 endif
@@ -15,7 +15,11 @@ DIST_SCRIPTS := $(DIST_DEV_SCRIPT) $(DIST_SCRIPT) $(DIST_MIN_SCRIPT)
 DIST_CHECKSUMS := $(addsuffix .sha256,$(DIST_SCRIPTS))
 LEGACY_CHECKSUMS := $(addsuffix .256,$(DIST_SCRIPTS))
 CORE_SOURCE_FILES := lib/plugin-registry.bash
-PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash))
+## Plugins are discovered exclusively from maintained source at build time.
+## The first functional DNS/storage provider modules arrive in Phase 2.
+PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash) \
+                          $(wildcard lib/plugins/dns/*.bash) \
+                          $(wildcard lib/plugins/storage/*.bash))
 ENTRYPOINT_SOURCE := src/main.bash
 SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(ENTRYPOINT_SOURCE)
 TEST_SCRIPTS := $(sort $(wildcard tests/*.bats))
@@ -30,6 +34,8 @@ BASHDEPS_SHA256 := bb6c807fa12c010950bda06172ac0611d278c57aca1f8352f41502d0d76b4
 BASH_MINIFIER := $(VENDOR_DIR)/bash-minifier.bash
 DOXYGEN_BASH_FILTER := $(VENDOR_DIR)/doxygen-bash.awk
 ADRCTL := $(VENDOR_DIR)/adrctl.bash
+MKTEXT := $(VENDOR_DIR)/mktext.bash
+BASHLOG := $(VENDOR_DIR)/bashlog.bash
 ADR_DIR := doc/adr
 ADR_INDEX_INTRO := $(ADR_DIR)/README.intro.md
 ADR_INDEX_OUTRO := $(ADR_DIR)/README.outro.md
@@ -70,10 +76,10 @@ $(DIST_DEV_SCRIPT): FORCE $(SOURCE_FILES)
 		printf '%s\n' '# Discovered plugins: $(PLUGIN_SOURCE_FILES)'; \
 		printf '%s\n' '# Entrypoint: $(ENTRYPOINT_SOURCE)'; \
 		printf '\n'; \
-		printf 'BASH_STARTER_PROJECT_NAME=%q\n' "$(PROJECT_NAME)"; \
-		printf 'BASH_STARTER_VERSION=%q\n' "$(VERSION)"; \
-		printf 'BASH_STARTER_BUILD_DATE=%q\n' "$(BUILD_DATE)"; \
-		printf 'BASH_STARTER_BUILD_COMMIT=%q\n' "$(BUILD_COMMIT)"; \
+		printf 'CERTBOTBOT_PROJECT_NAME=%q\n' "$(PROJECT_NAME)"; \
+		printf 'CERTBOTBOT_VERSION=%q\n' "$(VERSION)"; \
+		printf 'CERTBOTBOT_BUILD_DATE=%q\n' "$(BUILD_DATE)"; \
+		printf 'CERTBOTBOT_BUILD_COMMIT=%q\n' "$(BUILD_COMMIT)"; \
 		printf '\n'; \
 		cat $(SOURCE_FILES); \
 	} >"$@.tmp"
@@ -114,12 +120,12 @@ format:
 
 ## Run the behavior suite against every generated artifact flavor.
 test: build
-	@set -e; for artifact in $(DIST_SCRIPTS); do printf 'Testing %s\n' "$$artifact"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats $(TEST_SCRIPTS); done
+	@set -e; for artifact in $(DIST_SCRIPTS); do printf 'Testing %s\n' "$$artifact"; CERTBOTBOT_ARTIFACT="$${PWD}/$$artifact" bats $(TEST_SCRIPTS); done
 
 ## Run every artifact flavor and emit one JUnit report per flavor.
 test-report: build
 	@mkdir -p "$(TEST_RESULTS_DIR)"
-	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
+	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; CERTBOTBOT_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
 
 FORCE:
 
@@ -171,7 +177,7 @@ docs:
 	$(MAKE) --no-print-directory docs-clean
 	$(MAKE) --no-print-directory adr-index
 	chmod 0755 "$(DOXYGEN_BASH_FILTER)"
-	BASH_STARTER_DOXYGEN_PROJECT_NAME="$(PROJECT_NAME)" doxygen Doxyfile
+	CERTBOTBOT_DOXYGEN_PROJECT_NAME="$(PROJECT_NAME)" doxygen Doxyfile
 
 ## Remove generated reference documentation and generated ADR navigation.
 docs-clean:
