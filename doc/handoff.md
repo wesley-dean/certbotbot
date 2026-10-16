@@ -229,3 +229,22 @@ not collide with production objects of the same lineage.  A reviewable
 follow-up must define mode-specific storage namespaces and trust anchors
 before production use.  Do not conflate valid staging certificates with
 certificates trusted by production clients.
+
+## Issue #11 staging environment implementation
+
+The proposed `agent/feat/letsencrypt-staging-mode` PR adds
+`lib/acme-environment.bash`, CLI `--staging` and
+`--acme-environment production|staging`, and
+`ACME_ENVIRONMENT` as a CI-friendly configuration input.  The Route53
+internal adapter explicitly selects one of two fixed Let's Encrypt URLs.
+Production object names remain backward compatible; staging uses
+`staging/`-prefixed common and domain keys, with cross-mode keys rejected
+by the S3 provider.  ADR-030 governs these contracts and the limitations
+of the first implementation.  Tests use fake Certbot and AWS executables
+across the three release flavors.
+
+The issuer remains disabled.  The next integration work must verify
+restored account/renewal-server consistency, provide a controlled
+staging CA bundle for ADR-029 certificate verification, and prove
+continuity on independent ephemeral workers.  Staging certificates are
+not production-trusted.  Do not enable automatic releases yet.

@@ -2,7 +2,7 @@
 
 setup() {
   : "${CERTBOTBOT_ARTIFACT:?CERTBOTBOT_ARTIFACT must identify the artifact under test}"
-  unset DNS_BACKEND STORAGE_BACKEND CERTIFICATES
+  unset DNS_BACKEND STORAGE_BACKEND CERTIFICATES ACME_ENVIRONMENT
 }
 
 @test "help describes the certificate interface and implementation state" {

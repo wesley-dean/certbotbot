@@ -27,6 +27,28 @@ bar.com mail.bar.com
 
 The first hostname supplies a certificate name.  Both its apex and `*.` wildcard are always requested, even when the first token is wildcard-only.  Remaining SANs are literal.  Omitted certificates are left alone; the tool will not delete or renew unrelated lineages.  Certbot decides when unchanged certificates need renewal; the wrapper has no fixed expiration threshold.
 
+## Production and staging selection (issue #11)
+
+Production is the default.  Use `--staging` or
+`--acme-environment staging`, or set `ACME_ENVIRONMENT=staging`, to
+select the fixed Let's Encrypt staging ACME API.  The explicit
+`--acme-environment production` option selects production.  Invalid
+modes or contradictory CLI flags fail closed.
+
+Staging uses separate S3 object keys in the same configured bucket:
+`staging/common-latest.tar.gz` and
+`staging/<name>-latest.tar.gz` (including `.enc` equivalents).
+Production retains existing unprefixed object keys for compatibility.
+The S3 adapter refuses cross-mode keys.  Operators may also enforce
+separation through IAM or different buckets.
+
+**Staging-issued certificates are not trusted by ordinary browsers or
+clients.**  The future verification workflow must use a dedicated staging
+CA bundle; never add test roots to an ordinary production trust store.
+Mode selection is now present, but actual issuance and publication
+remain disabled pending integration and security gates.  See ADR-030.
+
+
 ## Certificate request preflight (Phase 2)
 
 Use `--validate` to normalize and inspect certificate groups without contacting Certbot, AWS, or an ACME server:

@@ -115,6 +115,22 @@ pre-release requirement if staging is used for safe end-to-end testing;
 it does not justify opening arbitrary ACME URLs in the first release.
 
 
+### Issue #11: production/staging mode selection
+
+Implement a production-default selector, a fixed Let's Encrypt staging
+endpoint, and storage key separation without renaming production archives.
+The explicit staging option and `ACME_ENVIRONMENT` variable select
+`staging/<archive-key>`; production remains unprefixed.  Reject cross-mode
+reads/writes in the built-in S3 provider and unknown ACME endpoints.
+An internal implementation and Bats tests are staged under ADR-030.
+
+Before live issuance, verify selected Certbot account/renewal metadata
+belongs to that ACME server, provide isolated staging test trust roots
+for ADR-029, and run complete cross-environment portability tests.  A
+valid staging certificate is not publicly trusted and must never replace
+the production archive with the same lineage identity.
+
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.

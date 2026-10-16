@@ -82,7 +82,7 @@ certbotbot_dns_route53_issue() {
   local LC_ALL=C
   local name=${1:-} config_dir=${2:-} work_dir=${3:-}
   local logs_dir=${4:-} email=${5:-} san
-  local seen_apex=false seen_wildcard=false
+  local seen_apex=false seen_wildcard=false acme_server=''
   local -a certbot_args=()
   local -A seen_domains=()
 
@@ -122,11 +122,15 @@ certbotbot_dns_route53_issue() {
     return 64
   fi
 
+  if ! acme_server="$(certbotbot_acme_directory "${ACME_ENVIRONMENT:-production}")"; then
+    return 64
+  fi
   certbotbot_dns_route53_challenge_args
   # Keep each Bash array assignment on one physical line: Bash-Minifier's
   # pinned release does not preserve multiline compound array initializers.
   certbot_args=(certonly --non-interactive)
   certbot_args+=("${CERTBOTBOT_DNS_CHALLENGE_ARGS[@]}")
+  certbot_args+=(--server "${acme_server}")
   certbot_args+=(--cert-name "${name}" --config-dir "${config_dir}")
   certbot_args+=(--work-dir "${work_dir}" --logs-dir "${logs_dir}")
   certbot_args+=(--keep-until-expiring --renew-with-new-domains --agree-tos)
