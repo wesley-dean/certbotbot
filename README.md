@@ -2,6 +2,20 @@
 
 certbotbot is a planned standalone Bash tool for issuing and renewing Let's Encrypt TLS certificates through DNS-01 validation.  It restores shared ACME account state and separately managed certificate-lineage state from object storage, uses Certbot to obtain or renew only the requested certificates, generates combined PEM files, and publishes directly installable per-domain archives.  The current executable supports a deliberately side-effect-free `--validate` mode and statically bundled DNS/storage adapter registration.  **Certificate issuance and S3 persistence are not yet implemented**: a normal certificate request fails with status 69.  The automatic release workflow remains gated by the explicit repository variable `CERTBOTBOT_RELEASE_ENABLED=true`.  See [implementation plan](doc/development-plan.md) and [handoff](doc/handoff.md).
 
+## Portable producer state
+
+The common archive is the portable, authoritative ACME account state, not
+an optional backup.  A future working issuer must start from an empty
+filesystem on Jenkins, GitHub Actions, or EC2 and function from the
+shared common and requested domain archives plus its normal external
+configuration and credentials.  The preceding runner's local Certbot files
+must never be necessary.  These runners may operate **sequentially**;
+cross-platform concurrent writers are unsupported until distributed
+storage locking is implemented.
+
+This is an end-to-end release requirement, **not yet implemented** by
+the current archive staging helpers.
+
 ## Certificate inputs
 
 A single invocation may accept `certbotbot.bash foo.com www.foo.com` or `certbotbot.bash "foo.com www.foo.com"`.  A multi-line `CERTIFICATES` input describes one certificate per line:

@@ -146,3 +146,14 @@ and private modes.  Account JSON is untrusted data after these checks;
 valid structure does not prove a genuine or active ACME account.  A future
 producer must verify account selection and server association before use.
 Common archive distribution to TLS-only consumers remains prohibited.
+
+## ACME continuity across producer environments
+
+The common account archive is the shared authority for ACME account
+continuity between otherwise stateless workers.  Losing this archive when
+lineage state exists must not silently generate an unrelated replacement
+account.  A fresh host cannot depend on its predecessor's private files.
+Cross-platform scheduling remains an operational single-writer requirement,
+since local and per-CI locks do not coordinate all runners.  The complete
+continuity claim requires fresh-workspace integration, not merely valid
+tar archive structure.

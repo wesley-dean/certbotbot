@@ -181,6 +181,34 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/private_key.json
   [ "$status" -eq 0 ]
 }
 
+@test "same common account archive restores on two fresh producer nodes" {
+  create_account
+  pack_common
+  local previous='' output parent
+  for parent in "$BATS_TEST_TMPDIR/jenkins" "$BATS_TEST_TMPDIR/actions"; do
+    mkdir -p "$parent"
+    run env CERTBOTBOT_TMPDIR="$parent" bash -c '
+      source "$1" --version >/dev/null
+      certbotbot_workspace_create || exit
+      certbotbot_common_restore "$2" || exit
+      key="$CERTBOTBOT_COMMON_STAGE/accounts/acme-v02.api.letsencrypt.org/directory/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/private_key.json"
+      [[ -f "$key" ]] || exit
+      digest="$(sha256sum -- "$key")" || exit
+      printf "%s\n" "${digest%% *}"
+      old="$CERTBOTBOT_COMMON_STAGE"
+      certbotbot_common_discard || exit
+      [[ ! -e "$old" ]] || exit
+      certbotbot_workspace_destroy
+    ' _ "$CERTBOTBOT_ARTIFACT" "$COMMON_TAR"
+    [ "$status" -eq 0 ]
+    if [[ -n $previous ]]; then
+      [ "$output" = "$previous" ]
+    fi
+    previous="$output"
+    [ -z "$(find "$parent" -mindepth 1 -print)" ]
+  done
+}
+
 @test "common archive remains unavailable to the public issuing command" {
   run "$CERTBOTBOT_ARTIFACT" example.com
   [ "$status" -eq 69 ]

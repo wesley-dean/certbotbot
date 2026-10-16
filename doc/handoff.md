@@ -200,3 +200,16 @@ renewal-config portability, certificate/key cryptographic matching,
 integration into active config, GPG encryption/decryption, S3 missing-object
 classification, publication sequencing, and live staging issuance.
 Do not enable the release gate.
+
+## Fresh-run producer portability acceptance
+
+The common archive exists to make ACME account identity portable between
+ephemeral, unrelated producer hosts.  Domain archives carry separate
+lineage history.  No machine-local Certbot registration or runner cache
+may be a necessary dependency for a later run.  ADR-028 and the product
+specification require a three-workspace test of issuance, account reuse,
+no-op renewal, and later SAN change or due renewal, with the previous
+workspace destroyed between runs.  If additional Certbot shared state
+proves necessary, the account-only archive policy must be amended under
+review.  Independent writers must remain externally serialized until
+storage-backed locking is available.

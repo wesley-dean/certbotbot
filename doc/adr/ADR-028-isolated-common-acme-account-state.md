@@ -34,6 +34,34 @@ A success produces a staged directory that must be explicitly discarded
 or consumed by a future reviewed operation.  It is not installed into
 `config/`, used to select an account, or forwarded to deployment hosts.
 
+## Location-independent producer invariant
+
+The common archive is the **durable shared ACME account state required to
+reconstruct a renewal-capable producer on a completely new execution node**.
+It is neither an optional cache nor just a disaster-recovery backup.  Jenkins,
+GitHub Actions, and EC2 must be able to restore the same account identity from
+the same storage collection without any prior machine's home directory,
+Certbot state, temporary workspace, or locally generated account key.
+
+A successful full producer run starts with an empty private workspace, fetches
+the common archive and requested domain archives, restores the original
+registered account and lineage, performs only the requested operation, and
+publishes updated durable state.  The entire local workspace may then be
+discarded without compromising the next run.  Cloud/DNS credentials, GPG
+passphrases, platform tooling, and runtime settings are injected into each
+runner independently; they are not part of the archived ACME account.
+
+The current account-only allowlist is a hypothesis about the supported
+Certbot version's shared persistence needs, not an excuse to lose required
+state.  Before enabling issuance, integration tests MUST prove that the
+archive plus the selected lineage archive suffices for a new runner to reuse
+the same ACME account.  If any additional shared files are necessary,
+review and amend this ADR and the allowed archive layout.
+
+An existing lineage alongside a missing or unusable common archive MUST
+fail closed rather than registering a new unrelated account.  Truly empty
+storage may initialize new account state when explicitly allowed.
+
 ## Context and constraints
 
 ADR-019 requires one common shared account archive plus separately

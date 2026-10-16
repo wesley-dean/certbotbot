@@ -14,6 +14,15 @@ Preserve full Certbot state for renewal while publishing domain archives that ar
 
 The predecessor persisted a monolithic `/etc/letsencrypt` tarball.  Multiple unrelated certificates on one web server then required sharing one renewal state and made isolation difficult.  Certbot keeps shared ACME account information separately from lineage-specific `archive/`, `live/`, and `renewal/` files.  The web server does not run Certbot and should not need to download ACME account material.
 
+## Producer portability requirement
+
+The common archive is the producer's authoritative portable account-state
+checkpoint.  It must allow later runs on fresh Jenkins, GitHub Actions, and
+EC2 workers using the same object-store namespace to reuse the original
+registration without access to the previous runner's filesystem.  Domain
+archives supply lineage-specific renewal state.  Test this through complete
+fresh-run integration, not archive-shape inspection alone.
+
 ## Decision Drivers
 
 - Renew independent certificate groups without restoring unrelated lineage state.
