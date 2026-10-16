@@ -189,6 +189,7 @@ fi
 [[ -s "$marker" ]]
 rm -f -- "$marker"
 
+cp -- "$new/renewal/example.com.conf" "$tmp/pre-noop-renewal.conf"
 before_conf="$(sha256sum -- "$new/renewal/example.com.conf" | cut -d ' ' -f1)"
 before_cert="$(sha256sum -- "$new/archive/example.com/cert1.pem" | cut -d ' ' -f1)"
 before_key="$(sha256sum -- "$new/archive/example.com/privkey1.pem" | cut -d ' ' -f1)"
@@ -223,7 +224,11 @@ if [[ -e "$marker" ]]; then
     exit 1
   fi
 fi
-[[ "$(sha256sum -- "$new/renewal/example.com.conf" | cut -d ' ' -f1)" == "$before_conf" ]]
+if [[ "$(sha256sum -- "$new/renewal/example.com.conf" | cut -d ' ' -f1)" != "$before_conf" ]]; then
+  printf '%s\n' 'Certbot changed local fixture renewal metadata during its no-op:' >&2
+  diff -u "$tmp/pre-noop-renewal.conf" "$new/renewal/example.com.conf" >&2 || :
+  exit 1
+fi
 [[ "$(sha256sum -- "$new/archive/example.com/cert1.pem" | cut -d ' ' -f1)" == "$before_cert" ]]
 [[ "$(sha256sum -- "$new/archive/example.com/privkey1.pem" | cut -d ' ' -f1)" == "$before_key" ]]
 
