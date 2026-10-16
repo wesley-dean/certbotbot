@@ -123,3 +123,9 @@ do not yet classify 404 versus authorization/transport errors, and failed
 downloads must never be trusted; Phase 4 owns that state machine.
 The production workflow must acquire and release the local lock with
 appropriate traps.  Storage-backed locking remains backlog work.
+
+## Phase 3A Certbot/Route53 command contract
+
+The next small PR, `agent/feat/certbot-route53-command-contract`, adds the internal Route53 `issue` dispatch with fixed Certbot DNS-01 options, an explicit lineage name, all SANs as individual `-d` arguments, and owned private config/work/log directories.  It uses `--keep-until-expiring` and `--renew-with-new-domains` rather than forcing every renewal.  Input failures and account configuration that the adapter cannot safely honor, including `REGISTER_ACCOUNT=false` without confirmed restored-account selection, fail before contacting Certbot.  Additional fake-Certbot Bats tests cover argv, missing SANs, permissions, and exit-status propagation.
+
+ADR-025 captures the unresolved portability requirement for Certbot's path-bearing renewal configurations.  The production entrypoint remains deliberately fail-closed with status 69, even after this command adapter is merged.  The next phase must securely restore state, select/reuse the ACME account, ensure renewal-config path portability across producer workspaces, and validate combined outputs before enabling public issuance.  Do not enable GitHub release publication yet.

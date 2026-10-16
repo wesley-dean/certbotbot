@@ -173,3 +173,102 @@ FAKE
   [ "${status}" -eq 75 ]
   wait "${holder}"
 }
+
+
+@test "Route53 issue constructs a fixed Certbot DNS-only argv vector" {
+  local config="${BATS_TEST_TMPDIR}/etc config"
+  local work="${BATS_TEST_TMPDIR}/work"
+  local logs="${BATS_TEST_TMPDIR}/logs"
+  mkdir -p "${config}" "${work}" "${logs}"
+  chmod 0700 "${config}" "${work}" "${logs}"
+
+  run bash -c 'source "$1" --version >/dev/null; certbotbot_dns_route53_run issue "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9"' \
+    _ "${CERTBOTBOT_ARTIFACT}" example.com "${config}" "${work}" "${logs}" \
+    admin@example.com example.com '*.example.com' www.example.com
+
+  [ "${status}" -eq 0 ]
+  local expected
+  expected="$(printf '<%s>\n' \
+    certonly --non-interactive \
+    --dns-route53 --preferred-challenges dns \
+    --cert-name example.com \
+    --config-dir "${config}" --work-dir "${work}" --logs-dir "${logs}" \
+    --keep-until-expiring --renew-with-new-domains --agree-tos \
+    --email admin@example.com \
+    -d example.com -d '*.example.com' -d www.example.com)"
+  [ "$(cat "${FAKE_CERTBOT_ARGS}")" = "${expected}" ]
+  [ ! -e "${FAKE_AWS_ARGS}" ]
+}
+
+@test "Route53 rejects missing apex or wildcard without invoking Certbot" {
+  local config="${BATS_TEST_TMPDIR}/config"
+  local work="${BATS_TEST_TMPDIR}/work"
+  local logs="${BATS_TEST_TMPDIR}/logs"
+  mkdir -p "${config}" "${work}" "${logs}"
+  chmod 0700 "${config}" "${work}" "${logs}"
+
+  run bash -c 'source "$1" --version >/dev/null; certbotbot_dns_route53_issue "$2" "$3" "$4" "$5" "$6" "$7" "$8"' \
+    _ "${CERTBOTBOT_ARTIFACT}" example.com "${config}" "${work}" "${logs}" \
+    admin@example.com example.com www.example.com
+  [ "${status}" -eq 64 ]
+  [ ! -e "${FAKE_CERTBOT_ARGS}" ]
+}
+
+@test "Route53 rejects untrusted Certbot state directory permissions" {
+  local config="${BATS_TEST_TMPDIR}/config"
+  local work="${BATS_TEST_TMPDIR}/work"
+  local logs="${BATS_TEST_TMPDIR}/logs"
+  mkdir -p "${config}" "${work}" "${logs}"
+  chmod 0755 "${config}"
+  chmod 0700 "${work}" "${logs}"
+
+  run bash -c 'source "$1" --version >/dev/null; certbotbot_dns_route53_issue "$2" "$3" "$4" "$5" "$6" "$7" "$8"' \
+    _ "${CERTBOTBOT_ARTIFACT}" example.com "${config}" "${work}" "${logs}" \
+    admin@example.com example.com '*.example.com'
+  [ "${status}" -eq 64 ]
+  [ ! -e "${FAKE_CERTBOT_ARGS}" ]
+}
+
+@test "Route53 terms rejection and unsupported no-registration mode fail closed" {
+  local config="${BATS_TEST_TMPDIR}/config"
+  local work="${BATS_TEST_TMPDIR}/work"
+  local logs="${BATS_TEST_TMPDIR}/logs"
+  mkdir -p "${config}" "${work}" "${logs}"
+  chmod 0700 "${config}" "${work}" "${logs}"
+
+  export AGREE_TOS=false
+  run bash -c 'source "$1" --version >/dev/null; certbotbot_dns_route53_issue "$2" "$3" "$4" "$5" "$6" "$7" "$8"' \
+    _ "${CERTBOTBOT_ARTIFACT}" example.com "${config}" "${work}" "${logs}" \
+    admin@example.com example.com '*.example.com'
+  [ "${status}" -eq 64 ]
+  [ ! -e "${FAKE_CERTBOT_ARGS}" ]
+
+  export AGREE_TOS=true REGISTER_ACCOUNT=false
+  run bash -c 'source "$1" --version >/dev/null; certbotbot_dns_route53_issue "$2" "$3" "$4" "$5" "$6" "$7" "$8"' \
+    _ "${CERTBOTBOT_ARTIFACT}" example.com "${config}" "${work}" "${logs}" \
+    admin@example.com example.com '*.example.com'
+  [ "${status}" -eq 69 ]
+  [ ! -e "${FAKE_CERTBOT_ARGS}" ]
+  unset AGREE_TOS REGISTER_ACCOUNT
+}
+
+@test "Route53 propagates failed Certbot calls unchanged" {
+  local config="${BATS_TEST_TMPDIR}/config"
+  local work="${BATS_TEST_TMPDIR}/work"
+  local logs="${BATS_TEST_TMPDIR}/logs"
+  mkdir -p "${config}" "${work}" "${logs}"
+  chmod 0700 "${config}" "${work}" "${logs}"
+  export FAKE_CERTBOT_STATUS=31
+  run bash -c 'source "$1" --version >/dev/null; certbotbot_dns_route53_issue "$2" "$3" "$4" "$5" "$6" "$7" "$8"' \
+    _ "${CERTBOTBOT_ARTIFACT}" example.com "${config}" "${work}" "${logs}" \
+    admin@example.com example.com '*.example.com'
+  [ "${status}" -eq 31 ]
+  [ -f "${FAKE_CERTBOT_ARGS}" ]
+}
+
+@test "public issuance still refuses remote operations in Route53 staging" {
+  run "${CERTBOTBOT_ARTIFACT}" example.com
+  [ "${status}" -eq 69 ]
+  [ ! -e "${FAKE_CERTBOT_ARGS}" ]
+  [ ! -e "${FAKE_AWS_ARGS}" ]
+}

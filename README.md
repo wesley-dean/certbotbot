@@ -35,7 +35,7 @@ arguments (never `eval`) and reject unexpected object keys and endpoint
 syntax.  The lock directory is private to its owning user and may be set with
 `CERTBOTBOT_LOCK_DIR`; by default it is in the user's runtime/state area.
 
-These operations are **not yet connected to normal certificate issuance**.
+Route53 now also has an internal, mock-testable `certonly` command adapter with named lineages, separate SAN arguments, and DNS-only challenge selection.  This includes Certbot renewal-aware flags but does not yet solve persistent renewal-configuration path portability.  These operations are **not yet connected to normal certificate issuance**.
 `certbotbot.bash foo.com` still exits 69 without any remote side effects.
 The first implementation release must acquire a lock before reading remote
 state, validate every restored archive, and publish only after all requested

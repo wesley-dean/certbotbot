@@ -89,3 +89,14 @@ The first release does not promise atomic multi-object publication, cross-platfo
 ## Verification strategy and review triggers
 
 Bats should include negative assertions (no upload on invalid input/failed renewal; no plaintext fallback; no secret logs; no unsafe path extraction) plus functional tests for symlinks, combined PEMs, and independent archive composition.  Integration tests should use isolated storage and Let's Encrypt staging with non-production DNS resources.  Revisit this model when adding DNS providers, storage providers, alternate encryption, GPG rotation, distributed locking, signed archives, CI permissions, or new runtime dependencies.
+
+## Route53 issuance adapter safeguards
+
+The isolated Route53 adapter uses a fixed `certonly` DNS-01 argument vector,
+requires owned private Certbot directories, and passes each SAN as a separate
+quoted argument.  Mock tests exercise malformed/missing SAN rejection,
+unexpected directory permissions, and Certbot failure propagation.  The
+public executable still has no issuance path.  A successful mock invocation
+does not establish portability of imported Certbot renewal metadata, validate
+potential hooks in restored state, or demonstrate real ACME issuance.  ADR-025
+requires restore-to-new-workspace integration tests before activation.
