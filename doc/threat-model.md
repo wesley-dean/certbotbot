@@ -217,3 +217,14 @@ metadata and locally generated locally CA-signed test certificates, so no extern
 registration or chain trust is implied.  Pinning Certbot does not fully
 pin transitive Python packages, and dependencies installed in a CI
 environment remain part of the build/test supply-chain attack surface.
+
+## Credential-free real Certbot no-op compatibility exercise
+
+ADR-034 permits a CI-only invocation of `certbot renew` against
+a locally generated certificate that is not due.  A Python-level
+socket guard is installed and self-tested, directory hooks are
+disabled, and absence of attempted network access is asserted.
+This is not OS-level network isolation, nor does it prove that
+external or native subprocesses could never make network requests.
+No real ACME credentials, DNS secrets, or S3 authorization are used.
+Activation of real renewal or remote publication remains forbidden.

@@ -329,3 +329,17 @@ demonstrate real registration, renewal, or SAN changes.  Those remain
 mandatory integration gates under ADR-025.
 
 See [ADR-033](adr/ADR-033-readonly-certbot-portability-test.md).
+
+### ADR-034: Network-Guarded Certbot No-Op Renewal Compatibility Test
+
+The portable-state integration suite may run pinned Certbot's real
+`renew --cert-name` command against an independently reconstructed
+lineage when the locally signed certificate is clearly not due.
+The test guards Python socket connections, disables directory hooks,
+and requires a recognizable no-op decision without altering renewal
+metadata or certificate/private-key bytes.  Synthetic account JSON
+cannot prove actual registration, and this permission is confined to
+disposable CI fixtures.  Live ACME renewal, SAN changes, and archive
+publication remain separate release gates.
+
+See [ADR-034](adr/ADR-034-network-guarded-certbot-noop-renewal.md).

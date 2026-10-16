@@ -31,6 +31,20 @@ Certbot account registration, a no-op renewal, SAN replacement, or
 deployment.  ADR-033 permits test-only installation of the preview;
 the product still cannot activate issuance or publication.
 
+## Certbot no-op renewal across independent workspaces
+
+An opt-in, credential-free CI test reconstructs a domain archive and a
+synthetic common-account archive on a completely new workspace after
+deleting the predecessor.  It runs real Certbot 5.8.0's selected-lineage
+`renew` command for a freshly generated 90-day certificate that is
+not due for renewal, and verifies an explicit no-op decision and
+unchanged certificate, key, and renewal configuration.
+
+The harness intercepts Python socket connection APIs and fails if they
+are invoked.  It does not contain real ACME account credentials, send
+a DNS challenge, or prove an actual due renewal.  This is a test-only
+exception documented in ADR-034; normal public issuance stays disabled.
+
 ## Certificate inputs
 
 A single invocation may accept `certbotbot.bash foo.com www.foo.com` or `certbotbot.bash "foo.com www.foo.com"`.  A multi-line `CERTIFICATES` input describes one certificate per line:

@@ -178,6 +178,21 @@ working Route53 staging DNS-01 challenges, no-op renewal, intended SAN
 changes, and preserved external state across Jenkins, Actions, and EC2.
 No public issuance or publication path is activated.
 
+### Phase 4G: real Certbot no-op decision on restored state
+
+ADR-034 permits CI-only invocation of actual Certbot 5.8.0
+`renew --cert-name` for a 90-day locally issued fixture restored
+under a different private workspace root.  The original workspace
+must be removed, Python socket connection APIs must be blocked by a
+test-specific guard, and no certificate, key, or renewal config bytes
+may change.  Both the common-account archive and the selected
+domain archive must be restored before this check, with account-key
+identity preserved.  All three release artifact flavors run the test.
+
+This does **not** close the release gate for real ACME account reuse,
+due renewal, SAN changes, or publication.  Those require environment-
+protected staging credentials and independent end-to-end validation.
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.
