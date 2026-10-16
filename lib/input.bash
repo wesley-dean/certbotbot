@@ -28,6 +28,7 @@ declare -a CERTBOTBOT_REQUEST_SANS=()
 ## @par Standard Output
 ## Nothing is written to STDOUT.
 certbotbot_validate_hostname() {
+  local LC_ALL=C
   local hostname=${1:-} label
   local -a labels=()
 
@@ -66,6 +67,7 @@ certbotbot_validate_hostname() {
 ## @par Standard Output
 ## Nothing is written to STDOUT.
 certbotbot_input_add_line() {
+  local LC_ALL=C
   local line=${1:-} raw name primary san existing
   local -a tokens=() sans=()
   local -A seen=()

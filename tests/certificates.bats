@@ -133,6 +133,11 @@ setup() {
   [ "${status}" -eq 64 ]
 }
 
+@test "non-ASCII names are rejected independently of the host locale" {
+  run env LC_ALL=C.UTF-8 "${CERTBOTBOT_ARTIFACT}" --validate 'éxample.com'
+  [ "${status}" -eq 64 ]
+}
+
 @test "invalid wildcard placement is rejected" {
   run "${CERTBOTBOT_ARTIFACT}" --validate '*.*.foo.com'
   [ "${status}" -eq 64 ]
