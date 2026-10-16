@@ -288,6 +288,26 @@ semantic and integration checks remain prerequisites to enabling
 issuance.  See ADR-031.
 
 
+## Candidate renewal path relocation, not yet activated
+
+Restored Certbot renewal metadata may refer to absolute paths from the
+previous ephemeral producer.  An internal non-activating preview helper
+first requires the ADR-031 account/environment identity check, then
+validates that `archive_dir`, `cert`, `chain`, `fullchain`, and
+`privkey` all reference the requested lineage beneath exactly one
+original absolute config root.  It rejects missing or duplicate path
+fields, cross-lineage paths, noncanonical old roots, unknown top-level
+assignments, and inherited Certbot directory overrides.
+
+Only if all checks pass, it creates a **new, private** renewal file
+whose five paths point to the current recorded workspace config
+directory; the stored source remains byte-identical.  This file is
+not installed or submitted to Certbot.  Actual activation requires
+real Certbot integration evidence and an additional reviewed decision.
+ADR-025 remains the governing production portability contract.
+See ADR-032.
+
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.

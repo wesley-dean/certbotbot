@@ -301,3 +301,17 @@ Further integration and portability testing remain mandatory before
 issuance or publication.
 
 See [ADR-031](adr/ADR-031-restored-acme-account-and-lineage-identity.md).
+
+### ADR-032: Validated, Non-Activating Renewal Path Rebase Preview
+
+An internal helper may generate a separate private preview of the five
+Certbot renewal path values relocated to the current producer
+workspace only after restored account/environment identity validation
+and an exact old-root/lineage consistency check.  It rejects ambiguous
+or unsafe source paths, inherited directory overrides, and duplicate
+fields while leaving the archived renewal file unchanged.  This is a
+testable candidate mechanism rather than permission to edit active
+Certbot state.  ADR-025 still requires real-version no-op renewal,
+SAN changes, and account continuity before activation.
+
+See [ADR-032](adr/ADR-032-validated-renewal-path-preview.md).

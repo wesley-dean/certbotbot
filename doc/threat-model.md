@@ -194,3 +194,15 @@ directives are rejected.  The helper does not verify JSON registration,
 Certbot's eventual account selection, or the safety and portability
 of other renewal configuration fields.  It must not be treated as
 permission to run unreviewed restored Certbot metadata.
+
+## Previewed renewal path relocation boundary
+
+ADR-032 permits an internal, non-activating copy of a renewal file
+with five strictly validated lineage paths rebased to the new
+private producer config root.  It does not follow stale paths from
+the source host or mutate the original restored metadata.  Unknown
+root-level options, mismatched roots, inherited directory overrides,
+and conflicts with restored ACME identity cause rejection.  The
+remaining renewal options are not yet proven safe for execution,
+and Certbot must not consume the preview before real-version
+portability and hook-safety integration tests succeed.

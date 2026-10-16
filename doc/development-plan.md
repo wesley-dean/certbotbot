@@ -146,6 +146,22 @@ and fully portable paths across freshly created runner workspaces.
 No live issuer or release gate is enabled by this step.
 
 
+### Phase 4E: isolated candidate renewal path rebase
+
+A testable internal preview now validates that all five standard
+path-bearing renewal keys agree on one original root and lineage,
+after checking the correct restored account and ACME environment.
+It produces a separate private file pointing to the new ephemeral
+workspace, without touching original archive bytes or invoking Certbot.
+ADR-032 documents this constrained experiment.
+
+The portability strategy cannot become an active issuer step until
+real supported Certbot files demonstrate registration continuity,
+no-op renewal and SAN replacement in independent workspaces, plus
+safe archival after renewal.  These tests remain a release blocker
+under ADR-025.  The preview alone does not close that gate.
+
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.
