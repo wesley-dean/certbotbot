@@ -173,11 +173,11 @@ make_assess_domain_fixture() {
   mkdir -m 0700 -p "$PORTABLE_DOMAIN_STAGE/archive/example.com" \
     "$PORTABLE_DOMAIN_STAGE/live/example.com" "$PORTABLE_DOMAIN_STAGE/combined"
   for kind in cert chain fullchain privkey; do
-    printf 'fixture %s\\n' "$kind" >"$PORTABLE_DOMAIN_STAGE/archive/example.com/${kind}1.pem"
+    printf 'fixture %s\n' "$kind" >"$PORTABLE_DOMAIN_STAGE/archive/example.com/${kind}1.pem"
     ln -s "../../archive/example.com/${kind}1.pem" \
       "$PORTABLE_DOMAIN_STAGE/live/example.com/$kind.pem"
   done
-  printf 'combined fixture\\n' >"$PORTABLE_DOMAIN_STAGE/combined/example.com.pem"
+  printf 'combined fixture\n' >"$PORTABLE_DOMAIN_STAGE/combined/example.com.pem"
   cp "$PORTABLE_DOMAIN_STAGE/combined/example.com.pem" \
     "$PORTABLE_DOMAIN_STAGE/live/example.com/combined.pem"
   chmod 0600 "$PORTABLE_DOMAIN_STAGE/archive/example.com/privkey1.pem" \
@@ -207,7 +207,7 @@ make_assess_domain_fixture() {
     CERTBOTBOT_COMMON_STAGE=$2
     CERTBOTBOT_RESTORE_ROOT=$3
     certbotbot_workspace_create || exit
-    printf "preserve\\n" >"$CERTBOTBOT_WORKSPACE_CONFIG/.marker"
+    printf "preserve\n" >"$CERTBOTBOT_WORKSPACE_CONFIG/.marker"
     certbotbot_import_assess example.com production
     rc=$?
     [[ "$rc" -eq 64 ]] || exit
