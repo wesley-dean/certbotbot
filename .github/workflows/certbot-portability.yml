@@ -1,5 +1,5 @@
 ---
-name: Certbot read-only portability
+name: Certbot portable-state smoke tests
 
 # yamllint disable-line rule:truthy
 on:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   certbot-smoke:
-    name: Real Certbot local lineage inspection
+    name: Real Certbot portable no-op renewal
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -33,7 +33,7 @@ jobs:
       - name: Build the standalone artifacts
         run: make all
 
-      - name: Inspect relocated lineage using the actual Certbot CLI
+      - name: Inspect relocated lineage and confirm no-op renewal
         env:
           CERTBOT: ${{ runner.temp }}/certbot-venv/bin/certbot
         run: |

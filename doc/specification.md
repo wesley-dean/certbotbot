@@ -324,6 +324,22 @@ Only a disposable integration-test harness may install the preview for
 the read-only Certbot command.  The public issuer must not install it.
 See ADR-033.
 
+## Offline real-Certbot no-op renewal compatibility test
+
+A dedicated CI job runs pinned Certbot 5.8.0 against a restored,
+long-lived, locally CA-signed lineage in a second private workspace,
+after the first workspace has been destroyed.  The normal
+`certbot renew --cert-name` command is invoked without dry-run or
+force-renewal, with directory hooks disabled and Python socket
+operations guarded.  A blocked ARI DNS lookup is expected behavior
+for Certbot 5.8.0 even when the certificate is not due; any attempted
+socket connection other than this refused DNS resolution fails.  Success requires an explicit not-due/no-renewal
+decision and unchanged certificate/private-key bytes and critical
+identity/path settings.  A validated ARI retry-after field may be added
+to renewal metadata after a blocked lookup.  A green result establishes no-op renewal decision
+compatibility only.  It does not prove ACME registration, due renewal,
+SAN changes, or S3 durability.  See ADR-034.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.

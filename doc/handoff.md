@@ -297,3 +297,24 @@ Actual ACME renewal continuity is still unproven: test account JSON
 is synthetic and no DNS challenge, renewal, SAN update, or S3 write
 is performed.  Continue to fail closed on the normal public command
 and leave the release gate disabled.
+
+## Phase 4G credential-free no-op renewal smoke test
+
+The proposed `agent/test/real-certbot-noop-renewal` PR extends
+the real Certbot loader job with a second, local test-only operation:
+run `certbot renew --cert-name example.com` against the
+fully reconstructed lineage after deleting the previous runner.
+A locally signed, 90-day certificate should be not due for renewal.
+Python network connection APIs are intercepted, directory hooks
+are disabled, and the test checks that no cert, key, or renewal config
+certificate/key bytes or identity/path settings are changed.
+Certbot can append ARI retry metadata, which must survive the local
+archive repackaging test.  Certbot 5.8.0 may attempt an ARI DNS lookup even for
+a non-due lineage; that DNS attempt is blocked and logged,
+while unexpected connect operations fail.  The common account's synthetic key bytes are
+preserved into the temporary Certbot config, but cannot authenticate
+to Let's Encrypt.  ADR-034 authorizes only this CI use.
+
+True ACME staging account registration, due renewal, SAN change, and
+storage publication remain release-blocking.  Do not connect the
+test-only import to the public issuer.

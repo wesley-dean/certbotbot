@@ -217,3 +217,25 @@ metadata and locally generated locally CA-signed test certificates, so no extern
 registration or chain trust is implied.  Pinning Certbot does not fully
 pin transitive Python packages, and dependencies installed in a CI
 environment remain part of the build/test supply-chain attack surface.
+
+## Credential-free real Certbot no-op compatibility exercise
+
+ADR-034 permits a CI-only invocation of `certbot renew` against
+a locally generated certificate that is not due.  A Python-level
+socket guard is installed and self-tested, directory hooks are
+disabled, and only Certbot's observed, blocked ARI DNS lookup is permitted;
+unexpected socket calls are rejected.  A no-op renewal does not imply
+that Certbot refrains from making external requests when unrestricted.
+This is not OS-level network isolation, nor does it prove that
+external or native subprocesses could never make network requests.
+No real ACME credentials, DNS secrets, or S3 authorization are used.
+Activation of real renewal or remote publication remains forbidden.
+
+### ARI metadata changes without certificate renewal
+
+Certbot 5.8.0 can write `[acme_renewal_info]` and `ari_retry_after`
+to a lineage renewal file after a blocked ARI lookup, despite making
+a correct no-renewal-needed decision.  A stateless producer must not
+discard approved scheduling metadata merely because it did not
+reissue a certificate.  Safe, validated state-only archive publication
+remains unimplemented and must respect ADR-022 serialization and recovery.
