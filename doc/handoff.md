@@ -1,0 +1,89 @@
+# certbotbot Implementation Handoff
+
+Date: 2026-10-15
+
+## Repository and state
+
+- Repository: https://github.com/wesley-dean/certbotbot
+- Origin: `template-bash`; initial repository contains starter executable, noop plugin, Makefile, tests, ADRs 000-017, and existing GitHub Pages `.github/workflows/static.yml`.
+- Documentation-pass branch: `agent/docs-architecture-standards-v2.1.0` (subject to review and merge).
+- Coding standards target: `coding_standards@v2.1.0`, verified GitHub release asset digest `ee04401441a3206d5cdc2bdc2e6d5130ff278ddc1ecd641f1c01843aa0666020`.
+- Documentation-pass scope: governing docs and Pages workflow maintenance only.  The original starter Bash CLI is not the certbotbot implementation.
+- First implementation step: after documentation PR merge, re-establish default-branch baseline, update dependency manifest/Makefile and build a bounded CLI skeleton; use small reviewable PRs.
+
+## Accepted decisions
+
+Read `doc/adr/ADR-018` through `ADR-024`, their summaries in `doc/decisions.md`, and `doc/specification.md` before modifying source.  Inherited ADRs remain in effect unless explicitly refined by a project-specific decision.
+
+1. One certificate per input line.  The first hostname identifies lineage and archive, ignoring a leading `*.`.  Always request that apex and wildcard; other SANs are literal.  The complete SAN set is authoritative.
+2. Only requested certificates are considered; omitted lineages are not renewed or deleted.
+3. Certbot decides renewal timing and supplies DNS-01.  The first provider is Route53; HTTP-01 is excluded.
+4. Producer stores one shared account archive plus independently composable per-certificate archives.  Each domain archive contains Certbot lineage and pre-generated combined PEM outputs.
+5. Consumers only download chosen domain archives; they do not need the common archive, Certbot, or the producer CLI.  Consumers own post-install scripts and reloads.
+6. Symmetric GPG encryption is optional, enabled by nonempty `GPG_PASSPHRASE`, uses AES-256, adds `.enc`, and never silently falls back.  Migration is manual and documented.
+7. Storage provider is S3 with configurable endpoint for S3-compatible services including MinIO.  One DNS and one storage backend ship initially.  Source discovery is build-time, and every artifact includes the reviewed implementations.  No public plugin installation contract.
+8. Execution is sequential and locally serialized.  Platform concurrency guards exist; no cross-platform lock exists in v1.  Operationally, only one independent writer may manage a collection.  Storage-level locking is backlog work.
+9. Native downloadable Bash artifact is first-class; optional Docker/Jenkins/GitHub Actions wrappers must call the same code.
+10. Pinned, checksum-verified bashdeps bootstraps direct from Make; manifest owns bash-doxygen, mktext, Bash-Minifier, adrctl, and bashlog.
+
+## Names and shapes
+
+```text
+common-latest.tar.gz[.enc]
+foo.com-latest.tar.gz[.enc]
+bar.com-latest.tar.gz[.enc]
+
+dist/certbotbot.dev.bash
+dist/certbotbot.bash
+dist/certbotbot.min.bash
+dist/certbotbot.dev.bash.sha256
+dist/certbotbot.bash.sha256
+dist/certbotbot.min.bash.sha256
+
+examples/Jenkinsfile
+examples/certbotbot.yml
+.github/workflows/static.yml
+```
+
+Within `foo.com-latest.tar.gz`, relative `archive/foo.com/`, `live/foo.com/`, `renewal/foo.com.conf`, and `combined/foo.com.pem` are required.  `live/foo.com/combined.pem` must also be generated.  The combined PEM concatenates fullchain then private key.  The live symlinks must resolve after extraction.
+
+## High-risk implementation boundaries
+
+- GPG passphrases, AWS credentials, ACME account keys, and TLS private keys must not be logged.
+- Certbot lineage symlinks and restored tar members must be validated before trusting local state.
+- S3 `NoSuchKey` differs from denied access, wrong region, bad endpoint, or connection failure.
+- Do not publish one object simply because earlier local processing succeeded; verify every selected certificate first.
+- Publication of multiple objects is not atomic; preserve previous versions and document recovery.
+- A wildcard-only first domain such as `*.foo.com` maps to lineage `foo.com`, covering both `foo.com` and `*.foo.com`.
+- The absence of `GPG_PASSPHRASE` deliberately selects plaintext mode, even though plaintext contains private keys.
+- No arbitrary code-loading or plugin discovery at consumer runtime.
+- A developer may run native, Jenkins, GitHub Actions, or Docker workflows; these workflows cannot independently guarantee cross-platform exclusion.
+
+## Build expectations
+
+Retain the template Make lifecycle and existing Bash 4.3 runtime baseline unless a reviewed ADR explicitly raises it.  The build must be offline once dependencies are prepared and must produce three semantically equivalent, independently executable release artifacts.  Check the project coding standards; they are a separate managed snapshot and not bashdeps manifest entries.
+
+## Implementation phases and evidence
+
+Use `doc/development-plan.md` as the ordered plan.  Phase 1 is build/dependency adaptation, Phase 2 parsing/registry with mocks, Phase 3 Certbot/Route53, Phase 4 composable S3 archives, Phase 5 optional GPG, Phase 6 CI/Docker/Pages integration, and Phase 7 production-ready testing and release.  Test negative conditions and non-promises explicitly.  Use Let's Encrypt staging to validate issuance without relying on production rate limits.
+
+## Remaining technical choices to resolve during implementation
+
+- Exact CLI option for a certificate-list file and stable provider-selection variable names.
+- Pinning of released mktext and bashlog artifacts and whether the distribution embeds them by concatenation or validated vendored source.
+- Certbot version/flags for SAN removal and renewal no-op behavior under current Certbot releases.
+- Historical archive naming and mktext variable substitutions once archives beyond `*-latest` are enabled.
+- Minimum supported AWS CLI/GPG/Certbot versions and MinIO integration test matrix.
+- S3 object-version recovery protocol after a partial multi-object publish.
+
+These are bounded implementation design points, not invitations to change agreed product behavior without an ADR.
+
+## Completion checklist
+
+- Documentation PR reviewed/merged; standards snapshot verified.
+- No stale `template-bash` behavior or links in product-facing source and documentation.
+- Required dependencies pinned/verified and runtime source assembly deterministic.
+- All three artifact variants tested, including failure and integration tests.
+- Consumer domain archives verified by extracting multiple separate archives into one TLS tree without Certbot or common archive.
+- GitHub Pages documentation generated from maintained ADR corpus.
+- Threat model updated to reflect evidence and residual risks prior to release.

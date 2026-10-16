@@ -1,6 +1,6 @@
 # Architectural Decisions
 
-This document is a concise map of template-bash's Architecture Decision Records.
+This document is a concise map of certbotbot's inherited and project-specific Architecture Decision Records.
 It is a discovery aid, not a substitute for the ADR corpus.  When a summary and a
 governing ADR appear to conflict, read the ADR and surface the conflict rather
 than silently choosing the shorter wording.
@@ -181,3 +181,47 @@ Documentation generation stays offline, graph-free for routine ADR navigation,
 and independent of template runtime and release artifacts.
 
 See [ADR-017](adr/ADR-017-generate-adr-navigation-ephemerally.md).
+
+## certbotbot Product Decisions
+
+### ADR-018: Certificate Identity, SAN Groups, and DNS-Only Issuance
+
+Each requested group identifies one lineage and an authoritative SAN set.  The primary name always includes its apex and wildcard, while additional SANs remain literal.  Only DNS-01 challenges are supported, and Certbot controls renewal eligibility.  Unspecified lineages are not modified.
+
+See [ADR-018](adr/ADR-018-certificate-identity-and-dns-issuance.md).
+
+### ADR-019: Composable Common and Per-Certificate State Archives
+
+Shared ACME account state is published separately from self-contained certificate lineage archives.  Each domain archive is directly extractable beside other domain archives, with valid symlinks and prebuilt combined PEM files.  Consumers need neither the common account archive nor Certbot.  Service post-install hooks remain the consuming server's responsibility.
+
+See [ADR-019](adr/ADR-019-composable-state-archives-and-consumer-boundary.md).
+
+### ADR-020: Build-Time Discoverable, Bundled DNS and Storage Backends
+
+Core modules are explicitly ordered, while built-in DNS and storage modules are discovered deterministically at build time.  The first distribution bundles only Route53 and S3, with an optional S3-compatible endpoint URL for services such as MinIO.  No external runtime plugin loading or third-party plugin API is supported.  All shipped backends share one process's trust boundary.
+
+See [ADR-020](adr/ADR-020-bundled-backend-discovery-and-storage-contract.md).
+
+### ADR-021: Optional Symmetric GPG Encryption and Manual Format Migration
+
+A nonempty GPG passphrase selects local symmetric AES-256 encryption and the .tar.gz.enc suffix for all archive objects.  Absent or empty passphrases select plaintext .tar.gz storage.  Mode mismatch and decryption errors fail closed rather than silently falling back.  Migration between formats is an explicit, documented administrator procedure.
+
+See [ADR-021](adr/ADR-021-optional-symmetric-encryption-and-migration.md).
+
+### ADR-022: Serialized Runs, Explicit Storage Limitations, and Failure-Safe Publication
+
+Work is sequential within one invocation, with local and CI-specific concurrency safeguards.  Independent writers to a shared archive collection must be serialized operationally because the first release has no distributed lock.  All selected objects must validate before any publication begins.  Multi-object commits remain non-atomic, and a genuine storage-backed lease is future backlog work.
+
+See [ADR-022](adr/ADR-022-execution-serialization-and-publishing.md).
+
+### ADR-023: Standalone Release Artifacts, Pinned Dependencies, and Optional Runners
+
+The standalone Bash executable is the primary product; Docker, Jenkins, and GitHub Actions are optional wrappers.  The three release flavors and their SHA-256 companions follow inherited template rules.  Make directly bootstraps pinned bashdeps, which manages bash-doxygen, mktext, Bash-Minifier, adrctl, and bashlog.  Runtime provider modules are bundled, and documentation continues to publish through GitHub Pages.
+
+See [ADR-023](adr/ADR-023-build-artifacts-dependencies-and-execution-examples.md).
+
+### ADR-024: Govern Maintained Content by a Verified Released Coding Standards Snapshot
+
+The project adopts coding_standards@v2.1.0 as a complete committed snapshot, with version and digest recorded in .codingstandardrc.  Relevant imported standards are mandatory unless an Accepted local ADR or explicit policy refines them.  Imported files must remain unmodified, and future updates require a reviewed release-specific refresh.  The standards do not become runtime dependencies or automatic update jobs.
+
+See [ADR-024](adr/ADR-024-released-coding-standards-governance.md).
