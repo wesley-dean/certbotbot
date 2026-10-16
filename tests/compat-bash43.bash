@@ -5,6 +5,13 @@ set -euo pipefail
 
 bash -n "${CERTBOTBOT_ARTIFACT}"
 "${CERTBOTBOT_ARTIFACT}" --help >/dev/null
-"${CERTBOTBOT_ARTIFACT}" version >/dev/null
-"${CERTBOTBOT_ARTIFACT}" plugins | grep -F 'noop' >/dev/null
-"${CERTBOTBOT_ARTIFACT}" run noop
+"${CERTBOTBOT_ARTIFACT}" --version >/dev/null
+"${CERTBOTBOT_ARTIFACT}" --validate foo.com www.foo.com |
+  grep -F -- 'foo.com *.foo.com www.foo.com' >/dev/null
+
+if "${CERTBOTBOT_ARTIFACT}" foo.com >/dev/null 2>&1; then
+  printf '%s\n' 'unimplemented certificate issuance unexpectedly succeeded' >&2
+  exit 1
+else
+  [[ "$?" -eq 69 ]]
+fi

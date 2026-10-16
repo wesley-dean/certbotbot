@@ -12,8 +12,12 @@ Initial production-capable adapters are `route53` for DNS validation and `s3` fo
 
 - `certbotbot.bash foo.com www.foo.com` processes one certificate.
 - `certbotbot.bash "foo.com www.foo.com"` has identical semantics.
-- A multi-line `CERTIFICATES` environment variable or file input processes one certificate per nonempty line (explicit file option to be finalized during CLI design).  CI examples use the environment form.
+- A multi-line `CERTIFICATES` environment variable or `--certificates-file FILE` input processes one certificate per nonempty line.  CI examples use the environment form.
 - The entrypoint MUST reject simultaneous conflicting input modes; it MUST NOT evaluate user-provided text as shell syntax.
+- `--validate` MUST perform syntax/provider validation and print one normalized tab-separated record per group: `NAME<TAB>SAN1 SAN2 ...`.  The status is 0 on valid input without any issuance/storage side effects.  It does not imply cloud credentials, ACME connectivity, or certificate validity were checked.
+- Before real issuance is implemented, normal certificate requests MUST fail with status 69 and MUST NOT access external systems.
+- Built-in provider selection uses `--dns-backend NAME` and `--storage-backend NAME` or the corresponding `DNS_BACKEND` and `STORAGE_BACKEND` environment variables.  Unknown providers MUST fail closed.
+- Hostnames are ASCII DNS labels (IDNs must be punycode), normalized to lowercase, with at least two labels and an optional single leading wildcard.  No trailing dots or shell metacharacters are accepted.
 - A batch MUST reject duplicate lineage identities before changing remote state.
 - Empty or whitespace-only input is a validation failure, not an implicit request to renew everything.
 - The first token is the identity for `--cert-name` and archive naming, after removing one leading `*.`.  The first domain `foo.com` or `*.foo.com` always requests both `foo.com` and `*.foo.com`.
@@ -44,7 +48,7 @@ Two independently managed lineages result: `foo.com` with apex, wildcard, and `w
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | AWS credential environment variables | Normal AWS credential chain; may be absent with roles/OIDC |
 | `S3_ENDPOINT_URL` | Custom endpoint for S3-compatible storage (such as MinIO) | Optional |
 | `GPG_PASSPHRASE` | Nonempty selects symmetric AES-256 encrypted archives | Optional, unset selects plaintext |
-| DNS/storage provider identifiers | Select built-in `route53`/`s3` | Defaults to first-release implementations; final variable names to be implemented explicitly |
+| `DNS_BACKEND` / `STORAGE_BACKEND` | Select compiled-in `route53` / `s3` adapters | Defaults to `route53` / `s3`; CLI options override |
 
 Historical archive patterns (`LATEST_FILENAME_PATTERN`, `ARCHIVE_FILENAME_PATTERN`, and mktext substitutions) are part of the implementation backlog.  Current normative latest-object names are fixed below until a separate naming decision specifies compatibility and collision safeguards.
 

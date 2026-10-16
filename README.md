@@ -1,6 +1,6 @@
 # certbotbot
 
-certbotbot is a planned standalone Bash tool for issuing and renewing Let's Encrypt TLS certificates through DNS-01 validation.  It restores shared ACME account state and separately managed certificate-lineage state from object storage, uses Certbot to obtain or renew only the requested certificates, generates combined PEM files, and publishes directly installable per-domain archives.  The current executable still contains starter-template behavior: **certificate management is not yet implemented**.  Phase 1 prepares artifact names, verified dependencies, and build-time plugin discovery; it does not issue certificates.  Until issuance and archive tests pass, the automatic release workflow is disabled unless the repository variable `CERTBOTBOT_RELEASE_ENABLED` is explicitly set to `true`.  See [implementation plan](doc/development-plan.md) and [handoff](doc/handoff.md).
+certbotbot is a planned standalone Bash tool for issuing and renewing Let's Encrypt TLS certificates through DNS-01 validation.  It restores shared ACME account state and separately managed certificate-lineage state from object storage, uses Certbot to obtain or renew only the requested certificates, generates combined PEM files, and publishes directly installable per-domain archives.  The current executable supports a deliberately side-effect-free `--validate` mode and statically bundled DNS/storage adapter registration.  **Certificate issuance and S3 persistence are not yet implemented**: a normal certificate request fails with status 69.  The automatic release workflow remains gated by the explicit repository variable `CERTBOTBOT_RELEASE_ENABLED=true`.  See [implementation plan](doc/development-plan.md) and [handoff](doc/handoff.md).
 
 ## Certificate inputs
 
@@ -12,6 +12,19 @@ bar.com mail.bar.com
 ```
 
 The first hostname supplies a certificate name.  Both its apex and `*.` wildcard are always requested, even when the first token is wildcard-only.  Remaining SANs are literal.  Omitted certificates are left alone; the tool will not delete or renew unrelated lineages.  Certbot decides when unchanged certificates need renewal; the wrapper has no fixed expiration threshold.
+
+## Certificate request preflight (Phase 2)
+
+Use `--validate` to normalize and inspect certificate groups without contacting Certbot, AWS, or an ACME server:
+
+```text
+certbotbot.bash --validate foo.com www.foo.com
+foo.com    foo.com *.foo.com www.foo.com
+```
+
+The real output is tab-separated: the first field is the lineage identity, and the second contains space-separated SANs.  `CERTIFICATES` may contain multiple physical lines, or `--certificates-file FILE` may read them from a local file.  Positional arguments, a file, and the environment input are mutually exclusive.  Blank physical lines are ignored, but an entirely empty request is rejected.  Provider identifiers may be selected with `--dns-backend` and `--storage-backend`, or `DNS_BACKEND`/`STORAGE_BACKEND`; only `route53` and `s3` are registered in this version.
+
+Preflight verifies input syntax and backend names only.  It is **not** a dry-run Certbot renewal and does not verify credentials, hosted zones, storage availability, or certificate validity.
 
 ## Archive format and deployment separation
 

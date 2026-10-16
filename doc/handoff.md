@@ -82,6 +82,12 @@ These are bounded implementation design points, not invitations to change agreed
 
 Phase 1 is proposed through `agent/build/certbotbot-build-foundation`.  It changes the default project/build identity, enables future DNS/storage module discovery paths in Make, adds pinned mktext and bashlog release artifacts to the bashdeps manifest, updates scaffold metadata and tests, and gates automatic releases behind `CERTBOTBOT_RELEASE_ENABLED=true`.  It does not yet embed the new runtime libraries, remove the starter noop implementation, define provider interfaces, or perform ACME/S3 operations.  Do not enable automatic releases until the functional CLI and release validation are complete.
 
+## Phase 2 initial CLI/parser branch
+
+The next proposal `agent/feat/phase2-cli-provider-scaffolding` replaces the temporary starter/noop interface with a fail-closed `certbotbot` preflight.  It implements explicit positional, file, and multiline environment input; apex-plus-wildcard normalization and literal secondary SANs; duplicate lineage rejection; a typed, built-in registry; and statically included `route53` and `s3` placeholder modules.  `--validate` emits tab-separated normalized lineage/SAN records without touching Certbot, AWS, or storage.  Normal issuance requests **always fail 69** until Phase 3/4 are implemented.  Bashlog is embedded from its pinned bashdeps-managed release; mktext remains available as a prepared dependency for later archive templating.
+
+Remaining Phase 2 obligations include designing and implementing native host-local serialization for real operations and argument-preserving mocked external boundary tests.  Those should be completed together with the first actual external-command operations rather than introducing misleading locks around a non-operational scaffold.
+
 ## Completion checklist
 
 - Documentation PR reviewed/merged; standards snapshot verified.

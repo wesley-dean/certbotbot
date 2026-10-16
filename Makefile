@@ -14,7 +14,7 @@ DIST_MIN_SCRIPT := $(DIST_DIR)/$(PROJECT_NAME).min.bash
 DIST_SCRIPTS := $(DIST_DEV_SCRIPT) $(DIST_SCRIPT) $(DIST_MIN_SCRIPT)
 DIST_CHECKSUMS := $(addsuffix .sha256,$(DIST_SCRIPTS))
 LEGACY_CHECKSUMS := $(addsuffix .256,$(DIST_SCRIPTS))
-CORE_SOURCE_FILES := lib/plugin-registry.bash
+CORE_SOURCE_FILES := lib/plugin-registry.bash lib/input.bash
 ## Plugins are discovered exclusively from maintained source at build time.
 ## The first functional DNS/storage provider modules arrive in Phase 2.
 PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash) \
@@ -63,6 +63,7 @@ build: $(DIST_SCRIPTS) $(DIST_CHECKSUMS)
 ## inputs are unchanged, while an explicit VERSION override is never silently
 ## ignored because an older artifact already exists.
 $(DIST_DEV_SCRIPT): FORCE $(SOURCE_FILES)
+	@test -f "$(BASHLOG)" && test ! -L "$(BASHLOG)" || { printf '%s\n' 'Missing build dependency vendor/bashlog.bash; run make deps or make all' >&2; exit 1; }
 	mkdir -p "$(DIST_DIR)"
 	{ \
 		printf '%s\n' '#!/usr/bin/env bash'; \
@@ -72,6 +73,7 @@ $(DIST_DEV_SCRIPT): FORCE $(SOURCE_FILES)
 		printf '%s\n' '# Version: $(VERSION)'; \
 		printf '%s\n' '# Build date: $(BUILD_DATE)'; \
 		printf '%s\n' '# Build commit: $(BUILD_COMMIT)'; \
+		printf '%s\n' '# Embedded library: $(BASHLOG)'; \
 		printf '%s\n' '# Core source: $(CORE_SOURCE_FILES)'; \
 		printf '%s\n' '# Discovered plugins: $(PLUGIN_SOURCE_FILES)'; \
 		printf '%s\n' '# Entrypoint: $(ENTRYPOINT_SOURCE)'; \
@@ -81,7 +83,7 @@ $(DIST_DEV_SCRIPT): FORCE $(SOURCE_FILES)
 		printf 'CERTBOTBOT_BUILD_DATE=%q\n' "$(BUILD_DATE)"; \
 		printf 'CERTBOTBOT_BUILD_COMMIT=%q\n' "$(BUILD_COMMIT)"; \
 		printf '\n'; \
-		cat $(SOURCE_FILES); \
+		cat "$(BASHLOG)" $(SOURCE_FILES); \
 	} >"$@.tmp"
 	chmod 0755 "$@.tmp"
 	mv "$@.tmp" "$@"
