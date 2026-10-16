@@ -334,8 +334,9 @@ force-renewal, with directory hooks disabled and Python socket
 operations guarded.  A blocked ARI DNS lookup is expected behavior
 for Certbot 5.8.0 even when the certificate is not due; any attempted
 socket connection other than this refused DNS resolution fails.  Success requires an explicit not-due/no-renewal
-decision and identical certificate/private-key and renewal-config
-bytes.  A green result establishes no-op renewal decision
+decision and unchanged certificate/private-key bytes and critical
+identity/path settings.  A validated ARI retry-after field may be added
+to renewal metadata after a blocked lookup.  A green result establishes no-op renewal decision
 compatibility only.  It does not prove ACME registration, due renewal,
 SAN changes, or S3 durability.  See ADR-034.
 

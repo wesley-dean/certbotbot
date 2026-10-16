@@ -38,7 +38,9 @@ synthetic common-account archive on a completely new workspace after
 deleting the predecessor.  It runs real Certbot 5.8.0's selected-lineage
 `renew` command for a freshly generated 90-day certificate that is
 not due for renewal, and verifies an explicit no-op decision and
-unchanged certificate, key, and renewal configuration.
+unchanged certificate/key bytes and identity/path settings.  Certbot
+may legitimately append an ARI retry-after scheduling field without
+renewing the certificate; the test validates and locally repacks it.
 
 The harness blocks Python socket APIs.  Certbot 5.8.0 may attempt an
 ACME Renewal Information (ARI) DNS lookup even for a not-due lineage;

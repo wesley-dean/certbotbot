@@ -337,8 +337,9 @@ The portable-state integration suite may run pinned Certbot's real
 lineage when the locally signed certificate is clearly not due.
 The test guards Python socket connections, disables directory hooks,
 and tolerates only an intercepted ARI DNS lookup while requiring a
-recognizable no-op decision without altering renewal
-metadata or certificate/private-key bytes.  Synthetic account JSON
+recognizable no-op decision without altering certificate/private-key
+bytes or critical identity/path settings.  A narrowly verified ARI
+retry-after addition is accepted and re-archived locally for testing.  Synthetic account JSON
 cannot prove actual registration, and this permission is confined to
 disposable CI fixtures.  Live ACME renewal, SAN changes, and archive
 publication remain separate release gates.

@@ -224,11 +224,28 @@ if [[ -e "$marker" ]]; then
     exit 1
   fi
 fi
+# The observed Certbot 5.8.0 no-op can cache ARI retry metadata even when
+# no certificate is renewed.  The ONLY authorized config change in this
+# synthetic fixture is appending that two-line section.
 if [[ "$(sha256sum -- "$new/renewal/example.com.conf" | cut -d ' ' -f1)" != "$before_conf" ]]; then
-  printf '%s\n' 'Certbot changed local fixture renewal metadata during its no-op:' >&2
-  diff -u "$tmp/pre-noop-renewal.conf" "$new/renewal/example.com.conf" >&2 || :
-  exit 1
+  ari_tail="$(tail -n 2 "$new/renewal/example.com.conf")"
+  if [[ $ari_tail != $'[acme_renewal_info]\nari_retry_after = '* ]] ||
+    ! tail -n 1 "$new/renewal/example.com.conf" |
+      grep -Eq '^ari_retry_after = [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$' ||
+    ! head -n -2 "$new/renewal/example.com.conf" |
+      cmp -s - "$tmp/pre-noop-renewal.conf"; then
+    printf '%s\n' 'Unexpected Certbot no-op renewal metadata change:' >&2
+    diff -u "$tmp/pre-noop-renewal.conf" "$new/renewal/example.com.conf" >&2 || :
+    exit 1
+  fi
 fi
+# A future publisher must treat this as durable lineage state, even when
+# no certificate was reissued.  Prove the accepted metadata can be archived
+# with the regular per-domain archive contract.
+tar -czf "$tmp/archives/post-noop-domain.tar.gz" \
+  -C "$new" archive live renewal combined
+tar -xOzf "$tmp/archives/post-noop-domain.tar.gz" \
+  renewal/example.com.conf | cmp -s - "$new/renewal/example.com.conf"
 [[ "$(sha256sum -- "$new/archive/example.com/cert1.pem" | cut -d ' ' -f1)" == "$before_cert" ]]
 [[ "$(sha256sum -- "$new/archive/example.com/privkey1.pem" | cut -d ' ' -f1)" == "$before_key" ]]
 

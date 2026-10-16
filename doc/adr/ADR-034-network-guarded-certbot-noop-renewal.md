@@ -41,8 +41,10 @@ A successful test requires all of the following:
   Information (ARI) even when the certificate is not due, and reports the
   resulting lookup error without treating the no-op as a failed renewal.
   Other intercepted socket operations are unexpected and fail the test.
-- The restored renewal config, leaf certificate, and private key are
-  byte-identical before and after Certbot's decision.
+- The certificate and private key are byte-identical before and after
+  Certbot's decision.  Critical identity/path settings remain unchanged.
+  A blocked ARI lookup can append an `[acme_renewal_info]` section with
+  `ari_retry_after`; only this narrowly validated addition is accepted.
 - The original producer workspace no longer exists.
 - The same behavior is tested for the development, ordinary, and
   minified standalone Bash artifacts.
@@ -70,7 +72,9 @@ immediately after generation.  The test checks for an explicit no-op diagnostic 
 implies non-renewal.  The first CI exercise established that Certbot 5.8.0
 may still attempt an ARI DNS lookup even after detecting a non-due lineage;
 the network guard blocks that lookup, and Certbot continues with a normal
-no-renewal decision.
+no-renewal decision.  Certbot may also record an `ari_retry_after` value
+in renewal metadata.  No certificate reissuance does not imply that
+all persistent producer state remains unchanged.
 
 References:
 
@@ -116,14 +120,27 @@ The new test depends on Certbot 5.8.0, Python's supported
 `sitecustomize` mechanism, OpenSSL, GNU tar/coreutils, and the
 already reviewed Bash archive/preview modules.  It is a CI-only
 consumer of the existing public-artifact build and does not change
-product CLI or archive formats.  The synthetic certificate lifetime
-is intentionally distinct from the seven-day fixture used by ADR-033.
+product CLI or archive formats.  The synthetic certificate lifetime is increased from ADR-033's initial
+seven days to 90 days for a stable no-op decision.
 
 The test must fail if Certbot cannot read the relocated lineage,
 reports an issuance attempt, makes an unexpected socket operation beyond
-its tolerated blocked ARI DNS lookup, changes the lineage/config bytes,
-or returns an unrecognized result.  Build, Bash 4.3, source checks, CodeQL, and
+its tolerated blocked ARI DNS lookup, changes certificate/key bytes or
+core renewal settings, or returns an unrecognized result.  The test
+must verify that an accepted ARI addition survives domain archive repackaging.  Build, Bash 4.3, source checks, CodeQL, and
 MegaLinter remain required in addition to the new real-Certbot job.
+
+## State-only durable archive implications
+
+Because Certbot can update ARI scheduling metadata without renewing a
+certificate, a later producer cannot equate a no-op renewal result with
+an absence of persistent state changes.  The future issuer must inspect,
+validate, and account for recognized renewal metadata updates before
+disposing of an ephemeral workspace.  Whether ARI-only changes warrant
+immediate S3 publication, and how they are serialized and recovered
+without corrupting the last known good archive, require a separate
+reviewed implementation decision.  This test only confirms that such
+metadata survives a local archive repack; it does not publish to S3.
 
 ## Further release gates
 

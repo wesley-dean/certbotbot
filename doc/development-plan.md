@@ -186,8 +186,10 @@ under a different private workspace root.  The original workspace
 must be removed, Python socket connection APIs must be blocked by a
 test-specific guard.  Certbot 5.8.0 may request ARI DNS resolution despite
 correctly deciding that no renewal is due; this DNS attempt is blocked,
-and any other socket use must fail.  No certificate, key, or config bytes
-may change.  Both the common-account archive and the selected
+and any other socket use must fail.  Certificate/key bytes and core
+renewal settings must remain unchanged.  Certbot may append a
+validated ARI retry-after value despite a no-op.  Test local repackaging
+of that metadata, without publishing it.  Both the common-account archive and the selected
 domain archive must be restored before this check, with account-key
 identity preserved.  All three release artifact flavors run the test.
 

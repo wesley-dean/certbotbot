@@ -230,3 +230,12 @@ This is not OS-level network isolation, nor does it prove that
 external or native subprocesses could never make network requests.
 No real ACME credentials, DNS secrets, or S3 authorization are used.
 Activation of real renewal or remote publication remains forbidden.
+
+### ARI metadata changes without certificate renewal
+
+Certbot 5.8.0 can write `[acme_renewal_info]` and `ari_retry_after`
+to a lineage renewal file after a blocked ARI lookup, despite making
+a correct no-renewal-needed decision.  A stateless producer must not
+discard approved scheduling metadata merely because it did not
+reissue a certificate.  Safe, validated state-only archive publication
+remains unimplemented and must respect ADR-022 serialization and recovery.
