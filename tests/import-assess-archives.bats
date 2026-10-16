@@ -469,7 +469,7 @@ RENEWAL
   printf '[renewalparams]\nkey_type = ecdsa\n' \
     >>"$ASSESS_SOURCE/domain/renewal/example.com.conf"
   run_renewal_policy_archive
-  [ "$status" -eq 64 ]
+  [ "$status" -eq 65 ]
 }
 
 @test "policy refuses unknown renewal configuration sections" {
