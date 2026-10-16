@@ -80,6 +80,10 @@ the extracted filesystem (ADR-027).  It deliberately stops before merging
 into active Certbot state; common-account restoration, renewal metadata
 portability, and cryptographic verification remain separate work.
 
+Phase 4C adds an account-only common archive staging contract under ADR-028.
+It does not yet trust or select an ACME account, perform renewal metadata
+portability adjustments, merge restored state, or publish objects.
+
 ## Phase 5: Optional symmetric encryption and migration
 
 - Honor `GPG_PASSPHRASE` unset/empty plaintext `.tar.gz`, nonempty GPG AES-256 `.tar.gz.enc`.

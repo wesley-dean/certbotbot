@@ -17,7 +17,7 @@ LEGACY_CHECKSUMS := $(addsuffix .256,$(DIST_SCRIPTS))
 CORE_SOURCE_FILES := lib/plugin-registry.bash lib/input.bash \
                      lib/locking.bash lib/external-commands.bash \
                      lib/workspace.bash lib/pem.bash lib/archive-validate.bash \
-                     lib/archive-restore.bash
+                     lib/archive-restore.bash lib/account-archive.bash
 ## Plugins are discovered exclusively from maintained source at build time.
 ## Official provider modules are bundled into each standalone release artifact.
 PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash) \

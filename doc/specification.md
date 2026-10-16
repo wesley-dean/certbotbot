@@ -176,6 +176,23 @@ portability, cryptographic key matching, staging-to-active integration, and
 all S3 publication remain separate release gates.  This helper is internal
 and does not change the public fail-closed issuance behavior.
 
+## Shared account-state staging boundary
+
+The initial common archive accepts only approved production and staging
+Let's Encrypt ACME v2 account directories.  Each account contains
+`meta.json`, `regr.json`, and `private_key.json`; account contents
+must not permit group/other access.  Hooks, unrelated files, linked paths,
+and lineage data are forbidden.  A common archive is copied into a private
+workspace, checked against a bounded GNU tar manifest, extracted into a
+fresh isolated directory, and independently inspected afterward.
+
+This is a structural and filesystem validation stage only.  JSON
+semantics, account validity/selection, ACME server association, portable
+Certbot renewal metadata, and controlled merging into active state remain
+future requirements.  A failed restoration must never initialize a new
+ACME account as if archived state had never existed.  Consumers continue
+to download only their own domain archives.  See ADR-028.
+
 ## Producer processing algorithm
 
 1. Validate required configuration, selected providers, credentials availability where testable, and every certificate group's normalized identity/SAN list.

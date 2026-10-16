@@ -112,6 +112,9 @@ certbotbot_common_validate() {
     size_text=${BASH_REMATCH[2]}
     path=${BASH_REMATCH[3]}
     type=${mode:0:1}
+    if [[ $type == - ]]; then
+      type=f
+    fi
     if [[ ! $size_text =~ ^[0-9]{1,7}$ ]] ||
       ! certbotbot_common_member "$path" "$type" ||
       [[ -n ${seen[$path]+_} || ${mode:4:6} != ------ ]]; then
@@ -127,7 +130,7 @@ certbotbot_common_validate() {
       status=64
       break
     fi
-    if [[ $type == - ]]; then
+    if [[ $type == f ]]; then
       printf '%s\n' "$path" >>"$inventory"
     fi
   done <<< "$listing"

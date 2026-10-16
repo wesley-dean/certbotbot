@@ -90,6 +90,21 @@ renewal configuration, restore the common ACME account archive, verify
 certificate/private-key cryptographic matching, or publish any object.
 The public issuing command remains disabled.  See ADR-027.
 
+## Shared ACME account archive staging (Phase 4C)
+
+The internal common-state adapter recognizes Certbot's Let's Encrypt ACME
+v2 account directories and their three required JSON files.  It rejects
+unknown configuration, renewal hooks, symlinks, unexpected entries, missing
+account keys, and insecure file modes.  It takes a private copy, validates
+the tar contents, extracts into an isolated staging directory, and checks
+the real extracted filesystem again.  Accepted staging must be explicitly
+discarded after use.
+
+This is not yet an operational account restore.  It neither parses account
+JSON contents nor selects an account with Certbot.  It does not merge common
+state into active configuration, enable ACME issuance, or upload storage
+objects.  No consumer needs the common archive.  See ADR-028.
+
 ## Archive format and deployment separation
 
 The producer persists `common-latest.tar.gz` (shared account state) and `<name>-latest.tar.gz` for each certificate lineage.  Domain archives contain complete relative Certbot lineage paths, including `live/` symlinks, `archive/` versions, `renewal/` metadata, and pre-generated `combined/<name>.pem` and `live/<name>/combined.pem` (fullchain then private key).

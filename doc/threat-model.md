@@ -135,3 +135,14 @@ user identity and installed GNU utilities and cannot guarantee protection
 against all decompression denial-of-service conditions, same-user races, or
 hostile renewal-file contents.  Successful staging is not permission to
 invoke Certbot or publish the archive.
+
+## Shared ACME account archive trust boundary
+
+ADR-028 limits the common archive to Let's Encrypt ACME v2 account metadata
+and keys.  Arbitrary hooks/configuration or symlink entries are rejected.
+The account archive is privately copied, preflight-validated, extracted
+into an isolated workspace, and independently checked for ownership, types,
+and private modes.  Account JSON is untrusted data after these checks;
+valid structure does not prove a genuine or active ACME account.  A future
+producer must verify account selection and server association before use.
+Common archive distribution to TLS-only consumers remains prohibited.
