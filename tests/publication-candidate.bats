@@ -534,3 +534,119 @@ run_checkpoint() {
   [ "$status" -eq 0 ]
   ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
 }
+
+## All plan tests use the strict fake AWS GetObject, and forbid PutObject.
+run_local_plan() {
+  local test_mode=$1
+  shift
+  run env PATH="$PUB_BIN:$PATH" bash -c '
+    source "$1" --version >/dev/null
+    mode=$2
+    shift 2
+    certbotbot_workspace_create || exit 80
+    certbotbot_publication_prepare "$@" || exit 81
+    certbotbot_publication_checkpoint valid-bucket || exit 82
+    certbotbot_publication_plan_prepare
+    code=$?
+    printf "plan=%s\n" "$code"
+    if (( code == 0 )); then
+      [[ -f $CERTBOTBOT_PLAN_MANIFEST &&
+        "$(stat -c "%a" "$CERTBOTBOT_PLAN_MANIFEST")" == 600 ]] || exit 83
+      printf "records=%s\n" "$(grep -c "^object" \
+        "$CERTBOTBOT_PLAN_MANIFEST")"
+      printf "first=%s\n" "$(sed -n "5p" \
+        "$CERTBOTBOT_PLAN_MANIFEST" | cut -f3)"
+      grep -Fq $'\''certbotbot-prepublication-plan\t1'\'' \
+        "$CERTBOTBOT_PLAN_MANIFEST" || exit 84
+      case "$mode" in
+        valid)
+          certbotbot_publication_plan_verify || exit 85
+          ;;
+        tamper-proposed)
+          printf "tamper\n" >"${CERTBOTBOT_PUBLICATION_FILES[1]}"
+          certbotbot_publication_plan_verify
+          [[ $? == 65 ]] || exit 86
+          ;;
+        tamper-prior)
+          printf "tamper\n" >"${CERTBOTBOT_CHECKPOINT_FILES[1]}"
+          certbotbot_publication_plan_verify
+          [[ $? == 65 ]] || exit 87
+          ;;
+        tamper-manifest)
+          printf "tamper\n" >>"$CERTBOTBOT_PLAN_MANIFEST"
+          certbotbot_publication_plan_verify
+          [[ $? == 65 ]] || exit 88
+          ;;
+        *) exit 89 ;;
+      esac
+      certbotbot_publication_plan_discard || exit 90
+    else
+      [[ -z $CERTBOTBOT_PLAN_ROOT ]] || exit 91
+    fi
+    certbotbot_checkpoint_discard || exit 92
+    certbotbot_publication_discard || exit 93
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_CONFIG" \
+      -mindepth 1 -print -quit)" ]] || exit 94
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 95
+    certbotbot_workspace_destroy || exit 96
+  ' _ "$CERTBOTBOT_ARTIFACT" "$test_mode" "$@"
+}
+
+@test "existing S3 objects yield local checksummed common-first plan" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_local_plan valid valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'plan=0'* && "$output" == *'records=2'* &&
+    "$output" == *'first=common-latest.tar.gz'* ]]
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "first-run absence is explicit without treating it as an upload grant" {
+  make_lineage example.com
+  enable_get_mock
+  run_local_plan valid valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'plan=0'* && "$output" == *'records=2'* ]]
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "plan detects modification of proposed certificate bytes" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_local_plan tamper-proposed valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [ ! -e "$PUB_AWS_LOG" ] || ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "plan detects mutation of prior recoverable ciphertext or plaintext" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_local_plan tamper-prior valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "plan detects changes to its local manifest bytes" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_local_plan tamper-manifest valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
