@@ -150,7 +150,7 @@ test-s3-interop: build
 	@bash -n tests/integration/s3-backend-interoperability.bash
 	@bash -n tests/integration/s3-recovery-evidence.bash
 	@set -e; for artifact in $(DIST_SCRIPTS); do \
-		printf 'S3 interoperability %s\n' "$artifact"; \
+		printf 'S3 interoperability %s\n' "$$artifact"; \
 		AWS_DEFAULT_REGION=us-east-1 AWS_EC2_METADATA_DISABLED=true \
 			bash tests/integration/s3-backend-interoperability.bash run; \
 		AWS_DEFAULT_REGION=us-east-1 AWS_EC2_METADATA_DISABLED=true \
