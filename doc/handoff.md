@@ -486,3 +486,26 @@ certificates, synthetic account JSON, and no AWS writes. This is a
 pre-publication validation boundary, *not* the remote publication
 protocol: genuine staging account continuity, active import, due renewal,
 storage retries/partial-write recovery, and issuance remain release-blocking.
+
+## Phase 4N: private recovery checkpoint for proposed publication
+
+ADR-043 adds a read-only S3 recovery checkpoint associated with an
+approved ADR-042 publication candidate. The candidate now binds its
+bucket and ACME environment, and the checkpoint cannot read a
+different collection. Typed S3 retrieval returns original remote
+object-body paths as well as decrypted plaintext validation paths,
+so encrypted recovery saves the **exact previous ciphertext** rather
+than producing new ciphertext by re-encrypting it.
+
+Existing common and domain state is independently validated before
+its exact bytes, ordered key/presence metadata, and SHA-256 hashes
+are returned. Confirmed-missing old keys are explicit. Remote read
+errors, wrong accounts, corrupt archives, and cleanup failures
+reject the whole checkpoint; local staging is disposed of on error.
+
+This does **not** enable PutObject, release, or issuance. The captured
+private bytes are an in-process checkpoint only, not durable
+cross-runner recovery. A subsequent publication milestone still
+needs remotely retained previous generations, upload ordering,
+verified writes, partial-write recovery, and concurrency rules
+before storage mutation can be enabled.
