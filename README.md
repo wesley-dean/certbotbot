@@ -330,3 +330,21 @@ the active configuration unchanged. The resulting missing-lineage
 report is not permission to register an account or issue certificates.
 Actual issuance and publishing remain unimplemented; normal certificate
 requests continue to exit 69.
+
+## Optional symmetric GPG archive mode
+
+The internal storage preparation and read-only retrieval path now supports
+ADR-021's optional GPG AES-256 mode. With nonempty
+`GPG_PASSPHRASE`, it reads only `.tar.gz.enc` objects, decrypts them
+into private temporary files, and applies the same common-account and
+lineage validators as plaintext mode. Without a passphrase, it retains
+the existing `.tar.gz` keys. An object found only under the opposite
+suffix is treated as a configuration/migration error, not a fallback
+or first-run certificate request. Decryption failures are fatal and
+all local data are discarded on completion.
+
+This remains internal, non-activating preparation. Certificate issuance
+and S3 publishing are not enabled. Operators must migrate *entire*
+collections under external writer serialization. See the
+[manual migration guide](doc/encryption-migration.md) and
+[ADR-041](doc/adr/ADR-041-encrypted-state-retrieval-and-preparation.md).

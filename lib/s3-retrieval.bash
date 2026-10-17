@@ -4,6 +4,10 @@
 ## @details
 ## ADR-039 distinguishes a confirmed GetObject NoSuchKey from ambiguous
 ## missing, unauthorized, transport, and local filesystem failures.
+## The selected format is determined only by GPG_PASSPHRASE. An absent
+## selected-mode key is checked for the opposite suffix and fails closed on
+## a mode mismatch. Encrypted downloads are decrypted privately before the
+## existing archive validators inspect them. No plaintext fallback occurs.
 ## The state remains staged without extraction or active Certbot use.
 ## @see doc/adr/ADR-039-typed-s3-state-retrieval.md
 
@@ -97,7 +101,7 @@ certbotbot_s3_get_classified() {
 ## @retval 0 Common exists; selected domain entries may be missing.
 ## @retval 10 All requested objects were confirmed absent.
 ## @retval 64 Bad input, selected environment, or active workspace.
-## @retval 65 One or more domain objects exist without common account state.
+## @retval 65 Inconsistent account, mixed archive mode, or GPG failure.
 ## @retval 69 Unknown, denied, transport, or empty-object failure.
 ## @retval 73 Local stage failure or cleanup error.
 ## @par STDIN
@@ -108,7 +112,8 @@ certbotbot_s3_get_classified() {
 certbotbot_s3_stage_collection() {
   local bucket=${1:-} env=${ACME_ENVIRONMENT:-production}
   local mode='' item='' name='' key='' dest='' root='' status=0 result=0
-  local common_found=false domain_found=false
+  local probe='' probe_key='' probe_status=0 plaintext='' suffix=''
+  local common_found=false domain_found=false encrypted=false
   local -a names=() keys=()
   local -A seen=()
 
@@ -118,6 +123,21 @@ certbotbot_s3_stage_collection() {
       -z ${CERTBOTBOT_WORKSPACE_CONFIG:-} ]] ||
     ! certbotbot_acme_validate_environment "$env"; then
     return 64
+  fi
+  # Refuse xtrace before looking at any secret-bearing environment value.
+  if [[ $- == *x* ]]; then
+    return 64
+  fi
+  if [[ -n ${GPG_PASSPHRASE:-} ]]; then
+    # A line-oriented GPG passphrase channel cannot encode control bytes.
+    if [[ $GPG_PASSPHRASE == *[[:cntrl:]]* ]]; then
+      return 64
+    fi
+    if ! command -v gpg >/dev/null 2>&1; then
+      return 69
+    fi
+    encrypted=true
+    suffix='.enc'
   fi
   shift
   names=("$@")
@@ -129,11 +149,11 @@ certbotbot_s3_stage_collection() {
     fi
     seen["$name"]=1
   done
-  key="$(certbotbot_acme_object_key "$env" 'common-latest.tar.gz')" ||
+  key="$(certbotbot_acme_object_key "$env" "common-latest.tar.gz$suffix")" ||
     return 64
   keys=("$key")
   for name in "${names[@]}"; do
-    key="$(certbotbot_acme_object_key "$env" "$name-latest.tar.gz")" ||
+    key="$(certbotbot_acme_object_key "$env" "$name-latest.tar.gz$suffix")" ||
       return 64
     keys+=("$key")
   done
@@ -167,6 +187,19 @@ certbotbot_s3_stage_collection() {
       break
     }
     if certbotbot_s3_get_classified "$bucket" "$key" "$dest"; then
+      if [[ $encrypted == true ]]; then
+        plaintext="$(mktemp -- "$root/object.XXXXXXXX")" || {
+          result=73
+          break
+        }
+        if certbotbot_gpg_decrypt_archive "$dest" "$plaintext"; then
+          # Keep ciphertext private; only plaintext reaches the validators.
+          dest=$plaintext
+        else
+          result=$?
+          break
+        fi
+      fi
       CERTBOTBOT_S3_STAGE_PATHS+=("$dest")
       CERTBOTBOT_S3_STAGE_PRESENT+=(1)
       if [[ $key == "${keys[0]}" ]]; then
@@ -177,7 +210,32 @@ certbotbot_s3_stage_collection() {
     else
       status=$?
       if (( status == 10 )); then
-        rm -f -- "$dest" || { result=73; break; }
+        # Probe the other suffix solely to detect mixed-format collections.
+        # Never validate or use bytes from the non-selected mode.
+        if [[ $encrypted == true ]]; then
+          probe_key=${key%.enc}
+        else
+          probe_key=$key.enc
+        fi
+        probe="$(mktemp -- "$root/object.XXXXXXXX")" || {
+          result=73
+          break
+        }
+        if certbotbot_s3_get_classified "$bucket" "$probe_key" "$probe"; then
+          result=65
+        else
+          probe_status=$?
+          if (( probe_status != 10 )); then
+            result=$probe_status
+          fi
+        fi
+        if ! rm -f -- "$dest" "$probe"; then
+          result=73
+          break
+        fi
+        if (( result != 0 )); then
+          break
+        fi
         CERTBOTBOT_S3_STAGE_PATHS+=('')
         CERTBOTBOT_S3_STAGE_PRESENT+=(0)
       else
