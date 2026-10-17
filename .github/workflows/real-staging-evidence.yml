@@ -2,6 +2,12 @@
 name: Opt-in real ACME staging portability evidence
 
 # Never run from push, pull_request, schedules, or a release.
+# CKV_GHA_7 addresses parameterized reproducible *builds*.  This workflow
+# builds no deployable product; its inputs are operator-reviewed DNS identity
+# and an explicit false-by-default authorization for external staging calls.
+# ADR-044 requires these per-dispatch controls plus main-only execution,
+# protected acme-staging approval, fixed ACME URL, and scoped AWS credentials.
+# checkov:skip=CKV_GHA_7: Manual staging evidence needs reviewed DNS inputs and explicit opt-in
 # yamllint disable-line rule:truthy
 on:
   workflow_dispatch:
