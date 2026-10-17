@@ -116,7 +116,8 @@ certbotbot_checkpoint_verify() {
     fi
     [[ ${CERTBOTBOT_CHECKPOINT_PRESENT[i]} == 1 &&
       $file == "$root"/object.???????? &&
-      -f $file && ! -L $file && -O $file ]] || return 65
+      -f $file && ! -L $file && -O $file &&
+      "$(stat -c '%a' -- "$file")" == 600 ]] || return 65
     digest="$(certbotbot_checkpoint_hash "$file")" || return $?
     [[ $digest == "${CERTBOTBOT_CHECKPOINT_SHA256[i]}" ]] || return 65
   done
@@ -152,6 +153,8 @@ certbotbot_publication_checkpoint() {
   if (( $# != 1 )) ||
     [[ $- == *x* ||
       -z ${CERTBOTBOT_PUBLICATION_ROOT:-} ||
+      $bucket != "${CERTBOTBOT_PUBLICATION_BUCKET:-}" ||
+      $env != "${CERTBOTBOT_PUBLICATION_ENVIRONMENT:-}" ||
       -n ${CERTBOTBOT_CHECKPOINT_ROOT:-} ||
       -n ${CERTBOTBOT_S3_STAGE_ROOT:-} ||
       -n ${CERTBOTBOT_COMMON_STAGE:-} ||
