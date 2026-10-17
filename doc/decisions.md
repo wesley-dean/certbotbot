@@ -459,3 +459,18 @@ provide durable **remote** rollback generations because a local
 checkpoint alone cannot survive a worker crash.
 
 See [ADR-043](adr/ADR-043-recoverable-s3-publication-checkpoint.md).
+
+### ADR-044: Operator-Authorized Real ACME Staging Portability Evidence
+
+A manually dispatched workflow may run genuine Let's Encrypt staging
+DNS-01 issuance and restore encrypted account/domain archives across
+four separate GitHub-hosted runners. The workflow requires explicit
+operator confirmation, an environment-scoped Route53 OIDC role, an
+encrypted artifact handoff, and an explicitly configured staging
+trust bundle; no credential-bearing jobs run on ordinary PRs.
+The temporary test-only active Certbot configuration is confined to
+this isolated evidence harness and does not authorize product import,
+normal issuance, or S3 publication. Successful evidence must be
+reviewed separately before modifying the ADR-037 activation gate.
+
+See [ADR-044](adr/ADR-044-opt-in-real-acme-portability-evidence.md).
