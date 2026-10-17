@@ -303,3 +303,16 @@ existing domain is inconsistent.  Private bytes are not valid Certbot
 state until all existing archive and account identity checks succeed.
 The public issuer, GPG handling, S3 publication, and automatic release
 remain disabled until their separate prerequisites are met.
+
+### Phase 4K: remote collection assessment (ADR-040)
+
+The producer now has a private, non-activating path from selected
+production/staging S3 object names through typed retrieval to complete
+archive assessment. Common state is validated whether or not requested
+lineages already exist. All present lineages pass the existing batch
+validators before confirmed-missing domain names are reported. Failed
+retrieval, corrupted state, foreign account identity, unsupported renewal
+options, and unsafe active workspaces must leave no retained downloads or
+partially imported Certbot state. This is preparatory only: authenticated
+ACME account reuse, active state import, new issuance, encryption, and
+multi-object S3 publication remain separate release gates.
