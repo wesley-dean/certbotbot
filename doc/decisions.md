@@ -556,3 +556,20 @@ serialization, real backend tests, and ADR-037's live ACME evidence remain
 required before enabling normal issuance.
 
 See [ADR-050](adr/ADR-050-conditional-latest-publication-and-recovery.md).
+
+
+### ADR-051: Disposable S3 Storage End-to-End CI
+
+The repository installs a deliberately unprivileged, nonproduction GitHub
+Actions workflow that provisions a digest-pinned SeaweedFS S3-compatible
+service on an ephemeral runner's loopback address. Pull requests and manually
+dispatched jobs run the existing `make test-s3-interop` suite on all three
+standalone artifacts using only publicly known synthetic test credentials and
+no AWS, DNS, ACME, or deployment authority. The workflow tests real S3
+conditional writes, independent-runner recovery, conflicts, and a SIGKILL
+interruption; results prove compatibility only with the tested S3 emulator and
+CLI, not with production AWS, real Let's Encrypt state, or distributed locking.
+ADR-037's active-import prohibition, ADR-044's inactive live ACME workflow,
+and the ordinary issuer's exit-status-69 gate remain in force.
+
+See [ADR-051](adr/ADR-051-disposable-s3-end-to-end-ci.md).
