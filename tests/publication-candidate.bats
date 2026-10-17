@@ -552,7 +552,7 @@ run_local_plan() {
     if (( code == 0 )); then
       [[ -f $CERTBOTBOT_PLAN_MANIFEST &&
         "$(stat -c "%a" "$CERTBOTBOT_PLAN_MANIFEST")" == 600 ]] || exit 83
-      printf "records=%s\n" "$(grep -c "^object" \
+      printf "records=%s\n" "$(grep -c "^object[[:space:]]" \
         "$CERTBOTBOT_PLAN_MANIFEST")"
       printf "first=%s\n" "$(sed -n "5p" \
         "$CERTBOTBOT_PLAN_MANIFEST" | cut -f3)"
