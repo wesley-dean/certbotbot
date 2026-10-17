@@ -541,3 +541,18 @@ stale immediately and are not a lock, multi-object transaction, or
 authorization to publish certificates.
 
 See [ADR-049](adr/ADR-049-etag-bound-publication-conditions.md).
+
+### ADR-050: Guarded Conditional Latest Publication and Fresh-Runner Recovery
+
+The internal S3 coordinator can conditionally update the validated common
+account and domain latest objects only after durable, independently verified
+previous-state recovery and explicit operator acknowledgement of the saved
+generation identifier and checksum. Every PUT uses an object-level ETag or
+absence condition and read-back verification. On an ambiguous partial failure
+the system preserves the backup and requires separate, expressly authorized
+recovery; a fresh runner restores old bytes or confirmed absence only if
+all current keys match saved old or proposed new state. Cross-platform
+serialization, real backend tests, and ADR-037's live ACME evidence remain
+required before enabling normal issuance.
+
+See [ADR-050](adr/ADR-050-conditional-latest-publication-and-recovery.md).
