@@ -85,14 +85,14 @@ certbotbot_gpg_transform() {
   home="$(mktemp -d -- "$root/.gpg.XXXXXXXX")" || return 73
   # No global agent/keyring state and no GPG stdout, stderr, or shell tracing.
   # env -u strips the passphrase from GPG's inherited environment.
-  if (
-    set -o pipefail
-    printf '%s\n' "$pass" |
-      env -u GPG_PASSPHRASE gpg --homedir "$home" --no-options \
-        --batch --yes --quiet --no-tty --pinentry-mode loopback \
-        --passphrase-fd 0 --no-symkey-cache "${operation[@]}" \
-        --output "$output" -- "$input" >/dev/null 2>&1
-  ); then
+  # GPG is the final pipeline process and its exit status is the
+  # authoritative transform result. Avoid a subshell-wrapped pipeline:
+  # the pinned Bash-Minifier does not preserve that syntax reliably.
+  if printf '%s\n' "$pass" |
+    env -u GPG_PASSPHRASE gpg --homedir "$home" --no-options \
+      --batch --yes --quiet --no-tty --pinentry-mode loopback \
+      --passphrase-fd 0 --no-symkey-cache "${operation[@]}" \
+      --output "$output" -- "$input" >/dev/null 2>&1; then
     if [[ ! -s $output || -L $output || ! -f $output ]]; then
       result=65
     fi
