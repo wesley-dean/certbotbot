@@ -670,3 +670,28 @@ explicitly invoked internally**; no normal CLI invokes the coordinator.
 The public issuer remains status 69. Backend interoperability, external
 writer serialization, and genuine real staging account reuse are still
 required to open the product release gate.
+
+
+## Phase 4V: explicit real S3 interoperability and crash-recovery harness
+
+A second, opt-in test surface builds on ADR-050 without enabling any
+normal issuer behavior. The `make test-s3-interop` target exercises
+real conditional S3 APIs and the internal remote recovery verifier and
+fresh-runner rollback on all three standalone artifacts. The scenarios
+include complete and partial writes, first-run true absence, unrelated
+third-party content, and an intentional SIGKILL after common-key writing.
+Test workers share no previous private workspaces across the recovery
+boundary; the only surviving recovery inputs are the separately recorded
+generation and SHA-256 manifest value.
+
+The endpoint must be an explicitly approved disposable loopback-only
+S3-compatible service with test credentials. The normal Bats matrix
+asserts missing authorization, production scope, external endpoints, and
+inherited passphrases are rejected without any AWS invocation.
+
+**Not yet evidenced:** a successful run against a real service (it requires
+operator-provisioned infrastructure), actual AWS S3 compatibility,
+real Let's Encrypt staging account/SAN continuity, distributed writer
+serialization, and the ADR-037 active Certbot import decision. The public
+issuer remains disabled and continues to return 69.
+See `doc/s3-interoperability.md`.
