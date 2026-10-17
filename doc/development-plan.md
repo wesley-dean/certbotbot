@@ -406,3 +406,20 @@ active-import gate. Synthetic test fixtures cannot verify registered
 Let's Encrypt account continuity, live renewals, SAN changes, or
 rollback under a failed active install. Those requirements and
 durable S3 publication remain outstanding under ADRs 037 and 022.
+
+### Phase 4Q: local pre-publication recovery manifest (ADR-046)
+
+A private, read-only plan records the exact S3 keys and byte hashes
+of both the proposed cryptographically verified collection and its
+validated previous-state checkpoint. It distinguishes existing,
+missing, and newly proposed objects without accepting a failed
+GET as evidence of absence. The plan's manifest and both byte
+collections are rehashed before the internal plan is trusted.
+
+This milestone is strictly offline; it does not issue, upload, or
+grant release authorization. The next operational publication
+decision must establish durable remote backup generations,
+verification after writes, crash recovery from an independent
+runner, explicit handling of previous absence, and ordered latest
+aliases under ADR-022. Genuine staging evidence and ADR-037's
+activation ban remain unchanged.
