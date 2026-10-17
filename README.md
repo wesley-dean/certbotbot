@@ -360,3 +360,21 @@ or GPG AES-256 local bytes. A failure discards the complete candidate.
 No object is uploaded, no certificate is issued, and the public
 entrypoint remains disabled. See
 [ADR-042](doc/adr/ADR-042-local-publication-candidate-gate.md).
+
+## Read-only recovery checkpoints before publication
+
+An internal recovery step now pairs a cryptographically verified
+local publication candidate with the exact prior common and selected
+domain bytes retrieved from its original S3 bucket and ACME
+environment. It validates existing archive/account identity and
+renewal policy, captures old objects and their SHA-256 digests, and
+records confirmed-missing keys distinctly. Encrypted mode retains
+**original ciphertext** alongside temporarily decrypted validation
+bytes; no plaintext fallback occurs.
+
+A private, local checkpoint does **not** protect against a runner
+crash after future remote writes. Durable remote generations and
+verified partial-write recovery remain necessary before a publisher
+can be enabled. The current tool still performs no S3 writes and
+normal certificate issuance still returns 69. See
+[ADR-043](doc/adr/ADR-043-recoverable-s3-publication-checkpoint.md).

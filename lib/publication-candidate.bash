@@ -13,6 +13,12 @@
 ## @var CERTBOTBOT_PUBLICATION_ROOT
 ## @brief Owner-private candidate staging directory on success.
 CERTBOTBOT_PUBLICATION_ROOT=''
+## @var CERTBOTBOT_PUBLICATION_BUCKET
+## @brief S3 bucket validated when this candidate was prepared.
+CERTBOTBOT_PUBLICATION_BUCKET=''
+## @var CERTBOTBOT_PUBLICATION_ENVIRONMENT
+## @brief Selected ACME authority captured with this candidate.
+CERTBOTBOT_PUBLICATION_ENVIRONMENT=''
 
 ## @var CERTBOTBOT_PUBLICATION_KEYS
 ## @brief Ordered S3 latest-object keys; common first, then selected domains.
@@ -42,6 +48,10 @@ certbotbot_publication_discard() {
   [[ $mode == 700 ]] || return 73
   rm -rf -- "$root" || return 73
   CERTBOTBOT_PUBLICATION_ROOT=''
+  # shellcheck disable=SC2034
+  CERTBOTBOT_PUBLICATION_BUCKET=''
+  # shellcheck disable=SC2034
+  CERTBOTBOT_PUBLICATION_ENVIRONMENT=''
   # Values are part of the standalone artifact's caller-facing contract.
   # shellcheck disable=SC2034
   CERTBOTBOT_PUBLICATION_KEYS=()
@@ -249,6 +259,11 @@ certbotbot_publication_prepare() {
     certbotbot_publication_discard || return 73
     return "$result"
   fi
+  # Bind each verified artifact to the originally validated destination.
+  # shellcheck disable=SC2034
+  CERTBOTBOT_PUBLICATION_BUCKET=$bucket
+  # shellcheck disable=SC2034
+  CERTBOTBOT_PUBLICATION_ENVIRONMENT=$environment
   # The approved object-key order is common first. No AWS put is called.
   # shellcheck disable=SC2034
   CERTBOTBOT_PUBLICATION_KEYS=("${keys[@]}")

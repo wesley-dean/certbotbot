@@ -17,6 +17,10 @@ CERTBOTBOT_S3_STAGE_ROOT=''
 ## @var CERTBOTBOT_S3_STAGE_PATHS
 ## @brief Ordered local paths (index zero is common); absent entries are empty.
 declare -a CERTBOTBOT_S3_STAGE_PATHS=()
+## @var CERTBOTBOT_S3_STAGE_RAW_PATHS
+## @brief Exact downloaded body paths, index-matched to validation paths.
+## @note When encrypted, these retain ciphertext for recovery, not tar use.
+declare -a CERTBOTBOT_S3_STAGE_RAW_PATHS=()
 ## @var CERTBOTBOT_S3_STAGE_PRESENT
 ## @brief Presence flags corresponding to staged paths (1 or 0).
 declare -a CERTBOTBOT_S3_STAGE_PRESENT=()
@@ -42,6 +46,8 @@ certbotbot_s3_stage_discard() {
   rm -rf -- "$root" || return 73
   CERTBOTBOT_S3_STAGE_ROOT=''
   CERTBOTBOT_S3_STAGE_PATHS=()
+  # shellcheck disable=SC2034
+  CERTBOTBOT_S3_STAGE_RAW_PATHS=()
   CERTBOTBOT_S3_STAGE_PRESENT=()
 }
 
@@ -180,6 +186,8 @@ certbotbot_s3_stage_collection() {
     "$CERTBOTBOT_WORKSPACE_ROOT/s3-state.XXXXXXXX")" || return 73
   CERTBOTBOT_S3_STAGE_ROOT=$root
   CERTBOTBOT_S3_STAGE_PATHS=()
+  # shellcheck disable=SC2034
+  CERTBOTBOT_S3_STAGE_RAW_PATHS=()
   CERTBOTBOT_S3_STAGE_PRESENT=()
   for key in "${keys[@]}"; do
     dest="$(mktemp -- "$root/object.XXXXXXXX")" || {
@@ -187,6 +195,9 @@ certbotbot_s3_stage_collection() {
       break
     }
     if certbotbot_s3_get_classified "$bucket" "$key" "$dest"; then
+      # Retain exact remote bytes even when validators need plaintext.
+      # shellcheck disable=SC2034
+      CERTBOTBOT_S3_STAGE_RAW_PATHS+=("$dest")
       if [[ $encrypted == true ]]; then
         plaintext="$(mktemp -- "$root/object.XXXXXXXX")" || {
           result=73
@@ -237,6 +248,8 @@ certbotbot_s3_stage_collection() {
           break
         fi
         CERTBOTBOT_S3_STAGE_PATHS+=('')
+        # shellcheck disable=SC2034
+        CERTBOTBOT_S3_STAGE_RAW_PATHS+=('')
         CERTBOTBOT_S3_STAGE_PRESENT+=(0)
       else
         result=$status
