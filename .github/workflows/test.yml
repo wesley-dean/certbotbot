@@ -118,16 +118,15 @@ jobs:
           git check-ignore -q doc/reference/index.html
           test -z "$(git status --short)"
 
+      - name: Validate real-staging two-lineage guard and archive fixture
+        env:
+          CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.dev.bash
+        run: bats tests/staging-multilineage-guards.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true
         run: make test-report
-
-      - name: Diagnose opt-in dual-lineage Bats failures
-        if: steps.bats.outcome == 'failure'
-        env:
-          CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.dev.bash
-        run: bats tests/staging-multilineage-guards.bats
 
       - name: Publish Bats test results
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
