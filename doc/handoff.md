@@ -623,3 +623,24 @@ collection cannot change before publication. An accepted conditional
 latest-publication protocol and end-to-end crash recovery are still
 outstanding under ADR-022. Real staging account continuity and
 ADR-037's active-import prohibition are unchanged.
+
+## Phase 4T: S3 conditional-write predicate capture (ADR-049)
+
+The internal `certbotbot_latest_conditions_capture` now pairs a
+fresh ADR-048 remote drift comparison with a stronger per-key
+HeadObject/If-Match-GetObject sequence. Present objects must match
+the exact previous byte size and SHA-256; missing objects require
+the prior and fresh explicit absence evidence. Only after all keys
+pass does the helper publish common-first arrays of ETags/absence
+predicates bound to the current local plan digest.
+
+The helper never calls an S3 write or Certbot. The tests simulate
+changed objects between HEAD and GET, denied and malformed HEAD
+responses, conditional-read failures, corrupted bodies, first-run
+absence, and private cleanup across all three artifacts. Captured
+predicates are not a distributed lock or a multi-object snapshot.
+
+Next: govern and test guarded conditional latest-object PUTs with
+crash-safe recovery from an independent runner. Do not enable
+any such writer until its rollback contract is complete, and do
+not activate the issuer before reviewed real staging evidence.
