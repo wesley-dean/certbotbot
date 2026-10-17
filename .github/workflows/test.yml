@@ -133,6 +133,9 @@ jobs:
           CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.dev.bash
         run: bats tests/staging-second-lineage-sans.bats
 
+      - name: Validate generated staging IAM policy boundaries before full matrix
+        run: bats tests/staging-iam-policies.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true
