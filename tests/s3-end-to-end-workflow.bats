@@ -35,7 +35,7 @@ setup() {
 @test "storage E2E image is pinned to an immutable digest, and S3 binds loopback" {
   grep -Eq 'image=chrislusf/seaweedfs@sha256:[a-f0-9]{64}$' "$E2E_WORKFLOW"
   grep -Fq -- '--publish 127.0.0.1:8333:8333' "$E2E_WORKFLOW"
-  grep -Fq -- '--no-new-privileges' "$E2E_WORKFLOW"
+  grep -Fq -- '--security-opt no-new-privileges' "$E2E_WORKFLOW"
   grep -Fq '      S3_ENDPOINT_URL: http://127.0.0.1:8333' "$E2E_WORKFLOW"
   ! grep -Eq '^[[:space:]]*image=.*:latest([[:space:]]|$)' "$E2E_WORKFLOW"
 }
