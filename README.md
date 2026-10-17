@@ -539,3 +539,15 @@ candidate on a fresh runner. This is preparation for ADR-037's live
 two-lineage gate, not proof that staging credentials have been used
 or permission to enable public issuance. See [ADR-053](doc/adr/ADR-053-two-real-lineage-staging-evidence.md)
 and [the real staging runbook](doc/real-staging-evidence.md).
+
+
+## Read-only remote-state to verified import candidate
+
+ADR-054 connects the existing S3 state reader and multi-lineage import
+candidate assembler. For a fully existing account/lineage collection,
+it can retrieve encrypted or plaintext archives, reconstruct a
+private inactive candidate, and verify all selected certificates
+against an explicit CA and the exact requested SAN sets. This is
+an **internal integration and testing capability only**. It cannot
+register a new account, activate Certbot, issue or renew certificates,
+or publish S3 aliases. See [ADR-054](doc/adr/ADR-054-remote-verified-inactive-candidate.md).
