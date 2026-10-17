@@ -1374,6 +1374,14 @@ AWS
   chmod 0700 "$PUB_BIN/aws"
 }
 
+## Renew the proposal after saving a different, valid previous state remotely.
+regenerate_latest_proposal() {
+  printf '\n' >>"$PUB_SOURCE/common/accounts/acme-v02.api.letsencrypt.org/directory/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/meta.json"
+  tar -czf "$PUB_COMMON" -C "$PUB_SOURCE/common" accounts
+  rm -rf -- "$PUB_SOURCE/example.com"
+  make_lineage example.com
+}
+
 ## Run the entire guarded write protocol and optionally recover on fresh host.
 run_conditional_publication() {
   local scenario=$1
@@ -1436,6 +1444,7 @@ run_conditional_publication() {
   make_lineage example.com
   enable_get_mock
   stage_previous example.com
+  regenerate_latest_proposal
   cp -- "$PUB_S3_STORE/common-latest.tar.gz" "$BATS_TEST_TMPDIR/original-common"
   cp -- "$PUB_S3_STORE/example.com-latest.tar.gz" \
     "$BATS_TEST_TMPDIR/original-domain"
@@ -1457,6 +1466,7 @@ run_conditional_publication() {
   make_lineage example.com
   enable_get_mock
   stage_previous example.com
+  regenerate_latest_proposal
   cp -- "$PUB_S3_STORE/common-latest.tar.gz" "$BATS_TEST_TMPDIR/original-common"
   cp -- "$PUB_S3_STORE/example.com-latest.tar.gz" \
     "$BATS_TEST_TMPDIR/original-domain"
@@ -1477,6 +1487,7 @@ run_conditional_publication() {
   make_lineage example.com
   enable_get_mock
   stage_previous example.com
+  regenerate_latest_proposal
   cp -- "$PUB_S3_STORE/common-latest.tar.gz" "$BATS_TEST_TMPDIR/original-common"
   cp -- "$PUB_S3_STORE/example.com-latest.tar.gz" \
     "$BATS_TEST_TMPDIR/original-domain"
@@ -1497,6 +1508,7 @@ run_conditional_publication() {
   make_lineage example.com
   enable_get_mock
   stage_previous example.com
+  regenerate_latest_proposal
   cp -- "$PUB_S3_STORE/common-latest.tar.gz" "$BATS_TEST_TMPDIR/original-common"
   enable_latest_write_mock
   export LATEST_FAILURE=fail-domain-before
