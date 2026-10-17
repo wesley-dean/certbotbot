@@ -104,9 +104,9 @@ staging_multi_hash() {
 ## @returns Nothing is written to STDOUT.
 staging_multi_check() {
   local config=$1 name=$CERTBOTBOT_STAGING_SECOND_NAME
-  certbotbot_pem_assemble "$config" "$name"
+  certbotbot_pem_assemble "$config" "$name" || return $?
   certbotbot_crypto_verify_lineage "$config" "$name" \
-    "$CERTBOTBOT_STAGING_CA_BUNDLE"
+    "$CERTBOTBOT_STAGING_CA_BUNDLE" || return $?
   certbotbot_crypto_verify_sans "$config" "$name" "$name" "*.$name"
 }
 
