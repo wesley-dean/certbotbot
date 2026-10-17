@@ -556,3 +556,13 @@ live Let's Encrypt staging evidence, an Accepted activation ADR,
 first-run account registration, final producer orchestration, and
 real AWS IAM/storage evidence remain separate release gates. Normal
 certificate requests continue to return 69.
+
+
+### Phase 4Y: one-step offline staging IAM preparation
+
+ADR-056 adds a Bash-only, credential-free document generator for a
+single protected GitHub OIDC staging environment and three precisely
+scoped Route53 DNS-01 TXT record names. Its output is policy JSON,
+not changes to IAM, GitHub workflow installation, or staging issuance.
+This removes manual permission authoring from Issue #46 while keeping
+operator consent and real six-runner evidence as release gates.
