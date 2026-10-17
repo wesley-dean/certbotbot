@@ -4,6 +4,10 @@
 ## @details
 ## ADR-039 distinguishes a confirmed GetObject NoSuchKey from ambiguous
 ## missing, unauthorized, transport, and local filesystem failures.
+## The selected format is determined only by GPG_PASSPHRASE. An absent
+## selected-mode key is checked for the opposite suffix and fails closed on
+## a mode mismatch. Encrypted downloads are decrypted privately before the
+## existing archive validators inspect them. No plaintext fallback occurs.
 ## The state remains staged without extraction or active Certbot use.
 ## @see doc/adr/ADR-039-typed-s3-state-retrieval.md
 
@@ -108,7 +112,8 @@ certbotbot_s3_get_classified() {
 certbotbot_s3_stage_collection() {
   local bucket=${1:-} env=${ACME_ENVIRONMENT:-production}
   local mode='' item='' name='' key='' dest='' root='' status=0 result=0
-  local common_found=false domain_found=false
+  local probe='' probe_key='' probe_status=0 plaintext='' suffix=''
+  local common_found=false domain_found=false encrypted=false
   local -a names=() keys=()
   local -A seen=()
 
@@ -118,6 +123,217 @@ certbotbot_s3_stage_collection() {
       -z ${CERTBOTBOT_WORKSPACE_CONFIG:-} ]] ||
     ! certbotbot_acme_validate_environment "$env"; then
     return 64
+  fi
+  # Never expand the secret in an xtrace-enabled shell. The secret itself
+  # is supplied to GPG over a file descriptor, not command argv.
+  if [[ $- == *x* ]]; then
+    return 64
+  fi
+  if [[ -n ${GPG_PASSPHRASE:-} ]]; then
+    if [[ $GPG_PASSPHRASE == *
+  for name in "${names[@]}"; do
+    if ! certbotbot_validate_hostname "$name" ||
+      [[ $name == \*.* || $name != "${name,,}" ||
+        -n ${seen[$name]+_} ]]; then
+      return 64
+    fi
+    seen["$name"]=1
+  done
+  key="$(certbotbot_acme_object_key "$env" "common-latest.tar.gz$suffix")" ||
+    return 64
+  keys=("$key")
+  for name in "${names[@]}"; do
+    key="$(certbotbot_acme_object_key "$env" "$name-latest.tar.gz$suffix")" ||
+      return 64
+    keys+=("$key")
+  done
+  for key in "${keys[@]}"; do
+    certbotbot_storage_s3_validate_target "$bucket" "$key" || return 64
+  done
+  if [[ ! -d $CERTBOTBOT_WORKSPACE_ROOT ||
+    -L $CERTBOTBOT_WORKSPACE_ROOT ||
+    ! -O $CERTBOTBOT_WORKSPACE_ROOT ||
+    ! -d $CERTBOTBOT_WORKSPACE_CONFIG ||
+    -L $CERTBOTBOT_WORKSPACE_CONFIG ||
+    ! -O $CERTBOTBOT_WORKSPACE_CONFIG ]]; then
+    return 64
+  fi
+  mode="$(stat -c '%a' -- "$CERTBOTBOT_WORKSPACE_ROOT")" || return 73
+  [[ $mode == 700 ]] || return 64
+  mode="$(stat -c '%a' -- "$CERTBOTBOT_WORKSPACE_CONFIG")" || return 73
+  [[ $mode == 700 ]] || return 64
+  item="$(find -P "$CERTBOTBOT_WORKSPACE_CONFIG" \
+    -mindepth 1 -print -quit)" || return 73
+  [[ -z $item ]] || return 64
+
+  root="$(mktemp -d -- \
+    "$CERTBOTBOT_WORKSPACE_ROOT/s3-state.XXXXXXXX")" || return 73
+  CERTBOTBOT_S3_STAGE_ROOT=$root
+  CERTBOTBOT_S3_STAGE_PATHS=()
+  CERTBOTBOT_S3_STAGE_PRESENT=()
+  for key in "${keys[@]}"; do
+    dest="$(mktemp -- "$root/object.XXXXXXXX")" || {
+      result=73
+      break
+    }
+    if certbotbot_s3_get_classified "$bucket" "$key" "$dest"; then
+      if [[ $encrypted == true ]]; then
+        plaintext="$(mktemp -- "$root/object.XXXXXXXX")" || {
+          result=73
+          break
+        }
+        if certbotbot_gpg_decrypt_archive "$dest" "$plaintext"; then
+          # Retain ciphertext privately until the whole stage is discarded;
+          # downstream archive validators see only verified GPG output.
+          dest=$plaintext
+        else
+          result=$?
+          break
+        fi
+      fi
+      CERTBOTBOT_S3_STAGE_PATHS+=("$dest")
+      CERTBOTBOT_S3_STAGE_PRESENT+=(1)
+      if [[ $key == "${keys[0]}" ]]; then
+        common_found=true
+      else
+        domain_found=true
+      fi
+    else
+      status=$?
+      if (( status == 10 )); then
+        # ADR-021 forbids opportunistic fallback to the other archive
+        # format. Its presence is a fatal configuration mismatch.
+        if [[ $encrypted == true ]]; then
+          probe_key=${key%.enc}
+        else
+          probe_key=$key.enc
+        fi
+        probe="$(mktemp -- "$root/object.XXXXXXXX")" || {
+          result=73
+          break
+        }
+        if certbotbot_s3_get_classified "$bucket" "$probe_key" "$probe"; then
+          result=65
+        else
+          probe_status=$?
+          if (( probe_status != 10 )); then
+            result=$probe_status
+          fi
+        fi
+        if ! rm -f -- "$dest" "$probe"; then
+          result=73
+          break
+        fi
+        if (( result != 0 )); then
+          break
+        fi
+        CERTBOTBOT_S3_STAGE_PATHS+=('')
+        CERTBOTBOT_S3_STAGE_PRESENT+=(0)
+      else
+        result=$status
+        break
+      fi
+    fi
+  done
+  if (( result == 0 )) && [[ $common_found == false ]]; then
+    if [[ $domain_found == true ]]; then
+      result=65
+    else
+      result=10
+    fi
+  fi
+  if (( result != 0 )); then
+    certbotbot_s3_stage_discard || return 73
+  fi
+  return "$result"
+}
+\n'* ||
+      $GPG_PASSPHRASE == *
+  for name in "${names[@]}"; do
+    if ! certbotbot_validate_hostname "$name" ||
+      [[ $name == \*.* || $name != "${name,,}" ||
+        -n ${seen[$name]+_} ]]; then
+      return 64
+    fi
+    seen["$name"]=1
+  done
+  key="$(certbotbot_acme_object_key "$env" 'common-latest.tar.gz')" ||
+    return 64
+  keys=("$key")
+  for name in "${names[@]}"; do
+    key="$(certbotbot_acme_object_key "$env" "$name-latest.tar.gz")" ||
+      return 64
+    keys+=("$key")
+  done
+  for key in "${keys[@]}"; do
+    certbotbot_storage_s3_validate_target "$bucket" "$key" || return 64
+  done
+  if [[ ! -d $CERTBOTBOT_WORKSPACE_ROOT ||
+    -L $CERTBOTBOT_WORKSPACE_ROOT ||
+    ! -O $CERTBOTBOT_WORKSPACE_ROOT ||
+    ! -d $CERTBOTBOT_WORKSPACE_CONFIG ||
+    -L $CERTBOTBOT_WORKSPACE_CONFIG ||
+    ! -O $CERTBOTBOT_WORKSPACE_CONFIG ]]; then
+    return 64
+  fi
+  mode="$(stat -c '%a' -- "$CERTBOTBOT_WORKSPACE_ROOT")" || return 73
+  [[ $mode == 700 ]] || return 64
+  mode="$(stat -c '%a' -- "$CERTBOTBOT_WORKSPACE_CONFIG")" || return 73
+  [[ $mode == 700 ]] || return 64
+  item="$(find -P "$CERTBOTBOT_WORKSPACE_CONFIG" \
+    -mindepth 1 -print -quit)" || return 73
+  [[ -z $item ]] || return 64
+
+  root="$(mktemp -d -- \
+    "$CERTBOTBOT_WORKSPACE_ROOT/s3-state.XXXXXXXX")" || return 73
+  CERTBOTBOT_S3_STAGE_ROOT=$root
+  CERTBOTBOT_S3_STAGE_PATHS=()
+  CERTBOTBOT_S3_STAGE_PRESENT=()
+  for key in "${keys[@]}"; do
+    dest="$(mktemp -- "$root/object.XXXXXXXX")" || {
+      result=73
+      break
+    }
+    if certbotbot_s3_get_classified "$bucket" "$key" "$dest"; then
+      CERTBOTBOT_S3_STAGE_PATHS+=("$dest")
+      CERTBOTBOT_S3_STAGE_PRESENT+=(1)
+      if [[ $key == "${keys[0]}" ]]; then
+        common_found=true
+      else
+        domain_found=true
+      fi
+    else
+      status=$?
+      if (( status == 10 )); then
+        rm -f -- "$dest" || { result=73; break; }
+        CERTBOTBOT_S3_STAGE_PATHS+=('')
+        CERTBOTBOT_S3_STAGE_PRESENT+=(0)
+      else
+        result=$status
+        break
+      fi
+    fi
+  done
+  if (( result == 0 )) && [[ $common_found == false ]]; then
+    if [[ $domain_found == true ]]; then
+      result=65
+    else
+      result=10
+    fi
+  fi
+  if (( result != 0 )); then
+    certbotbot_s3_stage_discard || return 73
+  fi
+  return "$result"
+}
+\r'* ]]; then
+      return 64
+    fi
+    if ! command -v gpg >/dev/null 2>&1; then
+      return 69
+    fi
+    encrypted=true
+    suffix='.enc'
   fi
   shift
   names=("$@")
