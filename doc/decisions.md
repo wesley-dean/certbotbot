@@ -573,3 +573,17 @@ ADR-037's active-import prohibition, ADR-044's inactive live ACME workflow,
 and the ordinary issuer's exit-status-69 gate remain in force.
 
 See [ADR-051](adr/ADR-051-disposable-s3-end-to-end-ci.md).
+
+
+### ADR-052: Exact AWS CLI 2.37 NoSuchKey Diagnostic Compatibility
+
+The internal ADR-039 GetObject missing-state classifier recognizes the original
+anchored `NoSuchKey` diagnostic and the newer AWS CLI 2.37.13 form prefixed
+with the literal `aws: [ERROR]: `. The confirmed GetObject operation,
+exact `NoSuchKey` service error, and process status 254 remain mandatory;
+generic 404s, unexpected prefixes, wrong operations, and failures are never
+accepted as evidence of an absent object. This directly addresses an
+interoperability failure exposed by ADR-051's real-service CI without
+altering the public issuer or any existing active-state restriction.
+
+See [ADR-052](adr/ADR-052-awscli-prefixed-nosuchkey.md).
