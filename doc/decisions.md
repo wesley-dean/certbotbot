@@ -444,3 +444,18 @@ with fixed common-first S3 object keys and owner-private file bodies.
 No PutObject is called, and active Certbot import or issuance remains blocked.
 
 See [ADR-042](adr/ADR-042-local-publication-candidate-gate.md).
+
+### ADR-043: Verified, Exact-Byte Remote Recovery Checkpoints
+
+A verified local publication candidate must be paired with a
+bucket- and environment-bound, complete read-only snapshot of its
+previous S3 common and selected domain objects before any future
+publication can be considered. The new checkpoint validates restored
+account and renewal state, preserves exact original encrypted or
+plaintext remote bytes and presence flags, and records SHA-256 digests.
+Denied, missing-common, corrupt, or mixed-format remote inputs fail
+closed, and no S3 writes are enabled. A later publication ADR must
+provide durable **remote** rollback generations because a local
+checkpoint alone cannot survive a worker crash.
+
+See [ADR-043](adr/ADR-043-recoverable-s3-publication-checkpoint.md).
