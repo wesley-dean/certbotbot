@@ -123,6 +123,11 @@ jobs:
           CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.dev.bash
         run: bats tests/staging-multilineage-guards.bats
 
+      - name: Validate remote existing-state candidate before full matrix
+        env:
+          CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.dev.bash
+        run: bats tests/remote-candidate.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true

@@ -537,3 +537,21 @@ This code **does not establish real staging success by itself**. The
 operator must manually install and approve the separately governed example
 using a protected staging role and explicitly review all six genuine
 runner results. The public issuer remains disabled under ADR-037.
+
+
+### Phase 4X: end-to-end read-only S3-to-cryptographically-verified import candidate
+
+ADR-054 joins existing typed and optional-GPG S3 collection retrieval to
+ADR-045's complete multi-lineage candidate assembler, followed by the
+ADR-029/036 chain, key, and exact SAN gates. It performs **one complete
+remote retrieval** and checks every selected lineage for presence before
+assembly; a fully missing collection retains status 10 and missing
+members cannot cause accidental registration. The downloader is cleaned
+up even after errors, and any failed verification removes the entire
+candidate rather than leaving partially approved private state.
+
+This internal preparation flow is intentionally **non-activating**. Actual
+live Let's Encrypt staging evidence, an Accepted activation ADR,
+first-run account registration, final producer orchestration, and
+real AWS IAM/storage evidence remain separate release gates. Normal
+certificate requests continue to return 69.

@@ -23,7 +23,7 @@ CORE_SOURCE_FILES := lib/plugin-registry.bash lib/input.bash \
                      lib/import-assess.bash lib/import-candidate.bash \
                      lib/gpg-archives.bash \
                      lib/s3-retrieval.bash \
-                     lib/state-preflight.bash lib/publication-candidate.bash \
+                     lib/state-preflight.bash lib/remote-candidate.bash lib/publication-candidate.bash \
                      lib/publication-checkpoint.bash lib/publication-plan.bash \
                      lib/recovery-generations.bash \
                      lib/publication-precondition.bash lib/latest-conditions.bash lib/latest-publication.bash

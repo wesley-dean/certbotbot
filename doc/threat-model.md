@@ -543,3 +543,26 @@ and separate archival member validation mitigate but do not eliminate
 these risks. Actual staging issuance requires an independent operator
 decision. Passing credential-free CI does not authorize public active
 import under ADR-037 or production publication.
+
+
+## Prepared but inactive remote state verification (ADR-054)
+
+The new internal S3-to-candidate coordinator reads previously durable
+account and selected lineage archives, allowing downloaded remote bytes
+to populate **only** a private ADR-045 candidate, never the active
+Certbot configuration. Existing S3 classification treats generic
+404, denied, malformed, and failed downloads as fatal; missing selected
+lineages never trigger account registration. The candidate assembler
+freezes bytes before the S3 stage is destroyed and rejects unsafe
+members, ambiguous account identity, path traversal, executable
+renewal hooks, mixed encryption modes, and duplicate lineages.
+
+A separate verification pass requires certificate chain/key matching,
+validity, and exact requested SAN identity, using the operator's
+explicit trust root for staging. It refuses a partial batch and
+destroys the candidate after rejection. This reduces opportunities
+for a malicious archive to become ambient active state but does
+not authenticate S3 freshness or coordinate concurrent writers.
+The candidate is not a product activation token; real staging,
+independent writer serialization, and explicit active import
+approval remain mandatory.

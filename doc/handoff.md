@@ -725,3 +725,27 @@ with a protected staging Route53 role, approved DNS names, staging
 trust bundle, and GPG secret. A real successful authorized run, AWS
 production S3 interoperability, operational serialization, and a later
 Accepted activation ADR are still release gates. Issuer exit 69 persists.
+
+
+## Phase 4X: existing remote archives to verified inactive candidate
+
+The internal `certbotbot_remote_candidate_prepare` binds ADR-039/041
+typed S3 retrieval and optional decryption directly to ADR-045's
+complete inactive multi-lineage assembler. All selected lineages must
+already exist. An entirely absent collection returns status 10
+without registration; a missing domain with a present account returns
+65 and leaves no partial candidate. Successful preparation discards
+the downloaded S3 stage while retaining a completely separate,
+private inactive candidate.
+
+The subsequent `certbotbot_remote_candidate_verify` checks all approved
+lineages against the existing ADR-029/036 chain/key/SAN contract and
+an explicit staging CA bundle where relevant. Any verification failure
+discards the candidate, and explicit disposal clears all approval state.
+Bats exercises all three release flavors with synthetic S3 objects,
+missing/denied/corrupt archive failures, and locally generated
+CA-signed certificate fixtures.
+
+**Still withheld:** activation, first-run registration, any Certbot
+issuer call or S3 write, real ACME staging evidence, and final
+external writer coordination. The public product remains status 69.

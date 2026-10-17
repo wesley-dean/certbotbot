@@ -604,3 +604,19 @@ authorization and successful execution, and ADR-037's public-import prohibition
 remains binding.
 
 See [ADR-053](adr/ADR-053-two-real-lineage-staging-evidence.md).
+
+
+### ADR-054: Remote S3-to-Verified Inactive Multi-Lineage Candidate
+
+An internal coordinator fetches a complete selected set of existing common
+account and domain archives once from S3, using the existing typed,
+namespace-aware, optionally encrypted retrieval contract. It requires
+all requested lineage archives to exist, assembles the downloaded bytes
+into an ADR-045 owner-private **inactive** candidate, and cleans up the
+downloaded stage on all outcomes. A separate explicit gate verifies every
+requested certificate chain, matching private key, and exact SAN set
+with an operator-supplied staging trust root when needed. Preparation
+or verification never authorizes Certbot activation, account registration,
+DNS challenges, S3 mutation, or changes to public issuer exit 69.
+
+See [ADR-054](adr/ADR-054-remote-verified-inactive-candidate.md).
