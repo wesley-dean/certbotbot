@@ -191,9 +191,22 @@ run_remote() {
           "$config/renewal/$name.conf" || exit 94
       done
       if [[ $REMOTE_VERIFY_MODE != none ]]; then
-        certbotbot_remote_candidate_verify "$REMOTE_TEST_CA" \
-          example.com "example.com *.example.com" \
-          example.net "example.net *.example.net"
+        case $REMOTE_VERIFY_MODE in
+          wrong-san)
+            certbotbot_remote_candidate_verify "$REMOTE_TEST_CA" \
+              example.com "example.com *.example.com extra.example.com" \
+              example.net "example.net *.example.net"
+            ;;
+          wrong-count)
+            certbotbot_remote_candidate_verify "$REMOTE_TEST_CA" \
+              example.com "example.com *.example.com"
+            ;;
+          *)
+            certbotbot_remote_candidate_verify "$REMOTE_TEST_CA" \
+              example.com "example.com *.example.com" \
+              example.net "example.net *.example.net"
+            ;;
+        esac
         code=$?
         printf "verify=%s\n" "$code"
         if (( code == 0 )); then
@@ -305,6 +318,34 @@ run_remote() {
   run_remote example.com example.net
   [ "$status" -eq 0 ]
   [[ $output == *'prepare=0'* && $output == *'verify=0'* ]]
+  [ ! -e "$REMOTE_FORBIDDEN" ]
+}
+
+@test "valid certificates with a requested extra SAN fail the entire batch" {
+  command -v openssl >/dev/null 2>&1 || skip 'OpenSSL required'
+  make_test_ca
+  common_archive
+  lineage_archive example.com
+  lineage_archive example.net
+  sign_test_lineage example.com
+  sign_test_lineage example.net
+  put_fixture example.com example.net
+  export REMOTE_VERIFY_MODE=wrong-san
+  run_remote example.com example.net
+  [ "$status" -eq 0 ]
+  [[ $output == *'prepare=0'* && $output == *'verify=65'* ]]
+  [ ! -e "$REMOTE_FORBIDDEN" ]
+}
+
+@test "incomplete requested verification set destroys the whole candidate" {
+  common_archive
+  lineage_archive example.com
+  lineage_archive example.net
+  put_fixture example.com example.net
+  export REMOTE_VERIFY_MODE=wrong-count
+  run_remote example.com example.net
+  [ "$status" -eq 0 ]
+  [[ $output == *'prepare=0'* && $output == *'verify=64'* ]]
   [ ! -e "$REMOTE_FORBIDDEN" ]
 }
 
