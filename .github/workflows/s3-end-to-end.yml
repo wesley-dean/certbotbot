@@ -60,6 +60,9 @@ jobs:
             --name certbotbot-s3-e2e \
             --publish 127.0.0.1:8333:8333 \
             --cap-drop ALL \
+            --cap-add CHOWN \
+            --cap-add SETUID \
+            --cap-add SETGID \
             --security-opt no-new-privileges \
             --pids-limit 256 \
             --memory 2g \
