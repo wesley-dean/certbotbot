@@ -644,3 +644,29 @@ Next: govern and test guarded conditional latest-object PUTs with
 crash-safe recovery from an independent runner. Do not enable
 any such writer until its rollback contract is complete, and do
 not activate the issuer before reviewed real staging evidence.
+
+## Phase 4U: conditional latest publication and independent rollback (ADR-050)
+
+The internal `certbotbot_latest_publish` requires an ADR-042 proposed
+collection, ADR-043 prior checkpoint, ADR-046 plan, completed ADR-047 remote
+backup, and ADR-049 captured conditional write tokens. It requires separate
+explicit latest-write authorization and an operator-persisted recovery
+generation identifier and manifest checksum acknowledgement **before** its
+first mutation. It conditionally writes common first, then selected domain
+objects, with per-key SHA-256 readback. A lost response remains a partial
+state, never an implicit success.
+
+`certbotbot_latest_recover` runs from a new private workspace with only
+the trusted completed recovery identifier/checksum, bucket and environment.
+It checks the entire latest collection before any change, refuses third-party
+content, and reverses the selected keys domain-first using conditional PUTs
+of backed-up old bytes or ETag-bound DELETE for formerly absent objects.
+It rechecks each restored key and supports rerunning after partial recovery.
+
+Tests use a stateful mock S3 for partial and lost-response writes, conditional
+restore/delete, true first-run absence, conflicting external changes, and
+fresh runner behavior. **This milestone does write latest S3 aliases when
+explicitly invoked internally**; no normal CLI invokes the coordinator.
+The public issuer remains status 69. Backend interoperability, external
+writer serialization, and genuine real staging account reuse are still
+required to open the product release gate.

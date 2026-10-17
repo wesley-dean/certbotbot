@@ -1300,3 +1300,241 @@ run_etag_conditions() {
   [ "$status" -eq 0 ]
   [[ "$output" == *'capture=65'* ]]
 }
+
+## S3 facade for conditional latest writes and independently verified rollback.
+## It uses the production CLI shape but keeps all effects under BATS_TEST_TMPDIR.
+enable_latest_write_mock() {
+  export LATEST_WRITE_LOG="$BATS_TEST_TMPDIR/latest-write.log"
+  export LATEST_FAILURE=''
+  export LATEST_MUTATE_AFTER_FAILURE=false
+  cat >"$PUB_BIN/aws" <<'AWS'
+#!/usr/bin/env bash
+set -u
+[[ ${1:-} == --endpoint-url ]] && shift 2
+[[ ${1:-} == s3api ]] || exit 88
+operation=${2:-}
+shift 2
+bucket='' key='' body='' destination='' ifmatch='' ifnone=''
+while (( $# > 0 )); do
+  case "$1" in
+    --bucket) bucket=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    --body) body=$2; shift 2 ;;
+    --if-match) ifmatch=$2; shift 2 ;;
+    --if-none-match) ifnone=$2; shift 2 ;;
+    --query|--output) shift 2 ;;
+    *) destination=$1; shift ;;
+  esac
+done
+[[ $bucket == valid-bucket ]] || exit 87
+target="$PUB_S3_STORE/$key"
+printf '%s:%s:%s:%s\n' "$operation" "$key" "$ifmatch" "$ifnone" \
+  >>"$LATEST_WRITE_LOG"
+etag=''
+if [[ -f $target ]]; then
+  etag="\"$(sha256sum -- "$target" | cut -c1-32)\""
+fi
+case "$operation" in
+  head-object)
+    [[ -n $etag ]] || exit 254
+    printf '%s\n' "$etag"
+    ;;
+  get-object)
+    if [[ ! -f $target ]]; then
+      printf 'An error occurred (NoSuchKey) when calling the GetObject operation: Missing\n' >&2
+      exit 254
+    fi
+    [[ -z $ifmatch || $ifmatch == "$etag" ]] || exit 254
+    cp -- "$target" "$destination" || exit 73
+    ;;
+  put-object)
+    [[ $ifnone == '*' || -n $ifmatch ]] || exit 86
+    [[ -z $ifnone || ! -e $target ]] || exit 254
+    [[ -z $ifmatch || ( -n $etag && $ifmatch == "$etag" ) ]] ||
+      exit 254
+    if [[ ${LATEST_FAILURE:-} == fail-domain-before &&
+      $key == example.com-latest.tar.gz ]]; then
+      exit 255
+    fi
+    mkdir -p -- "${target%/*}" || exit 73
+    cp -- "$body" "$target" || exit 73
+    if [[ ${LATEST_FAILURE:-} == fail-domain-after &&
+      $key == example.com-latest.tar.gz &&
+      ! -e "$PUB_S3_STORE/.lost-domain-response-once" ]]; then
+      : >"$PUB_S3_STORE/.lost-domain-response-once"
+      exit 255
+    fi
+    ;;
+  delete-object)
+    [[ -n $ifmatch && -n $etag && $ifmatch == "$etag" ]] ||
+      exit 254
+    rm -f -- "$target" || exit 73
+    ;;
+  *) exit 85 ;;
+esac
+AWS
+  chmod 0700 "$PUB_BIN/aws"
+}
+
+## Renew the proposal after saving a different, valid previous state remotely.
+regenerate_latest_proposal() {
+  printf '\n' >>"$PUB_SOURCE/common/accounts/acme-v02.api.letsencrypt.org/directory/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/meta.json"
+  tar -czf "$PUB_COMMON" -C "$PUB_SOURCE/common" accounts
+  rm -rf -- "$PUB_SOURCE/example.com"
+  make_lineage example.com
+}
+
+## Run the entire guarded write protocol and optionally recover on fresh host.
+run_conditional_publication() {
+  local scenario=$1
+  shift
+  run env PATH="$PUB_BIN:$PATH" \
+    CERTBOTBOT_RECOVERY_WRITE_CONFIRM=yes \
+    CERTBOTBOT_LATEST_WRITE_CONFIRM=yes \
+    CERTBOTBOT_LATEST_ROLLBACK_CONFIRM=yes bash -c '
+    source "$1" --version >/dev/null
+    mode=$2
+    shift 2
+    certbotbot_workspace_create || exit 70
+    certbotbot_publication_prepare "$@" || exit 71
+    certbotbot_publication_checkpoint valid-bucket || exit 72
+    certbotbot_publication_plan_prepare || exit 73
+    certbotbot_recovery_persist || exit 74
+    generation=$CERTBOTBOT_RECOVERY_GENERATION
+    hash=$CERTBOTBOT_RECOVERY_MANIFEST_SHA256
+    certbotbot_latest_conditions_capture || exit 75
+    CERTBOTBOT_LATEST_RECOVERY_ACK="$generation:$hash"
+    certbotbot_latest_publish
+    result=$?
+    printf "publication=%s\n" "$result"
+    printf "outcome=%s\n" "$CERTBOTBOT_LATEST_PUBLISH_OUTCOME"
+    case "$mode" in
+      complete)
+        [[ $result == 0 &&
+          $CERTBOTBOT_LATEST_PUBLISH_OUTCOME == complete ]] || exit 76
+        ;;
+      partial|lost-response|conflict)
+        [[ $result == 69 &&
+          $CERTBOTBOT_LATEST_PUBLISH_OUTCOME == partial ]] || exit 77
+        ;;
+      *) exit 78 ;;
+    esac
+    certbotbot_latest_conditions_discard || exit 79
+    certbotbot_publication_plan_discard || exit 80
+    certbotbot_checkpoint_discard || exit 81
+    certbotbot_publication_discard || exit 82
+    certbotbot_workspace_destroy || exit 83
+    # A second runner has no access to predecessor candidate/checkpoint state.
+    certbotbot_workspace_create || exit 84
+    if [[ $mode == conflict ]]; then
+      printf "third-party-state\n" >"$PUB_S3_STORE/example.com-latest.tar.gz"
+    fi
+    certbotbot_latest_recover valid-bucket production \
+      "$generation" "$hash"
+    rollback=$?
+    printf "rollback=%s\n" "$rollback"
+    if [[ $mode == conflict ]]; then
+      [[ $rollback == 65 ]] || exit 85
+    else
+      [[ $rollback == 0 ]] || exit 86
+    fi
+    certbotbot_workspace_destroy || exit 87
+  ' _ "$CERTBOTBOT_ARTIFACT" "$scenario" "$@"
+}
+
+@test "complete conditional publish and fresh-runner recovery return exact old bytes" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  regenerate_latest_proposal
+  cp -- "$PUB_S3_STORE/common-latest.tar.gz" "$BATS_TEST_TMPDIR/original-common"
+  cp -- "$PUB_S3_STORE/example.com-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-domain"
+  enable_latest_write_mock
+  run_conditional_publication complete valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" example.com \
+    "$BATS_TEST_TMPDIR/example.com.tar.gz" 'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'publication=0'* && "$output" == *'rollback=0'* ]]
+  cmp -s "$PUB_S3_STORE/common-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-common"
+  cmp -s "$PUB_S3_STORE/example.com-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-domain"
+  grep -q '^put-object:common-latest.tar.gz:"' "$LATEST_WRITE_LOG"
+  grep -q '^put-object:example.com-latest.tar.gz:"' "$LATEST_WRITE_LOG"
+}
+
+@test "partial domain PUT failure is recoverable on another empty worker" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  regenerate_latest_proposal
+  cp -- "$PUB_S3_STORE/common-latest.tar.gz" "$BATS_TEST_TMPDIR/original-common"
+  cp -- "$PUB_S3_STORE/example.com-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-domain"
+  enable_latest_write_mock
+  export LATEST_FAILURE=fail-domain-before
+  run_conditional_publication partial valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" example.com \
+    "$BATS_TEST_TMPDIR/example.com.tar.gz" 'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'publication=69'* && "$output" == *'rollback=0'* ]]
+  cmp -s "$PUB_S3_STORE/common-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-common"
+  cmp -s "$PUB_S3_STORE/example.com-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-domain"
+}
+
+@test "lost S3 domain response is reconciled against actual remote bytes" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  regenerate_latest_proposal
+  cp -- "$PUB_S3_STORE/common-latest.tar.gz" "$BATS_TEST_TMPDIR/original-common"
+  cp -- "$PUB_S3_STORE/example.com-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-domain"
+  enable_latest_write_mock
+  export LATEST_FAILURE=fail-domain-after
+  run_conditional_publication lost-response valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" example.com \
+    "$BATS_TEST_TMPDIR/example.com.tar.gz" 'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'publication=69'* && "$output" == *'rollback=0'* ]]
+  cmp -s "$PUB_S3_STORE/common-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-common"
+  cmp -s "$PUB_S3_STORE/example.com-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-domain"
+}
+
+@test "fresh rollback refuses unrelated modified key before changing any other key" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  regenerate_latest_proposal
+  cp -- "$PUB_S3_STORE/common-latest.tar.gz" "$BATS_TEST_TMPDIR/original-common"
+  enable_latest_write_mock
+  export LATEST_FAILURE=fail-domain-before
+  run_conditional_publication conflict valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" example.com \
+    "$BATS_TEST_TMPDIR/example.com.tar.gz" 'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'publication=69'* && "$output" == *'rollback=65'* ]]
+  ! cmp -s "$PUB_S3_STORE/common-latest.tar.gz" \
+    "$BATS_TEST_TMPDIR/original-common"
+  grep -Fq 'third-party-state' "$PUB_S3_STORE/example.com-latest.tar.gz"
+}
+
+@test "first-run recovery conditionally deletes only our newly created latest keys" {
+  make_lineage example.com
+  enable_get_mock
+  enable_latest_write_mock
+  run_conditional_publication complete valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" example.com \
+    "$BATS_TEST_TMPDIR/example.com.tar.gz" 'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'publication=0'* && "$output" == *'rollback=0'* ]]
+  [ ! -e "$PUB_S3_STORE/common-latest.tar.gz" ]
+  [ ! -e "$PUB_S3_STORE/example.com-latest.tar.gz" ]
+  grep -q '^delete-object:common-latest.tar.gz:"' "$LATEST_WRITE_LOG"
+  grep -q '^delete-object:example.com-latest.tar.gz:"' "$LATEST_WRITE_LOG"
+}
