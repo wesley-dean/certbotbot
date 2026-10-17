@@ -211,6 +211,10 @@ certbotbot_publication_prepare() {
         certbotbot_restore_discard || result=73
       else
         result=$?
+        # A failed restoration may already have created a private stage.
+        if [[ -n ${CERTBOTBOT_RESTORE_ROOT:-} ]]; then
+          certbotbot_restore_discard || result=73
+        fi
       fi
       (( result == 0 )) || break
     done
@@ -236,10 +240,17 @@ certbotbot_publication_prepare() {
   fi
 
   if (( result != 0 )); then
+    if [[ -n ${CERTBOTBOT_RESTORE_ROOT:-} ]]; then
+      certbotbot_restore_discard || result=73
+    fi
+    if [[ -n ${CERTBOTBOT_COMMON_STAGE:-} ]]; then
+      certbotbot_common_discard || result=73
+    fi
     certbotbot_publication_discard || return 73
     return "$result"
   fi
   # The approved object-key order is common first. No AWS put is called.
+  # shellcheck disable=SC2034
   CERTBOTBOT_PUBLICATION_KEYS=("${keys[@]}")
   # shellcheck disable=SC2034
   CERTBOTBOT_PUBLICATION_FILES=("${outputs[@]}")
