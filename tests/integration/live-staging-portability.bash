@@ -234,6 +234,7 @@ staging_main() {
   [[ $phase == guard ]] && return 0
   # No implicit invocation from CI, pull requests, or a product command.
   [[ ${CERTBOTBOT_STAGING_CONFIRM:-} == yes &&
+    ${CERTBOTBOT_STAGING_PHASE:-} == "$phase" &&
     ${ACME_ENVIRONMENT:-} == staging &&
     -n ${CERTBOTBOT_STAGING_EMAIL:-} &&
     -n ${GPG_PASSPHRASE:-} &&
