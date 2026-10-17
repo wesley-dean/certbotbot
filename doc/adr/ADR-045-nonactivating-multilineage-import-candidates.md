@@ -37,7 +37,7 @@ After the batch passes, the builder:
    under ADR-027, checks its account/CA association and complete
    ADR-038 renewal-option allowlist, and copies only that lineage's
    approved files and relative live symlinks into candidate storage.
-3. Invokes ADR-032's renewal-path preview in a **subshell** that uses
+3. Invokes ADR-032's renewal-path preview with a **command-scoped Bash variable** that uses
    the candidate's own `config` pathname as the target. The caller's
    recorded active config remains unchanged; a successful preview is
    copied only to the candidate's `renewal/<name>.conf`. The preview
