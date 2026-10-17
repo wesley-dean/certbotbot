@@ -377,3 +377,29 @@ separately durable remote retention and explicit recovery ordering
 before future latest-object writes. This addition does not claim
 S3 transactionality, prevent same-user workspace tampering, or
 authorize active Certbot import or issuance.
+
+## Inactive real staging evidence example trust boundaries (ADR-044)
+
+The GitHub Actions staging protocol is distributed only as an
+**inactive example** in `examples/github-actions/`, not an installed
+`.github/workflows/` entry. Merging the example creates no new
+dispatch surface in the producer repository. Only a deliberate
+operator installation in a controlled repository can enable real
+Route53 TXT changes and Let's Encrypt staging requests.
+
+Once deliberately installed, its manual trigger still requires
+affirmative authorization, a trusted `main` ref, and protected
+`acme-staging` environment approval. Only issuance and changed-SAN
+jobs receive scoped AWS OIDC credentials; no-op and read-only
+validation jobs receive no AWS role. ACME and TLS private keys are
+passed between isolated jobs only in GPG-encrypted, short-retention
+artifacts, and test-only private state is discarded after each run.
+
+Residual risks arise only if installed and authorized: changes to
+workflow code, overbroad IAM/OIDC scope, compromised runner memory
+or secret storage, malicious DNS updates, staging CA/rate-limit
+issues, or access to encrypted artifacts. Regular CI runs
+credential-free guard checks and cannot invoke real staging work.
+No Checkov exception is present for this example, and no successful
+integration test alone authorizes product active import, public
+issuance, or remote publication under ADR-037 and ADR-022.

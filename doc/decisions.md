@@ -459,3 +459,19 @@ provide durable **remote** rollback generations because a local
 checkpoint alone cannot survive a worker crash.
 
 See [ADR-043](adr/ADR-043-recoverable-s3-publication-checkpoint.md).
+
+### ADR-044: Operator-Authorized Real ACME Staging Portability Evidence
+
+A four-runner Let's Encrypt staging portability protocol is supplied
+as a deliberately **inactive example** under `examples/github-actions/`,
+alongside credential-free guard tests and an integration harness. It
+is not registered as an executable workflow by this repository; an
+operator must separately review, install, authorize, and configure it
+in a controlled GitHub environment to request real DNS-01 validation.
+The design protects split-state transfers with encryption and keeps
+test-only Certbot state import outside the product entrypoint.
+No Checkov rule exception is needed in this repository, and real
+staging evidence remains outstanding until a complete manually
+authorized run succeeds.
+
+See [ADR-044](adr/ADR-044-opt-in-real-acme-portability-evidence.md).

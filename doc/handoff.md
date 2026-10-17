@@ -509,3 +509,30 @@ cross-runner recovery. A subsequent publication milestone still
 needs remotely retained previous generations, upload ordering,
 verified writes, partial-write recovery, and concurrency rules
 before storage mutation can be enabled.
+
+## Phase 4O: real Let's Encrypt staging portability example
+
+ADR-044 supplies an **inactive** example workflow at
+`examples/github-actions/real-staging-evidence.yml` plus the
+credential-free guard tests and staging harness at
+`tests/integration/live-staging-portability.bash`. Merging this PR
+does **not** register an Action in this repository. To run the
+example, an operator must explicitly install its YAML under a
+controlled repository's `.github/workflows/`, after review,
+and configure protected staging environment secrets and approval.
+
+The design uses four independently provisioned runners: A issues a
+real staging account/base-wildcard certificate; B restores encrypted
+state and proves a no-op renewal without AWS credentials; C restores
+the account and adds an authorized SAN using a scoped Route53 role;
+and D independently verifies the final state without AWS access.
+The encrypted account/private-key archives, pinned Certbot 5.8.0,
+explicit CA trust, and manual consent remain mandatory.
+
+The previous Checkov CKV_GHA_7 skip was removed: the example is
+not an installed parameterized workflow. The normal Bats matrix
+runs its local safety guards without contacting Route53 or
+Let's Encrypt. The example has **not** been executed against live
+staging merely because static CI succeeds. Real staging evidence
+must be reviewed before active import is considered. Public
+issuance still exits 69, and release and S3 publication remain gated.

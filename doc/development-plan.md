@@ -371,3 +371,22 @@ fatal. Tests use only local mock AWS reads across all three standalone
 artifacts; no PutObject call or release is authorized. This prepares
 a later remotely durable publication and partial-failure recovery
 design, but is not itself sufficient after a runner crash.
+
+### Phase 4O: inactive staging portability evidence example (ADR-044)
+
+An opt-in, **non-installed** GitHub Actions example documents a
+four-runner investigation of real Certbot 5.8.0 Route53 staging
+issuance, encrypted split-state handoff, account reuse, no-op renewal,
+changed SANs, and independent final restoration. It resides under
+`examples/github-actions/real-staging-evidence.yml` rather than
+`.github/workflows/`, and does not create an operational workflow
+upon merge. The harness remains at
+`tests/integration/live-staging-portability.bash`.
+
+Only a deliberate operator installation in a controlled repository
+with protected staging credentials, OIDC DNS scope, CA trust, and
+manual authorization can initiate the real test. Normal CI exercises
+only credential-free guards. This example is **not live evidence**,
+does not relax ADR-037, and requires no Checkov exception in the
+maintained operational workflows. S3 crash recovery, two coexisting
+active lineages, and failure-atomic activation remain separate gates.
