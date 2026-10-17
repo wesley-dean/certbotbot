@@ -101,7 +101,7 @@ certbotbot_s3_get_classified() {
 ## @retval 0 Common exists; selected domain entries may be missing.
 ## @retval 10 All requested objects were confirmed absent.
 ## @retval 64 Bad input, selected environment, or active workspace.
-## @retval 65 One or more domain objects exist without common account state.
+## @retval 65 Inconsistent account, mixed archive mode, or GPG failure.
 ## @retval 69 Unknown, denied, transport, or empty-object failure.
 ## @retval 73 Local stage failure or cleanup error.
 ## @par STDIN
