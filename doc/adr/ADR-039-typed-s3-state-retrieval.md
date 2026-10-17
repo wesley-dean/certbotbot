@@ -55,6 +55,11 @@ is exit status 254 accompanied by a GetObject service error beginning:
 A generic `404`, even from `HeadObject` or an S3-compatible service,
 is insufficient: bucket absence, endpoint configuration, authorization,
 or provider-specific behavior may make a missing-object inference unsafe.
+ADR-052 adds a second, precisely anchored AWS CLI 2.37.13 diagnostic form,
+with the literal `aws: [ERROR]: ` prefix. It changes only the displayed
+CLI-error recognition grammar, not the required status 254, operation,
+NoSuchKey code, or fatal handling of other errors.
+
 An unsupported error signature is a fatal retrieval failure. The operator
 must not bypass classification to force a first-run registration. Future
 endpoint-specific behavior requires test evidence and an explicit policy
