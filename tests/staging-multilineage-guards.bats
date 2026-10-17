@@ -99,6 +99,7 @@ CERTBOT
     CERTBOTBOT_WORKSPACE_ROOT="$3/work"
     mkdir -m 0700 -- "$CERTBOTBOT_WORKSPACE_ROOT"
     config="$CERTBOTBOT_WORKSPACE_ROOT/config"
+    mkdir -m 0700 -- "$config"
     mkdir -m 0700 -- "$config/archive" "$config/live" \
       "$config/renewal" "$config/combined"
     for name in example.com second.example.com; do
