@@ -280,3 +280,202 @@ run_candidate() {
   [ "$status" -eq 69 ]
   [ ! -e "$PUB_AWS_LOG" ]
 }
+
+## Configure the existing fake AWS executable for read-only recovery checks.
+## Any PUT is an unconditional failure. Tests inspect exact frozen bytes.
+enable_get_mock() {
+  export PUB_S3_STORE="$BATS_TEST_TMPDIR/remote"
+  export PUB_S3_MODE=normal
+  mkdir -m 0700 "$PUB_S3_STORE"
+  cat >"$PUB_BIN/aws" <<'AWS'
+#!/usr/bin/env bash
+set -u
+if [[ ${1:-} == --endpoint-url ]]; then
+  shift 2
+fi
+[[ ${1:-} == s3api && ${2:-} == get-object ]] || {
+  printf 'PROHIBITED_WRITE\n' >>"$PUB_AWS_LOG"
+  exit 88
+}
+shift 2
+bucket='' key='' destination=''
+while (( $# > 0 )); do
+  case "$1" in
+    --bucket) bucket=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    *) destination=$1; shift ;;
+  esac
+done
+printf 'GET:%s:%s\n' "$bucket" "$key" >>"$PUB_AWS_LOG"
+[[ $bucket == valid-bucket && $destination == /* ]] || exit 87
+case ${PUB_S3_MODE:-normal} in
+  denied)
+    printf 'An error occurred (AccessDenied) when calling the GetObject operation: Denied\n' >&2
+    exit 254
+    ;;
+  timeout)
+    printf 'Endpoint unreachable\n' >&2
+    exit 255
+    ;;
+esac
+if [[ ! -f "$PUB_S3_STORE/$key" ]]; then
+  printf 'An error occurred (NoSuchKey) when calling the GetObject operation: Missing\n' >&2
+  exit 254
+fi
+cp -- "$PUB_S3_STORE/$key" "$destination" || exit 73
+AWS
+  chmod 0700 "$PUB_BIN/aws"
+}
+
+stage_previous() {
+  cp -- "$PUB_COMMON" "$PUB_S3_STORE/common-latest.tar.gz"
+  local name
+  for name in "$@"; do
+    cp -- "$BATS_TEST_TMPDIR/$name.tar.gz" \
+      "$PUB_S3_STORE/$name-latest.tar.gz"
+  done
+}
+
+run_checkpoint() {
+  run env PATH="$PUB_BIN:$PATH" bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 89
+    shift
+    certbotbot_publication_prepare "$@" || exit 88
+    certbotbot_publication_checkpoint valid-bucket
+    result=$?
+    printf "result=%s\n" "$result"
+    if (( result == 0 )); then
+      printf "empty=%s\n" "$CERTBOTBOT_CHECKPOINT_EMPTY"
+      for (( i=0; i<${#CERTBOTBOT_CHECKPOINT_KEYS[@]}; i++ )); do
+        printf "present-%s=%s\n" "$i" \
+          "${CERTBOTBOT_CHECKPOINT_PRESENT[i]}"
+        if [[ ${CERTBOTBOT_CHECKPOINT_PRESENT[i]} == 1 ]]; then
+          [[ -s ${CERTBOTBOT_CHECKPOINT_FILES[i]} &&
+            "$(stat -c "%a" "${CERTBOTBOT_CHECKPOINT_FILES[i]}")" == 600 ]] ||
+            exit 85
+          cmp -s -- "$PUB_S3_STORE/${CERTBOTBOT_CHECKPOINT_KEYS[i]}" \
+            "${CERTBOTBOT_CHECKPOINT_FILES[i]}" || exit 84
+        fi
+      done
+      certbotbot_checkpoint_verify || exit 83
+      certbotbot_checkpoint_discard || exit 82
+    else
+      [[ -z $CERTBOTBOT_CHECKPOINT_ROOT ]] || exit 81
+    fi
+    [[ -z "$CERTBOTBOT_S3_STAGE_ROOT" &&
+      -z "$CERTBOTBOT_RESTORE_ROOT" &&
+      -z "$CERTBOTBOT_COMMON_STAGE" ]] || exit 80
+    certbotbot_publication_discard || exit 79
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 78
+    certbotbot_workspace_destroy || exit 77
+  ' _ "$CERTBOTBOT_ARTIFACT" "$@"
+}
+
+@test "previous common and domain are frozen with exact remote bytes" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_checkpoint valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=0'* && "$output" == *'empty=false'* &&
+    "$output" == *'present-0=1'* && "$output" == *'present-1=1'* ]]
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "entirely new collection remains explicitly absent in checkpoint" {
+  make_lineage example.com
+  enable_get_mock
+  run_checkpoint valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=0'* && "$output" == *'empty=true'* &&
+    "$output" == *'present-0=0'* && "$output" == *'present-1=0'* ]]
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "existing common with new domain records only the missing lineage" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous
+  run_checkpoint valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=0'* &&
+    "$output" == *'present-0=1'* && "$output" == *'present-1=0'* ]]
+}
+
+@test "orphaned old domain cannot be accepted without a common account" {
+  make_lineage example.com
+  enable_get_mock
+  cp "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    "$PUB_S3_STORE/example.com-latest.tar.gz"
+  run_checkpoint valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=65'* ]]
+}
+
+@test "corrupt prior common archive cannot become a recovery checkpoint" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  printf 'invalid archive\n' >"$PUB_S3_STORE/common-latest.tar.gz"
+  run_checkpoint valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=64'* ]]
+}
+
+@test "untrusted prior renewal hook invalidates the whole checkpoint" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  local root="$PUB_SOURCE/example.com"
+  printf 'deploy_hook = /bin/sh\n' >>"$root/renewal/example.com.conf"
+  tar -czf "$PUB_S3_STORE/example.com-latest.tar.gz" \
+    -C "$root" archive live renewal combined
+  run_checkpoint valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=64'* ]]
+}
+
+@test "ambiguous or denied S3 reads cannot become an empty checkpoint" {
+  make_lineage example.com
+  enable_get_mock
+  export PUB_S3_MODE=denied
+  run_checkpoint valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=69'* && "$output" != *'empty=true'* ]]
+}
+
+@test "checkpoint refuses a different bucket before any remote request" {
+  make_lineage example.com
+  enable_get_mock
+  run env PATH="$PUB_BIN:$PATH" bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit
+    certbotbot_publication_prepare valid-bucket "$2" "$3" \
+      example.com "$4" "example.com,*.example.com" || exit
+    certbotbot_publication_checkpoint another-bucket
+    code=$?
+    [[ $code == 64 && -z $CERTBOTBOT_CHECKPOINT_ROOT ]] || exit 2
+    certbotbot_publication_discard || exit 3
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$PUB_COMMON" "$PUB_CA" \
+    "$BATS_TEST_TMPDIR/example.com.tar.gz"
+  [ "$status" -eq 0 ]
+  [ ! -e "$PUB_AWS_LOG" ]
+}
