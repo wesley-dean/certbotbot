@@ -30,7 +30,9 @@ container dependency action. Its version/digest change requires an ordinary
 reviewed PR and new verification evidence. The image executes only
 in the unprivileged, short-lived CI environment with:
 - no host filesystem mounts or persistent volumes;
-- Linux capabilities dropped, no-new-privileges set, and bounded memory/PIDs;
+- Linux capabilities dropped except the minimal CHOWN, SETUID, and SETGID
+  capabilities needed by the upstream image entrypoint to prepare /data and
+  drop to its non-root seaweed user; no-new-privileges and bounded memory/PIDs;
 - only TCP port 8333 published, bound to IPv4 loopback;
 - deliberately scoped test credentials and no production environment data;
 - a startup readiness check against the authenticated S3 API, rather than
