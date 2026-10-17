@@ -443,3 +443,27 @@ The mocked object-store tests use synthetic account material and do not
 prove actual S3 endpoint behavior or Let's Encrypt account ownership.
 Before activation, gather real staging account-reuse and renewal evidence
 and approve the separate candidate installation/rollback ADR.
+
+## Phase 4L: encrypted portable-state preparation and retrieval
+
+ADR-041 implements optional local symmetric AES-256 archive transformation
+and mode-consistent S3 retrieval across every standalone flavor.
+`GPG_PASSPHRASE` is the sole mode selector; nonempty means encrypted
+`.tar.gz.enc` common and domain objects, empty means plaintext.
+Ciphertext is decrypted only to private owner-only workspace files before
+the existing read-only account/domain/renewal assessment. Wrong passphrases,
+corrupted ciphertext, and objects available only in the opposite mode
+fail closed. No automatic format migration, plaintext fallback, or
+replacement account registration is permitted.
+
+The passphrase reaches GPG via an FD instead of argv; AWS and GPG child
+environments do not inherit it. GPG's own temporary home is disposed.
+The test workflow installs GnuPG and includes cross-workspace encrypted
+mock-S3 assessment, local roundtrips, and negative mode tests for all
+three artifacts. Manual reversible migration and historical plaintext
+retention are documented in `doc/encryption-migration.md`.
+
+This milestone has not implemented encryption before remote upload
+because the reviewed publication coordinator does not exist yet.
+Issuance, active Certbot state import, real ACME account portability,
+and S3 publication remain blocked pending their separate acceptance gates.
