@@ -130,7 +130,10 @@ CERTBOT
     ! grep -Fq README "$3/base.list"
     ! grep -Fq README "$3/second.list"
   ' _ "$CERTBOTBOT_ARTIFACT" "$STAGING_MULTI_SCRIPT" "$BATS_TEST_TMPDIR"
-  [ "$status" -eq 0 ]
+  if [ "$status" -ne 0 ]; then
+    printf "# isolated archive fixture failed: %s\n" "$output" >&3
+    false
+  fi
   [ ! -e "$STAGING_MULTI_MARKER" ]
 }
 
