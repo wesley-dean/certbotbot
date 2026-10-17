@@ -477,3 +477,24 @@ or replace required external serialization. Publication still
 needs tested partial-write rollback and crash recovery before the
 latest aliases can be mutated. Real staging evidence and active
 Certbot import remain withheld under ADR-037.
+
+### Phase 4U: guarded conditional S3 publication and rollback (ADR-050)
+
+A new explicitly authorized internal protocol links the existing proposed
+archive collection, previous-state checkpoint, durable recovery generation,
+remote drift preflight, and ETag-bound predicates into one guarded publication
+operation. All latest alias PUTs use object-level S3 conditions and byte-for-
+byte readback, while an ambiguous or partial failure retains the completed
+recovery generation for operator action.
+
+The companion recovery operation works from an independent runner with only
+a trusted recovery identifier/checksum and storage credentials. It preflights
+every selected current key against old/proposed bytes before any mutation,
+then uses conditional reverse-order restoration, including conditional DELETE
+for keys that were originally absent.
+
+The internal writer is **not a public feature**. Real AWS/S3-compatible
+integration, explicit operator serialization, genuine Let's Encrypt staging
+portability, and a separate ADR-037 activation decision are the remaining
+end-to-end release gates. Multi-key transactions and distributed storage
+locking are not claimed.
