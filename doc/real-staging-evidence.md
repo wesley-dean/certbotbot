@@ -142,3 +142,43 @@ separate Accepted ADR and failure-atomic importer, plus verification
 of two coexisting lineages and end-to-end storage recovery under
 ADR-037 and ADR-022. The released public executable continues
 to exit status 69 for ordinary issuance requests.
+
+
+## Additional real two-lineage evidence (ADR-053)
+
+The inactive example now accepts a third independently owned DNS name via
+`second_name`, distinct from both `domain` and `extra_name` and a concrete,
+lower-case subdomain within the same authorized DNS zone. Do not use a
+production customer name. The role must allow only the expected staging
+`_acme-challenge` TXT records, including the second name, and must not
+allow unrelated hosted zones or record types.
+
+After the original four successful staging jobs, the fifth fresh runner
+downloads their encrypted account/first-lineage archive and obtains
+a **second independent lineage** under the same staging ACME account.
+The script verifies that the previously issued base/wildcard/extra-SAN
+certificate is unchanged, verifies the new certificate has exactly the
+`second_name` SAN and matches the explicitly provided staging CA bundle,
+then exports three independently encrypted validated objects:
+`common.tar.gz.enc`, `domain.tar.gz.enc`, and `second.tar.gz.enc`.
+The per-domain archive validator must reject any accidental inclusion
+of files from the other lineage.
+
+The sixth runner receives those three ciphertext files only. It receives
+**no Route53/AWS OIDC role or Certbot executable from the workflow**.
+After decryption in a new owner-private filesystem, it runs
+`certbotbot_import_candidate_prepare` to validate and assemble both
+lineages together under the original common account. The candidate
+**remains inactive** and is never installed into a Certbot configuration
+or used for issuance. Both certificates receive exact SAN, key, chain,
+and combined-PEM validation, and SHA-256 comparisons against earlier
+independent-runner account and leaf identities. A successful stage
+prints no credential or private-key content.
+
+The final evidence review now requires **all six jobs** to succeed;
+success on the original four remains insufficient for ADR-037's
+two-lineage requirement. The same explicit, protected environment
+approval and short artifact retention are mandatory. Genuine AWS S3
+production interoperability, independently enforced external writer
+serialization, and a separately accepted failure-atomic activation
+decision remain outstanding after any successful real staging run.
