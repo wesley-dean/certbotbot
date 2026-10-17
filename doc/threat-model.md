@@ -491,3 +491,23 @@ future guarded S3 writer but do **not** establish atomicity
 across object keys, prevent another runner from updating state
 after capture, or authorize unconditional PUTs. Cross-runner
 serialization and tested partial/crash recovery remain required.
+
+## Conditional latest publication and fresh-runner rollback (ADR-050)
+
+The guarded internal publisher requires explicit write authorization,
+verified previous-state S3 recovery, a separately retained recovery
+generation token, and real per-object conditional PUTs with SHA-256
+readback. It never silently retries with a changed ETag after a conflict.
+A failed or lost service response leaves remote state marked partial
+for deliberate operator intervention.
+
+A fresh runner may restore prior state only after independently verifying
+the durable generation and comparing every selected latest key with its
+saved old/proposed bytes. Conditional reverse-order rollback restores
+prior bodies or confirmed absence without overwriting unrelated changes.
+Residual risks remain: multi-object mixed-generation visibility,
+lost operator recovery identifiers, insufficient rollback IAM permission,
+S3-compatible conditional API differences, out-of-band audit compromise,
+and uncoordinated independent writers. The system still does not offer
+a distributed lock, transactional multi-key commit, or activated
+Certbot account import.
