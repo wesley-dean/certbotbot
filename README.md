@@ -379,17 +379,25 @@ can be enabled. The current tool still performs no S3 writes and
 normal certificate issuance still returns 69. See
 [ADR-043](doc/adr/ADR-043-recoverable-s3-publication-checkpoint.md).
 
-## Opt-in real staging account portability evidence
+## Inactive example for real staging account portability evidence
 
-A **manual-only** GitHub Actions workflow is now available to gather
-genuine Let's Encrypt staging evidence across independent runners:
-initial DNS-01 issuance, restored account/no-op renewal, changed-SAN
-reissuance, and final read-only archive restoration. A protected
-`acme-staging` environment, scoped Route53 OIDC role, explicit CA
-trust anchor, long GPG secret, and manual authorization are required.
-Only encrypted state archives move between jobs. It never runs on
-pushes or pull requests and cannot activate normal issuance or S3
-publication. See the [setup/runbook](doc/real-staging-evidence.md)
-and [ADR-044](doc/adr/ADR-044-opt-in-real-acme-portability-evidence.md).
-Merging the workflow **does not** prove account portability until
-a separately authorized complete staging run succeeds.
+The repository provides an **inactive example** at
+[`examples/github-actions/real-staging-evidence.yml`](examples/github-actions/real-staging-evidence.yml)
+and an independent integration harness at
+`tests/integration/live-staging-portability.bash`. The example describes
+four separate runners for genuine staging DNS-01 issuance, restored
+account/no-op renewal, changed SANs, and final state verification.
+**It is not installed under `.github/workflows/` and cannot be
+invoked as a repository GitHub Action by merging this PR.**
+
+An authorized operator may explicitly install the example in a
+controlled repository after review and configure protected staging
+environment approval, scoped Route53 OIDC, an explicit CA trust
+anchor, a GPG secret, and manual consent. Only encrypted archive
+state is handed between runners. The normal tests use credential-free
+guards and do not make staging DNS/ACME calls. See
+[the setup/runbook](doc/real-staging-evidence.md) and
+[ADR-044](doc/adr/ADR-044-opt-in-real-acme-portability-evidence.md).
+No real staging portability evidence exists until a separately
+authorized complete run succeeds; issuance and S3 publication remain
+disabled.
