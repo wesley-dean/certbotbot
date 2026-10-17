@@ -93,6 +93,13 @@ Runner D has **no AWS credentials** and validates the independently
 restored final archive. Real Certbot and the bundled validators
 operate inside private disposable workspaces.
 
+Certbot also writes informational `README` files beneath the live
+certificate directories. The staging export omits those README entries
+before packaging its portable domain archive because they are not part
+of certbotbot's approved archive schema. The strict archive validator
+still rejects any other unexpected member; no wider file-policy
+exception or active-import permission is introduced.
+
 The archived common account and TLS private keys move only as
 `.tar.gz.enc` artifact bodies. No plaintext archive, Certbot log,
 AWS environment file, or passphrase is included in an uploaded
