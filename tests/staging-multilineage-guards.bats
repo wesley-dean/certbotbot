@@ -126,7 +126,7 @@ CERTBOT
     tar -tzf "$3/base.tar.gz" >"$3/base.list"
     tar -tzf "$3/second.tar.gz" >"$3/second.list"
     ! grep -Fq "second.example.com" "$3/base.list"
-    ! grep -Fq "example.com/" "$3/second.list"
+    ! grep -Eq "^(archive|live)/example[.]com/|^renewal/example[.]com[.]conf$|^combined/example[.]com[.]pem$" "$3/second.list"
     ! grep -Fq README "$3/base.list"
     ! grep -Fq README "$3/second.list"
   ' _ "$CERTBOTBOT_ARTIFACT" "$STAGING_MULTI_SCRIPT" "$BATS_TEST_TMPDIR"
