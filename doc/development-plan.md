@@ -523,8 +523,9 @@ See `doc/s3-interoperability.md` and ADR-051.
 
 ### Phase 4W: complete the real two-lineage staging evidence harness
 
-ADR-053 extends the inactive ADR-044 real staging workflow with a second
-independent staging Certbot lineage and a fresh, read-only two-lineage
+ADR-053, as amended by ADR-055, extends the inactive ADR-044 real staging
+workflow with a second **base-plus-wildcard** staging Certbot lineage and
+a fresh, read-only two-lineage
 candidate validation runner. The first certificate retains its previous
 three-name SAN set, the second has a separate concrete name in the same
 authorized zone, and both must use the exact previously registered staging
