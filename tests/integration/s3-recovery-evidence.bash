@@ -315,9 +315,9 @@ case ${1:-} in
     [[ $2 == certbotbot-interop-* &&
       ${CERTBOTBOT_TMPDIR:-} == /* ]] || exit 64
     if [[ $mode == stage ]]; then
-      evidence_stage "$@" || exit $?
+      evidence_stage "$@"
     else
-      evidence_recover "$@" || exit $?
+      evidence_recover "$@"
     fi
     ;;
   run)
