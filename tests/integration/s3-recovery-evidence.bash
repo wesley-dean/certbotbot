@@ -94,7 +94,17 @@ evidence_put_and_check() {
     token=$CERTBOTBOT_LATEST_PROBE_ETAG
   else
     code=$?
-    (( code == 10 )) || return "$code"
+    if (( code != 10 )); then
+      # A synthetic-only probe supplies a bounded AWS service diagnostic.
+      # Production's ADR-039 classifier must remain deliberately strict.
+      local diagnostic=''
+      diagnostic="$(evidence_aws s3api get-object --bucket "$bucket" \
+        --key "$key" "$stage/diagnostic" 2>&1)" || :
+      printf 'S3 E2E unexpected absence classification: status=%s response=%.220s\\n' \
+        "$code" "$diagnostic" >&2
+      rm -f -- "$stage/diagnostic"
+      return "$code"
+    fi
     kind=absent
   fi
   certbotbot_latest_conditional_put "$bucket" "$key" "$file" \
