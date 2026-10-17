@@ -705,3 +705,23 @@ real Let's Encrypt staging account/SAN continuity, distributed writer
 serialization, and the ADR-037 active Certbot import decision. The public
 issuer remains disabled and continues to return 69.
 See `doc/s3-interoperability.md`.
+
+
+## Phase 4W: additional real staging dual-lineage evidence
+
+ADR-053 adds a two-step extension to the manually installed, **inactive**
+real staging example: issue a second independent Route53 DNS-01 staging
+lineage from the already restored common account, and verify both
+separately encrypted lineage archives plus the common account from an
+independent fresh workspace using the ADR-045 non-activating candidate.
+The original first lineage must remain unchanged. The final read-only
+runner has no AWS role and must prove both certificates against explicit
+staging trust roots and account/leaf fingerprints.
+
+Normal CI can check the guards, archive disjointness, and workflow placement
+but **cannot prove real staging account reuse**. The six-step example
+remains outside `.github/workflows/` and requires an authorized operator
+with a protected staging Route53 role, approved DNS names, staging
+trust bundle, and GPG secret. A real successful authorized run, AWS
+production S3 interoperability, operational serialization, and a later
+Accepted activation ADR are still release gates. Issuer exit 69 persists.

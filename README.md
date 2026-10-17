@@ -526,3 +526,16 @@ issuer or prove real Let's Encrypt account continuity, real AWS S3 behavior,
 a distributed lock, or active Certbot import. See the
 [interop and recovery runbook](doc/s3-interoperability.md) for safeguards,
 manual setup, and evidence limits.
+
+
+## Real staging two-lineage portability evidence
+
+The separately authorized, **inactive** staging test example now includes
+an extra independent certificate lineage in addition to the existing
+genuine issuance/no-op/SAN-change phases. It records the single shared
+staging ACME account and packages two separately validated, encrypted
+lineage archives before checking both under an **inactive** import
+candidate on a fresh runner. This is preparation for ADR-037's live
+two-lineage gate, not proof that staging credentials have been used
+or permission to enable public issuance. See [ADR-053](doc/adr/ADR-053-two-real-lineage-staging-evidence.md)
+and [the real staging runbook](doc/real-staging-evidence.md).

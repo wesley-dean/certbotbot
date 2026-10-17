@@ -17,6 +17,10 @@ on:
         description: Owned additional DNS SAN strictly below domain
         type: string
         required: true
+      second_name:
+        description: Owned, separate second lineage DNS name strictly below domain
+        type: string
+        required: true
       aws_region:
         description: AWS region for scoped Route53 staging role
         type: string
@@ -259,3 +263,115 @@ jobs:
           printf '%s\n' "${CERTBOTBOT_STAGING_CA_PEM}" \
             >"${CERTBOTBOT_STAGING_CA_BUNDLE}"
           bash tests/integration/live-staging-portability.bash verify
+
+
+  second_lineage:
+    needs: [issue, change-sans, verify-restored]
+    if: github.ref == 'refs/heads/main' && inputs.authorize == true
+    environment: acme-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      second_leaf_sha256: ${{ steps.phase.outputs.second_leaf_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install tools and pinned staging Certbot
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes curl make openssl gnupg
+          python3 -m venv "${RUNNER_TEMP}/certbot-venv"
+          "${RUNNER_TEMP}/certbot-venv/bin/python" -m pip install \
+            --disable-pip-version-check 'certbot==5.8.0' \
+            'certbot-dns-route53==5.8.0'
+          make all
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: staging-c-${{ github.run_id }}
+          path: ${{ runner.temp }}/archive-input
+      - name: Authenticate only to staging Route53 role for the second lineage
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.CERTBOTBOT_STAGING_AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: certbotbot-staging-second-lineage
+      - name: Issue independent second staging lineage under restored account
+        id: phase
+        env:
+          CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.bash
+          CERTBOT: ${{ runner.temp }}/certbot-venv/bin/certbot
+          CERTBOTBOT_STAGING_DOMAIN: ${{ inputs.domain }}
+          CERTBOTBOT_STAGING_EXTRA_NAME: ${{ inputs.extra_name }}
+          CERTBOTBOT_STAGING_SECOND_NAME: ${{ inputs.second_name }}
+          CERTBOTBOT_STAGING_EMAIL: ${{ vars.CERTBOTBOT_STAGING_EMAIL }}
+          CERTBOTBOT_STAGING_CONFIRM: yes
+          CERTBOTBOT_STAGING_PHASE: issue-second
+          CERTBOTBOT_STAGING_CA_PEM: ${{ secrets.CERTBOTBOT_STAGING_CA_PEM }}
+          CERTBOTBOT_STAGING_CA_BUNDLE: ${{ runner.temp }}/staging-ca.pem
+          CERTBOTBOT_STAGING_INPUT_DIR: ${{ runner.temp }}/archive-input
+          CERTBOTBOT_STAGING_OUTPUT_DIR: ${{ runner.temp }}/archive-export
+          CERTBOTBOT_EXPECTED_ACCOUNT_SHA256: ${{ needs.issue.outputs.account_sha256 }}
+          CERTBOTBOT_EXPECTED_LEAF_SHA256: ${{ needs['change-sans'].outputs.leaf_sha256 }}
+          ACME_ENVIRONMENT: staging
+          GPG_PASSPHRASE: ${{ secrets.CERTBOTBOT_STAGING_GPG_PASSPHRASE }}
+        run: |
+          umask 077
+          mkdir -m 0700 "${CERTBOTBOT_STAGING_OUTPUT_DIR}"
+          printf '%s\n' "${CERTBOTBOT_STAGING_CA_PEM}" \
+            >"${CERTBOTBOT_STAGING_CA_BUNDLE}"
+          bash tests/integration/live-staging-multilineage.bash issue-second
+      - name: Export three independently encrypted common and lineage archives
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: staging-two-${{ github.run_id }}
+          path: ${{ runner.temp }}/archive-export/*.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  verify_two:
+    needs: [issue, change-sans, second_lineage]
+    if: github.ref == 'refs/heads/main' && inputs.authorize == true
+    environment: acme-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare offline dual-lineage validation and certificates
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes curl make openssl gnupg
+          make all
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: staging-two-${{ github.run_id }}
+          path: ${{ runner.temp }}/archive-input
+      - name: Verify independently restored two-lineage inactive candidate
+        env:
+          CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.bash
+          CERTBOTBOT_STAGING_DOMAIN: ${{ inputs.domain }}
+          CERTBOTBOT_STAGING_EXTRA_NAME: ${{ inputs.extra_name }}
+          CERTBOTBOT_STAGING_SECOND_NAME: ${{ inputs.second_name }}
+          CERTBOTBOT_STAGING_CONFIRM: yes
+          CERTBOTBOT_STAGING_PHASE: verify-two
+          CERTBOTBOT_STAGING_CA_PEM: ${{ secrets.CERTBOTBOT_STAGING_CA_PEM }}
+          CERTBOTBOT_STAGING_CA_BUNDLE: ${{ runner.temp }}/staging-ca.pem
+          CERTBOTBOT_STAGING_INPUT_DIR: ${{ runner.temp }}/archive-input
+          CERTBOTBOT_EXPECTED_ACCOUNT_SHA256: ${{ needs.issue.outputs.account_sha256 }}
+          CERTBOTBOT_EXPECTED_LEAF_SHA256: ${{ needs['change-sans'].outputs.leaf_sha256 }}
+          CERTBOTBOT_EXPECTED_SECOND_LEAF_SHA256: ${{ needs.second_lineage.outputs.second_leaf_sha256 }}
+          ACME_ENVIRONMENT: staging
+          GPG_PASSPHRASE: ${{ secrets.CERTBOTBOT_STAGING_GPG_PASSPHRASE }}
+        run: |
+          umask 077
+          printf '%s\n' "${CERTBOTBOT_STAGING_CA_PEM}" \
+            >"${CERTBOTBOT_STAGING_CA_BUNDLE}"
+          bash tests/integration/live-staging-multilineage.bash verify-two

@@ -587,3 +587,20 @@ interoperability failure exposed by ADR-051's real-service CI without
 altering the public issuer or any existing active-state restriction.
 
 See [ADR-052](adr/ADR-052-awscli-prefixed-nosuchkey.md).
+
+
+### ADR-053: Genuine Two-Lineage Staging Evidence Without Active Import
+
+The inactive, manually installed ADR-044 Let's Encrypt staging workflow now includes a
+separate real second-lineage issuance phase and an independent, read-only two-lineage
+restoration phase. It checks the same genuine staging ACME account across runners,
+retains an unchanged first certificate while producing a distinct second
+certificate, and exports one separately encrypted account archive plus two
+non-overlapping, independently validated lineage archives. The final runner
+uses ADR-045's non-activating candidate to check both lineage certificates
+without invoking Certbot or AWS and never activates product state. The workflow
+remains an opt-in example, real staging evidence is still pending operator
+authorization and successful execution, and ADR-037's public-import prohibition
+remains binding.
+
+See [ADR-053](adr/ADR-053-two-real-lineage-staging-evidence.md).

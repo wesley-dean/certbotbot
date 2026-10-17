@@ -511,3 +511,35 @@ S3-compatible conditional API differences, out-of-band audit compromise,
 and uncoordinated independent writers. The system still does not offer
 a distributed lock, transactional multi-key commit, or activated
 Certbot account import.
+
+
+## Genuine two-lineage staging evidence remains separately authorized (ADR-053)
+
+The existing inactive ADR-044 real-staging example now includes a fifth
+runner with Route53 DNS-01 authority to issue a separate staging lineage
+under the already registered account, and a sixth read-only runner to
+validate that lineage alongside the original base/wildcard/extra-SAN
+certificate. The new second-name input MUST remain a distinct canonical
+subdomain of the already authorized controlled zone. A broader hosted
+zone, extra account role, production ACME URL, or unrelated DNS resource
+is not authorized by this test expansion.
+
+The fifth runner receives the same protected staging environment, OIDC
+role, and owner-only GPG secret as the original staging issuance phases;
+it must not acquire broader permissions or access live AWS S3 keys.
+The sixth receives only short-retention encrypted common and two
+independent domain archives, has no AWS OIDC authority, invokes no
+Certbot, and constructs only a non-activating ADR-045 candidate.
+Both stages use explicit staging CA trust and compare account and leaf
+fingerprints across independent runners.
+
+Residual threats include compromise of the protected runner or image,
+mis-scoped Route53 DNS permissions, exposed GPG environment secrets,
+untrusted CA bundles, the collection of a second certificate under
+an accidentally broader DNS zone, and unexpected Certbot metadata
+changes. Strict name inputs, protected environment review, test-only
+API targets, short-lived ciphertext artifacts, exact SAN/chain checks,
+and separate archival member validation mitigate but do not eliminate
+these risks. Actual staging issuance requires an independent operator
+decision. Passing credential-free CI does not authorize public active
+import under ADR-037 or production publication.
