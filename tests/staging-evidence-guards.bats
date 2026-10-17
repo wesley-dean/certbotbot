@@ -93,3 +93,12 @@ CERTBOT
   [ "$status" -eq 69 ]
   [ ! -e "$STAGING_TEST_MARKER" ]
 }
+
+@test "consent cannot be reused for a different staging phase" {
+  export CERTBOTBOT_STAGING_CONFIRM=yes
+  export CERTBOTBOT_STAGING_PHASE=change
+  export GPG_PASSPHRASE='CI fixture only'
+  run bash "$STAGING_TEST_SCRIPT" issue
+  [ "$status" -eq 64 ]
+  [ ! -e "$STAGING_TEST_MARKER" ]
+}
