@@ -219,10 +219,10 @@ evidence_recover() {
   if [[ $scenario == conflict ]]; then
     (( code == 65 )) || return 65
     certbotbot_latest_probe "$bucket" "$common" "$probe"
-    [[ $CERTBOTBOT_LATEST_PROBE_SHA256 ==
+    [[ $CERTBOTBOT_LATEST_PROBE_SHA256 == \
       "$(evidence_hash "$root/new-common")" ]] || return 65
     certbotbot_latest_probe "$bucket" "$domain" "$probe"
-    [[ $CERTBOTBOT_LATEST_PROBE_SHA256 ==
+    [[ $CERTBOTBOT_LATEST_PROBE_SHA256 == \
       "$(evidence_hash "$root/foreign")" ]] || return 65
   else
     (( code == 0 )) || return "$code"
@@ -240,9 +240,9 @@ evidence_recover() {
         expected=$root/old-common
         [[ $key == "$domain" ]] && expected=$root/old-domain
         certbotbot_latest_probe "$bucket" "$key" "$probe"
-        [[ $CERTBOTBOT_LATEST_PROBE_SHA256 ==
+        [[ $CERTBOTBOT_LATEST_PROBE_SHA256 == \
           "$(evidence_hash "$expected")" &&
-          $CERTBOTBOT_LATEST_PROBE_SIZE ==
+          $CERTBOTBOT_LATEST_PROBE_SIZE == \
           "$(stat -c '%s' -- "$expected")" ]] || return 65
       fi
     done
