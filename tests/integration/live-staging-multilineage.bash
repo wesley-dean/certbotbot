@@ -88,7 +88,9 @@ staging_multi_authorize() {
 ## Nothing is read from STDIN.
 staging_multi_hash() {
   local path="$1/live/$2/cert.pem"
-  [[ -f $path && ! -L $path ]] || return 65
+  # Certbot's live/cert.pem is a checked relative symlink into archive/.
+  certbotbot_pem_check_link "$1" "$2" cert || return 65
+  [[ -f $path && -L $path ]] || return 65
   sha256sum -- "$path" | cut -d ' ' -f1
 }
 
