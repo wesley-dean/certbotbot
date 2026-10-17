@@ -710,8 +710,8 @@ See `doc/s3-interoperability.md`.
 ## Phase 4W: additional real staging dual-lineage evidence
 
 ADR-053 adds a two-step extension to the manually installed, **inactive**
-real staging example: issue a second independent Route53 DNS-01 staging
-lineage from the already restored common account, and verify both
+real staging example: issue a second independent **base-plus-wildcard** Route53 DNS-01 staging
+lineage from the already restored common account (ADR-055), and verify both
 separately encrypted lineage archives plus the common account from an
 independent fresh workspace using the ADR-045 non-activating candidate.
 The original first lineage must remain unchanged. The final read-only
