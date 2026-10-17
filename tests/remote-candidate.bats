@@ -294,6 +294,8 @@ run_remote() {
 }
 
 @test "crypto verification rejects synthetic PEMs and discards candidate" {
+  command -v openssl >/dev/null 2>&1 || skip 'OpenSSL required'
+  make_test_ca
   common_archive
   lineage_archive example.com
   lineage_archive example.net
