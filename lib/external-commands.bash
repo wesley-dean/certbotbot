@@ -29,5 +29,7 @@ certbotbot_command_certbot() {
 ## @retval 127 The AWS CLI executable could not be found.
 ## @note Other statuses are propagated unchanged from the AWS CLI.
 certbotbot_command_aws() {
-  command aws "$@"
+  # AWS needs its own credentials, not the local archive passphrase.
+  # Strip that environment variable from the unrelated child process.
+  command env -u GPG_PASSPHRASE aws "$@"
 }
