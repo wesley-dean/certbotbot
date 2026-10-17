@@ -337,3 +337,23 @@ authenticate the storage publisher or protect against privileged
 runner compromise, secret-bearing environment inspection, historical
 plaintext S3 versions, or filesystem snapshot retention. Publication,
 live Certbot operations, and multi-object atomicity are not activated.
+
+## Frozen local publication readiness (ADR-042)
+
+Source archives are snapshotted to owner-private files before any
+inspection so a mutable input path cannot silently substitute a
+different archive after validation. Every proposed lineage undergoes
+structural import assessment, complete certificate/chain/private-key
+verification, combined PEM comparison, and exact request-derived
+DNS SAN validation before local publication files and keys become
+available. An unexpected SAN or untrusted CA blocks the entire
+candidate. GPG encryption applies to all prepared objects in one
+consistent mode, never as a fallback.
+
+No S3 write is issued by the preparation module, and accepted private
+files are disposed by an explicit owner-only cleanup operation. This
+does not secure a compromised same-user runner, guarantee secure media
+erasure, validate an ACME account with Let's Encrypt, or ensure
+multi-object remote atomicity. Last-known-good protection and
+independent-writer serialization remain mandatory before a remote
+publisher can be connected to the public issuer.

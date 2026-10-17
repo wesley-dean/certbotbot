@@ -431,3 +431,16 @@ discarded after non-activating assessment, and neither issuance nor
 S3 publication is enabled.
 
 See [ADR-041](adr/ADR-041-encrypted-state-retrieval-and-preparation.md).
+
+### ADR-042: Frozen, Cryptographically Verified Local Publication Candidates
+
+A non-publishing preparation helper now freezes a complete common/domain
+archive collection before validation, rather than checking mutable inputs
+and subsequently re-reading them. Every existing lineage must pass the
+isolation, account, renewal-option, X.509 chain/key, combined PEM, and
+exact requested DNS SAN checks before any local candidate is exposed.
+The approved candidate uses one plaintext or AES-256 encrypted format
+with fixed common-first S3 object keys and owner-private file bodies.
+No PutObject is called, and active Certbot import or issuance remains blocked.
+
+See [ADR-042](adr/ADR-042-local-publication-candidate-gate.md).

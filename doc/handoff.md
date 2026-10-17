@@ -467,3 +467,22 @@ This milestone has not implemented encryption before remote upload
 because the reviewed publication coordinator does not exist yet.
 Issuance, active Certbot state import, real ACME account portability,
 and S3 publication remain blocked pending their separate acceptance gates.
+
+## Phase 4M: frozen, cryptographically verified publication candidates
+
+ADR-042 adds `certbotbot_publication_prepare`, an internal local-only
+coordinator that snapshots the requested common archive and all domain
+archives before validating them. It performs the existing complete
+non-activating account/lineage assessment and then restores each lineage
+separately to verify its X.509 chain, leaf/private-key identity,
+combined PEMs, and **exactly** the separately requested DNS SAN set.
+An explicit trusted CA bundle is accepted for controlled staging fixtures.
+A failed lineage invalidates the whole candidate and cleans private state.
+
+On success it exposes only a common-first key array and matching
+frozen plaintext or AES-256 encrypted private files, with explicit
+candidate cleanup required by its caller. Local tests use real OpenSSL
+certificates, synthetic account JSON, and no AWS writes. This is a
+pre-publication validation boundary, *not* the remote publication
+protocol: genuine staging account continuity, active import, due renewal,
+storage retries/partial-write recovery, and issuance remain release-blocking.
