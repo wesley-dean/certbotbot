@@ -78,7 +78,7 @@ certbotbot_publication_prepare() {
   local bucket=${1:-} common=${2:-} ca_bundle=${3:-}
   local environment=${ACME_ENVIRONMENT:-production} suffix=''
   local root='' file='' name='' sans_text='' domain='' result=0 index=0
-  local saved='' key='' cipher='' original='' kind=''
+  local saved='' key='' cipher='' kind=''
   local -a triples=() pairs=() frozen=() keys=() outputs=() sans=()
   local -A names=() paths=()
 
