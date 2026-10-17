@@ -19,15 +19,17 @@ continues to prohibit active import.
 
 These suites **create and delete temporary buckets**, upload synthetic
 latest and recovery objects, and intentionally terminate a child with SIGKILL
-in one scenario. They belong only against an operator-controlled, disposable
-S3-compatible service bound to loopback on the same machine. Cloud, LAN,
-and public endpoints are refused.
+in one scenario. They belong only against a disposable S3-compatible service
+bound to loopback on the same machine. Cloud, LAN, and public endpoints are
+refused. As of ADR-051, the installed GitHub Actions
+`.github/workflows/s3-end-to-end.yml` provisions an isolated, digest-pinned
+SeaweedFS service for pull requests and manual dispatch. No production AWS,
+DNS, ACME, or GitHub environment secrets are used.
 
 Conditional `DeleteObject --if-match` support is relatively recent, and
 older S3 emulators and AWS CLIs may reject it. An unsupported emulator is
-not a reason to weaken fail-closed conditional-write behavior. Do not
-install a rolling, unreviewed, credential-dependent, or vulnerable retired
-container image as a mandatory CI prerequisite.
+not a reason to weaken fail-closed conditional-write behavior. CI uses an immutable image digest and disposable fixture credentials
+rather than a rolling, privileged, or operator-secret-dependent container.
 
 Prerequisites: a prepared repository (`make all`); a supported AWS CLI that
 has conditional PUT and DELETE API parameters; an isolated S3 service on
@@ -51,7 +53,7 @@ make test
 make test-s3-interop
 ```
 
-The test host should have no unrelated AWS credentials or secrets and
+The local test host should have no unrelated AWS credentials or secrets and
 must not send loopback traffic through an external proxy. The harness
 refuses all inherited HTTP(S) or SOCKS proxy variables before the first
 S3 command. The shell guard
