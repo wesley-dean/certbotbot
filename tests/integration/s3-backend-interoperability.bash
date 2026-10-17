@@ -25,7 +25,10 @@ interop_guard() {
     ${S3_ENDPOINT_URL:-} =~ ^http://(127[.]0[.]0[.]1|localhost):[0-9]{2,5}$ &&
     -n ${AWS_ACCESS_KEY_ID:-} &&
     -n ${AWS_SECRET_ACCESS_KEY:-} &&
-    -z ${GPG_PASSPHRASE:-} ]] || return 64
+    -z ${GPG_PASSPHRASE:-} &&
+    -z ${HTTP_PROXY:-} && -z ${HTTPS_PROXY:-} &&
+    -z ${ALL_PROXY:-} && -z ${http_proxy:-} &&
+    -z ${https_proxy:-} && -z ${all_proxy:-} ]] || return 64
   command -v aws >/dev/null 2>&1 || return 64
 }
 
