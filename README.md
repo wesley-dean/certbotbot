@@ -452,3 +452,19 @@ A remote snapshot does not provide distributed locking,
 transactional multi-object writes, or automatic rollback. See
 [ADR-047](doc/adr/ADR-047-durable-s3-recovery-generations.md).
 The product issuance path still exits status 69.
+
+## Pre-publication S3 drift detection
+
+An internal read-only preflight can now recheck that the selected
+common and domain `*-latest` objects still match the exact bytes
+or confirmed absence captured in the prior validated S3 checkpoint.
+It refuses changed, newly added, or removed objects, unexpected
+cipher modes, and indeterminate retrieval failures. Successful
+checks discard the private read staging and perform **no upload**.
+
+A successful observation is not a lock or atomic cross-object
+comparison; another runner may change the bucket after it
+finishes. Independent writers remain externally serialized until
+a governed conditional publication protocol exists. See
+[ADR-048](doc/adr/ADR-048-remote-latest-drift-preflight.md).
+Certificate issuance and latest-object writes remain disabled.
