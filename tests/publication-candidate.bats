@@ -860,3 +860,223 @@ run_recovery_generation() {
   [ "$status" -eq 0 ]
   [ ! -e "$RECOVERY_LOG" ]
 }
+
+## Recheck the latest S3 objects after ADR-042/043/046 have frozen state.
+## Mutations in this test simulate an independent external writer.
+run_latest_drift() {
+  local mode=$1
+  shift
+  run env PATH="$PUB_BIN:$PATH" bash -c '
+    source "$1" --version >/dev/null
+    mode=$2
+    shift 2
+    certbotbot_workspace_create || exit 80
+    certbotbot_publication_prepare "$@" || exit 81
+    certbotbot_publication_checkpoint valid-bucket || exit 82
+    certbotbot_publication_plan_prepare || exit 83
+    case "$mode" in
+      unchanged) ;;
+      change-common)
+        printf "new writer\n" >>"$PUB_S3_STORE/common-latest.tar.gz"
+        ;;
+      change-domain)
+        printf "new writer\n" >>"$PUB_S3_STORE/example.com-latest.tar.gz"
+        ;;
+      remove-domain)
+        rm -f -- "$PUB_S3_STORE/example.com-latest.tar.gz"
+        ;;
+      remove-common)
+        rm -f -- "$PUB_S3_STORE/common-latest.tar.gz"
+        ;;
+      remove-all)
+        rm -f -- "$PUB_S3_STORE/common-latest.tar.gz" \
+          "$PUB_S3_STORE/example.com-latest.tar.gz"
+        ;;
+      add-common-and-domain)
+        cp -- "$PUB_COMMON" "$PUB_S3_STORE/common-latest.tar.gz"
+        cp -- "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+          "$PUB_S3_STORE/example.com-latest.tar.gz"
+        ;;
+      add-domain)
+        cp -- "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+          "$PUB_S3_STORE/example.com-latest.tar.gz"
+        ;;
+      opposite-mode)
+        mv -- "$PUB_S3_STORE/example.com-latest.tar.gz" \
+          "$PUB_S3_STORE/example.com-latest.tar.gz.enc"
+        ;;
+      denied)
+        export PUB_S3_MODE=denied
+        ;;
+      wrong-environment)
+        ACME_ENVIRONMENT=staging
+        ;;
+      tamper-local)
+        printf "tampered proposed bytes\n" \
+          >>"${CERTBOTBOT_PUBLICATION_FILES[1]}"
+        ;;
+      *) exit 84 ;;
+    esac
+    certbotbot_publication_precondition_check
+    result=$?
+    printf "precondition=%s\n" "$result"
+    [[ -z "${CERTBOTBOT_S3_STAGE_ROOT:-}" &&
+      -z "${CERTBOTBOT_RESTORE_ROOT:-}" &&
+      -z "${CERTBOTBOT_COMMON_STAGE:-}" ]] || exit 85
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_CONFIG" \
+      -mindepth 1 -print -quit)" ]] || exit 86
+    certbotbot_publication_plan_discard || exit 87
+    certbotbot_checkpoint_discard || exit 88
+    certbotbot_publication_discard || exit 89
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 90
+    certbotbot_workspace_destroy || exit 91
+  ' _ "$CERTBOTBOT_ARTIFACT" "$mode" "$@"
+}
+
+@test "read-only latest precondition accepts byte-identical previous collection" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift unchanged valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=0'* ]]
+  [ ! -e "$PUB_AWS_LOG" ] || ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "unchanged confirmed first-run absence remains a valid observation" {
+  make_lineage example.com
+  enable_get_mock
+  run_latest_drift unchanged valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=0'* ]]
+}
+
+@test "new remote common and domain after absent checkpoint aborts" {
+  make_lineage example.com
+  enable_get_mock
+  run_latest_drift add-common-and-domain valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}
+
+@test "new remote domain after existing common aborts" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous
+  run_latest_drift add-domain valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}
+
+@test "changed remote common archive aborts before publication" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift change-common valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}
+
+@test "changed remote lineage archive aborts before publication" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift change-domain valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}
+
+@test "removed remote domain is different from a confirmed prior presence" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift remove-domain valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}
+
+@test "removed common while lineage remains is an inconsistent collection" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift remove-common valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}
+
+@test "removing all prior objects cannot appear as an unchanged first run" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift remove-all valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}
+
+@test "wrong-mode encrypted object cannot silently replace plaintext latest" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift opposite-mode valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}
+
+@test "denied S3 read cannot be mistaken for missing or unchanged state" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift denied valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=69'* ]]
+}
+
+@test "precondition requires matching ACME environment" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift wrong-environment valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=64'* ]]
+}
+
+@test "tampered local candidate fails before S3 reread" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run_latest_drift tamper-local valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'precondition=65'* ]]
+}

@@ -514,3 +514,16 @@ aliases remain untouched; this is durable recovery *preparation*, not
 authorization to publish new certificate state.
 
 See [ADR-047](adr/ADR-047-durable-s3-recovery-generations.md).
+
+### ADR-048: Read-Only Remote Latest-State Drift Preflight
+
+A new internal precondition re-reads every selected S3 latest object
+after a complete proposed collection, prior checkpoint, and local
+manifest have been validated. It rejects additions, removals,
+byte changes, wrong archive modes, and ambiguous S3 reads by
+comparing exact raw bytes and presence to the previous checkpoint.
+The operation never uploads and always discards its temporary read
+stage. This is a **freshness observation**, not an atomic multi-key
+snapshot, distributed lock, or permission to publish latest aliases.
+
+See [ADR-048](adr/ADR-048-remote-latest-drift-preflight.md).

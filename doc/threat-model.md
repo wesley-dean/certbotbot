@@ -457,3 +457,21 @@ conditional-PUT implementations, a lost final response, compromised
 AWS credentials, same-user tampering, and uncoordinated external
 writers. No distributed lock, WORM guarantee, active Certbot import,
 latest publication, or automatic rollback is provided.
+
+## Read-only latest-object drift comparison (ADR-048)
+
+Before any later conditional remote publication, a fresh S3
+preflight rechecks each selected common/domain object against
+the exact previous-state checkpoint. It detects newly appearing
+objects, missing prior objects, modified raw ciphertext or
+plaintext, and mixed archive modes, and fails closed on denied or
+unknown reads rather than mistaking them for a first run.
+The operation has no AWS write authority and cleans its private
+staged downloads before return.
+
+This mitigates accidental publication based on an old local
+snapshot, but **does not provide a multi-object atomic read,
+cross-platform lock, fencing token, or compare-and-swap**. The
+latest state can change after the last read, so external writer
+serialization and explicit conditional publication/recovery
+semantics remain indispensable.
