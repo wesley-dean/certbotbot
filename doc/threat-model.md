@@ -520,7 +520,9 @@ runner with Route53 DNS-01 authority to issue a separate staging lineage
 under the already registered account, and a sixth read-only runner to
 validate that lineage alongside the original base/wildcard/extra-SAN
 certificate. The new second-name input MUST remain a distinct canonical
-subdomain of the already authorized controlled zone. A broader hosted
+subdomain of the already authorized controlled zone. ADR-055 corrects
+its SAN set to include both the concrete second name and the mandatory
+wildcard; neither may broaden the role beyond those DNS-01 TXT changes. A broader hosted
 zone, extra account role, production ACME URL, or unrelated DNS resource
 is not authorized by this test expansion.
 
