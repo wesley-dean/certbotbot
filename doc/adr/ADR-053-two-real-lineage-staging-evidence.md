@@ -8,6 +8,10 @@ Accepted
 
 ## Decision
 
+**Partial supersession notice:** ADR-055 replaces the single-SAN requirement
+for the second lineage with the canonical base-plus-wildcard SAN pair
+required by ADR-018 and ADR-036. Other decisions below remain binding.
+
 Extend the existing **inactive**, manually installable real Let's Encrypt
 staging evidence example from ADR-044 with two additional jobs:
 
