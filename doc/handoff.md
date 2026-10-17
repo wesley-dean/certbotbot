@@ -684,10 +684,20 @@ Test workers share no previous private workspaces across the recovery
 boundary; the only surviving recovery inputs are the separately recorded
 generation and SHA-256 manifest value.
 
-The endpoint must be an explicitly approved disposable loopback-only
-S3-compatible service with test credentials. The normal Bats matrix
+The endpoint must be a disposable loopback-only S3-compatible service with
+test credentials. ADR-051 installs a digest-pinned SeaweedFS container in
+read-only-permission GitHub Actions PR and manual-dispatch E2E jobs, which
+supply only synthetic test credentials and run `make test-s3-interop`. The normal Bats matrix
 asserts missing authorization, production scope, external endpoints, and
 inherited passphrases are rejected without any AWS invocation.
+
+**Additional compatibility evidence (ADR-052):** The enabled SeaweedFS
+end-to-end CI exposed AWS CLI 2.37.13's literal `aws: [ERROR]: `
+service-error prefix. The exact `GetObject NoSuchKey` status-254 parser
+now accepts that single additional observed form; Bats negative tests
+continue to reject ambiguous 404, denied service codes, wrong operations,
+and other prefixes. No missing-state shortcut or generic 404 acceptance
+was introduced.
 
 **Not yet evidenced:** a successful run against a real service (it requires
 operator-provisioned infrastructure), actual AWS S3 compatibility,

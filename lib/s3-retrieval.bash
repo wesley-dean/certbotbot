@@ -64,6 +64,8 @@ certbotbot_s3_stage_discard() {
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @returns Nothing is written to STDOUT.
+## @note AWS CLI 2.37.13 may prefix NoSuchKey with `aws: [ERROR]: `.
+## ADR-052 authorizes only this additional exact GetObject service prefix.
 ## @note AWS CLI stderr is kept private and never echoed as a diagnostic.
 certbotbot_s3_get_classified() {
   local bucket=${1:-} key=${2:-} dest=${3:-} err='' code=0 result=0
@@ -86,7 +88,7 @@ certbotbot_s3_get_classified() {
   else
     code=$?
     if (( code == 254 )) && LC_ALL=C grep -Eq \
-      '^An error occurred \(NoSuchKey\) when calling the GetObject operation:' \
+      '^(aws: \[ERROR\]: )?An error occurred \(NoSuchKey\) when calling the GetObject operation:' \
       "$err"; then
       result=10
     else

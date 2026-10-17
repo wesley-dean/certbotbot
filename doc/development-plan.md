@@ -511,8 +511,11 @@ only the separately recorded verified recovery generation and manifest
 checksum survive. Credential-free Bats guards prevent normal CI from
 crossing this network and remote mutation boundary.
 
-No S3 emulator is auto-installed or started in required CI, and this
-infrastructure has not itself established a passing real-service result.
+ADR-051 adds a digest-pinned, disposable SeaweedFS S3 service in a
+read-only-permission GitHub Actions workflow for pull requests and manual
+dispatch. It executes this Make target on all three release artifacts without
+real AWS, DNS, or ACME authority. A passing run demonstrates tested-emulator
+interoperability only, and requires review of the actual GitHub job evidence.
 External serialization, real AWS backend behavior, genuine Let's Encrypt
-staging continuity, and active-state import still require distinct evidence
-or decisions. See `doc/s3-interoperability.md`.
+staging continuity, and active-state import remain separate release gates.
+See `doc/s3-interoperability.md` and ADR-051.

@@ -511,8 +511,10 @@ or a cross-platform distributed lock.
 ## Opt-in real S3 interoperability and fresh-worker recovery tests
 
 The repository now has an **explicitly authorized**, loopback-only real
-S3-compatible test path under `make test-s3-interop`. It runs against the
-operator's disposable local S3 service and executes the actual internal
+S3-compatible test path under `make test-s3-interop`. A dedicated GitHub
+Actions PR/manual end-to-end workflow provisions a disposable, digest-pinned
+SeaweedFS instance with synthetic credentials (ADR-051); the Make target
+continues to support a separately provisioned local service. It executes the actual internal
 conditional-write, remote recovery-generation, and independent-runner
 rollback functions for all three standalone artifacts. The test matrix
 covers full replacement, partial replacement, first-run absence, simulated

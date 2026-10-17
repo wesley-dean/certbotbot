@@ -1,0 +1,102 @@
+---
+name: S3 end-to-end interoperability
+
+# yamllint disable-line rule:truthy
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: s3-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  storage-e2e:
+    name: Disposable S3 end-to-end recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      # This job cannot access AWS, DNS, ACME, or repository secrets.
+      # The synthetic values below are disposable credentials for SeaweedFS.
+      CERTBOTBOT_S3_INTEROP_CONFIRM: "yes"
+      ACME_ENVIRONMENT: staging
+      S3_ENDPOINT_URL: http://127.0.0.1:8333
+      AWS_ACCESS_KEY_ID: certbotbot-disposable-only
+      AWS_SECRET_ACCESS_KEY: certbotbot-disposable-only
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_PAGER: ""
+      AWS_CLI_AUTO_PROMPT: "off"
+      AWS_S3_FORCE_PATH_STYLE: "true"
+    steps:
+      - name: Check out the change under test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Prepare dependencies and all standalone artifacts
+        run: make all
+
+      - name: Verify preinstalled AWS CLI supports conditional deletes
+        run: |
+          set -euo pipefail
+          aws --version
+          aws s3api delete-object --generate-cli-skeleton input \
+            | grep -F '"IfMatch"' >/dev/null
+
+      - name: Start isolated, digest-pinned SeaweedFS
+        run: |
+          set -euo pipefail
+          # Published official image digest, not a moving tag; review updates.
+          # The only published port is on the ephemeral runner's loopback.
+          image=chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+          docker pull "$image"
+          docker run --detach --rm \
+            --name certbotbot-s3-e2e \
+            --publish 127.0.0.1:8333:8333 \
+            --cap-drop ALL \
+            --cap-add CHOWN \
+            --cap-add SETUID \
+            --cap-add SETGID \
+            --security-opt no-new-privileges \
+            --pids-limit 256 \
+            --memory 2g \
+            --env AWS_ACCESS_KEY_ID \
+            --env AWS_SECRET_ACCESS_KEY \
+            "$image" mini -dir=/data
+          # A real authenticated API result, not an open TCP port, is ready.
+          for attempt in $(seq 1 90); do
+            if aws --endpoint-url "$S3_ENDPOINT_URL" s3api list-buckets \
+                >/dev/null 2>&1; then
+              printf 'Local S3 service ready after %s probes\n' "$attempt"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs --tail 80 certbotbot-s3-e2e >&2
+          printf 'S3 service did not become ready\n' >&2
+          exit 1
+
+      - name: Execute storage end-to-end tests on every artifact
+        run: |
+          set -euo pipefail
+          # Workflow-scoped ephemeral CI may carry proxy variables. The
+          # integration guards reject any proxy to protect loopback semantics.
+          unset HTTP_PROXY HTTPS_PROXY ALL_PROXY
+          unset http_proxy https_proxy all_proxy
+          unset GPG_PASSPHRASE
+          # No runtime access to AWS cloud or privileged GitHub tokens.
+          make test-s3-interop
+
+      - name: Stop and remove the disposable storage service
+        if: always()
+        run: |
+          set -euo pipefail
+          if docker container inspect certbotbot-s3-e2e >/dev/null 2>&1; then
+            docker rm --force certbotbot-s3-e2e >/dev/null
+          fi
