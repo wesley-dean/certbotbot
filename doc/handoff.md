@@ -684,8 +684,10 @@ Test workers share no previous private workspaces across the recovery
 boundary; the only surviving recovery inputs are the separately recorded
 generation and SHA-256 manifest value.
 
-The endpoint must be an explicitly approved disposable loopback-only
-S3-compatible service with test credentials. The normal Bats matrix
+The endpoint must be a disposable loopback-only S3-compatible service with
+test credentials. ADR-051 installs a digest-pinned SeaweedFS container in
+read-only-permission GitHub Actions PR and manual-dispatch E2E jobs, which
+supply only synthetic test credentials and run `make test-s3-interop`. The normal Bats matrix
 asserts missing authorization, production scope, external endpoints, and
 inherited passphrases are rejected without any AWS invocation.
 
