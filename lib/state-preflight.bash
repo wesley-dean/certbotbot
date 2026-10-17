@@ -56,6 +56,9 @@ certbotbot_state_assess_remote() {
   local result=0 index=0 name='' common=''
   local -a names=() present_pairs=() missing=()
 
+  # Never preserve a prior successful missing-lineage report on failure.
+  CERTBOTBOT_STATE_MISSING_NAMES=()
+
   # Refuse caller-owned staging so an error cannot destroy unrelated state.
   if (( $# < 2 )) ||
     [[ -n ${CERTBOTBOT_S3_STAGE_ROOT:-} ||
@@ -64,7 +67,6 @@ certbotbot_state_assess_remote() {
       -n ${CERTBOTBOT_RENEWAL_PREVIEW:-} ]]; then
     return 64
   fi
-  CERTBOTBOT_STATE_MISSING_NAMES=()
   names=("${@:2}")
 
   # The retrieval helper validates every name and key before accessing S3.
