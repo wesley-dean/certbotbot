@@ -163,17 +163,15 @@ certbotbot_publication_prepare() {
 
   # Make one private frozen copy of every archive; the caller's original
   # paths cannot silently change the bytes subsequently prepared.
-  for original in "$common" "${triples[@]}"; do
-    # Triples contain non-path elements. Copy only the known archive slots.
-    [[ $original == "$common" ]] || break
-    saved="$(mktemp -- "$root/object.XXXXXXXX")" || { result=73; break; }
-    if ! (umask 077; cp -- "$original" "$saved" &&
+  saved="$(mktemp -- "$root/object.XXXXXXXX")" || result=73
+  if (( result == 0 )); then
+    if (umask 077; cp -- "$common" "$saved" &&
       chmod 0600 -- "$saved"); then
+      frozen+=("$saved")
+    else
       result=73
-      break
     fi
-    frozen+=("$saved")
-  done
+  fi
   if (( result == 0 )); then
     for (( index=0; index<${#triples[@]}; index+=3 )); do
       saved="$(mktemp -- "$root/object.XXXXXXXX")" || {
