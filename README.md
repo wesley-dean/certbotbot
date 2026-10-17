@@ -468,3 +468,19 @@ finishes. Independent writers remain externally serialized until
 a governed conditional publication protocol exists. See
 [ADR-048](doc/adr/ADR-048-remote-latest-drift-preflight.md).
 Certificate issuance and latest-object writes remain disabled.
+
+## Read-only conditional publication predicates
+
+An internal ADR-049 helper obtains S3's own ETags for the selected
+common/domain latest keys and verifies each ETag with a conditional
+GET and exact previous-object checksum. Previously absent keys
+receive an explicit absence predicate for a future
+`If-None-Match: *` conditional PUT. No partial collection is
+returned on failure.
+
+This captures the conditional-write inputs a future publisher will
+need, but makes **no remote changes**. ETags are opaque comparison
+tokens, not generally content hashes, and may become stale at once.
+There is still no distributed lock or multi-object atomic commit.
+See [ADR-049](doc/adr/ADR-049-etag-bound-publication-conditions.md).
+The normal issuer remains disabled.
