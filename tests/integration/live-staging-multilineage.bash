@@ -95,9 +95,9 @@ staging_multi_hash() {
 }
 
 ## @fn staging_multi_check()
-## @brief Verify exact single-SAN second lineage with pinned staging CA.
+## @brief Verify exact apex/wildcard second lineage against the staging CA.
 ## @param config Private selected config.
-## @retval 0 PEM, chain, key, and sole SAN all validate.
+## @retval 0 PEM, chain, key, and both mandatory SANs validate.
 ## @note Other crypto-validator statuses propagate.
 ## @par STDIN
 ## Nothing is read from STDIN.
@@ -107,7 +107,7 @@ staging_multi_check() {
   certbotbot_pem_assemble "$config" "$name"
   certbotbot_crypto_verify_lineage "$config" "$name" \
     "$CERTBOTBOT_STAGING_CA_BUNDLE"
-  certbotbot_crypto_verify_sans "$config" "$name" "$name"
+  certbotbot_crypto_verify_sans "$config" "$name" "$name" "*.$name"
 }
 
 ## @fn staging_multi_pack_domain()
@@ -220,7 +220,7 @@ staging_multi_issue_second() {
     --server https://acme-staging-v02.api.letsencrypt.org/directory \
     --dns-route53 --cert-name "$name" \
     --key-type ecdsa --keep-until-expiring \
-    -d "$name" \
+    -d "$name" -d "*.$name" \
     --config-dir "$config" \
     --work-dir "$CERTBOTBOT_WORKSPACE_WORK" \
     --logs-dir "$CERTBOTBOT_WORKSPACE_LOGS" \
