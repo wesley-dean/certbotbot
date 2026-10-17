@@ -431,3 +431,24 @@ This is an **ephemeral local inspection artifact**, not a durable
 remote generation or an atomic S3 transaction. It does not enable
 uploads, active Certbot import, certificate issuance, or releases.
 See [ADR-046](doc/adr/ADR-046-local-prepublication-recovery-manifest.md).
+
+## Durable, independently verifiable recovery snapshots
+
+ADR-047 introduces a guarded **internal** backup operation that
+preserves already verified previous account and domain archives to
+write-once S3 recovery-generation keys, not to their stable
+`*-latest` aliases. It requires a completed local proposal,
+checkpoint, and manifest plus explicit
+`CERTBOTBOT_RECOVERY_WRITE_CONFIRM=yes`. Stored old object bodies
+are read back and checked; a recovery manifest is written last.
+A fresh runner can verify a generation with its independently
+recorded identifier and manifest checksum, without any prior
+runner filesystem.
+
+This operation **does write to S3 under the reserved recovery
+prefix** when deliberately invoked. No public command invokes it,
+and it neither issues certificates nor publishes latest aliases.
+A remote snapshot does not provide distributed locking,
+transactional multi-object writes, or automatic rollback. See
+[ADR-047](doc/adr/ADR-047-durable-s3-recovery-generations.md).
+The product issuance path still exits status 69.

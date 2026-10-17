@@ -437,3 +437,23 @@ cannot detect remote changes by another runner. The plan is not a
 durable backup, serialized lock, publication commit marker, or
 authorization to write latest aliases. A separate remote
 generation/rollback protocol remains required under ADR-022.
+
+## Conditional recovery-only S3 writes (ADR-047)
+
+A verified local prior-state checkpoint can now be persisted to
+unpredictable, generation-scoped remote keys, with conditional
+`If-None-Match: *` writes and mandatory readback hashing.
+The stable latest aliases are outside the allowed key grammar and
+cannot be modified by this module. A completion manifest is written
+after all present old objects have been checked; any failure
+prevents returning a verified generation token. Confirmation
+is explicitly required before crossing this remote-write boundary.
+
+A different runner can verify the retained bytes using an
+out-of-band trusted manifest digest, without relying on private
+files from the producer. Residual risks include stale snapshots,
+privileged deletion of backups, partial orphan objects, incompatible
+conditional-PUT implementations, a lost final response, compromised
+AWS credentials, same-user tampering, and uncoordinated external
+writers. No distributed lock, WORM guarantee, active Certbot import,
+latest publication, or automatic rollback is provided.

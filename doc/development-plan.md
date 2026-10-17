@@ -423,3 +423,22 @@ verification after writes, crash recovery from an independent
 runner, explicit handling of previous absence, and ordered latest
 aliases under ADR-022. Genuine staging evidence and ADR-037's
 activation ban remain unchanged.
+
+### Phase 4R: write-once durable S3 recovery generations (ADR-047)
+
+A guarded internal helper can now preserve exact validated previous
+account/domain object bytes under generation-scoped S3 backup keys,
+using conditionally created PUTs, read-back hashing, and a manifest
+committed last. The verifier can run on a fresh host with only
+the bucket, environment, generation ID, and trusted manifest SHA-256.
+The retained ciphertext (or plaintext when configured) matches the
+original remote bytes; fully absent prior keys remain explicit.
+
+This is the first **remote mutation** milestone, but it writes only
+to the reserved recovery prefix, requires affirmative internal
+authorization, and never touches latest archive aliases or the
+product entrypoint. Failure can leave incomplete orphaned backups
+but cannot claim a completed generation. The next publication ADR
+must cover current-state checks, safe latest writes, partial failure
+and crashed-writer recovery, and external serialization. Real ACME
+staging evidence and active Certbot import remain blocked.

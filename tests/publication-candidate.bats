@@ -650,3 +650,213 @@ run_local_plan() {
   [ "$status" -eq 0 ]
   ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
 }
+
+## Mock S3 PUT supports only write-once recovery keys. It never mutates latest.
+enable_recovery_mock() {
+  export RECOVERY_FAIL_AT=''
+  export RECOVERY_CORRUPT_READ=false
+  export RECOVERY_LOG="$BATS_TEST_TMPDIR/recovery-calls"
+  cat >"$PUB_BIN/aws" <<'AWS'
+#!/usr/bin/env bash
+set -u
+[[ ${1:-} == --endpoint-url ]] && shift 2
+[[ ${1:-} == s3api ]] || exit 88
+op=${2:-}
+shift 2
+bucket='' key='' source='' destination='' guard=''
+while (( $# > 0 )); do
+  case "$1" in
+    --bucket) bucket=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    --body) source=$2; shift 2 ;;
+    --if-none-match) guard=$2; shift 2 ;;
+    *) destination=$1; shift ;;
+  esac
+done
+[[ $bucket == valid-bucket ]] || exit 89
+printf '%s:%s:%s\n' "$op" "$key" "$guard" >>"$RECOVERY_LOG"
+target="$PUB_S3_STORE/$key"
+case "$op" in
+  get-object)
+    if [[ ! -f $target ]]; then
+      printf 'An error occurred (NoSuchKey) when calling the GetObject operation: Missing\n' >&2
+      exit 254
+    fi
+    cp -- "$target" "$destination" || exit 73
+    if [[ ${RECOVERY_CORRUPT_READ:-false} == true &&
+      $key == */*.prior ]]; then
+      printf 'tampered readback\n' >>"$destination"
+    fi
+    ;;
+  put-object)
+    [[ $key == recovery/v1/* || $key == staging/recovery/v1/* ]] ||
+      exit 86
+    [[ $guard == '*' ]] || exit 85
+    [[ -z ${RECOVERY_FAIL_AT:-} ||
+      $key != *"$RECOVERY_FAIL_AT" ]] || exit 82
+    [[ ! -e $target ]] || exit 84
+    mkdir -p -- "${target%/*}" || exit 83
+    cp -- "$source" "$target" || exit 73
+    ;;
+  *) exit 87 ;;
+esac
+AWS
+  chmod 0700 "$PUB_BIN/aws"
+}
+
+run_recovery_generation() {
+  local mode=$1
+  shift
+  run env PATH="$PUB_BIN:$PATH" \
+    CERTBOTBOT_RECOVERY_WRITE_CONFIRM=yes bash -c '
+    source "$1" --version >/dev/null
+    mode=$2
+    shift 2
+    certbotbot_workspace_create || exit 70
+    certbotbot_publication_prepare "$@" || exit 71
+    certbotbot_publication_checkpoint valid-bucket || exit 72
+    certbotbot_publication_plan_prepare || exit 73
+    certbotbot_recovery_persist
+    outcome=$?
+    printf "persist=%s\n" "$outcome"
+    if (( outcome == 0 )); then
+      [[ $CERTBOTBOT_RECOVERY_GENERATION =~ ^[a-f0-9]{32}$ &&
+        $CERTBOTBOT_RECOVERY_MANIFEST_SHA256 =~ ^[a-f0-9]{64}$ &&
+        -z $CERTBOTBOT_RECOVERY_PENDING_GENERATION ]] || exit 74
+      printf "generation=%s\n" "$CERTBOTBOT_RECOVERY_GENERATION"
+      certbotbot_recovery_verify valid-bucket production \
+        "$CERTBOTBOT_RECOVERY_GENERATION" \
+        "$CERTBOTBOT_RECOVERY_MANIFEST_SHA256" || exit 75
+      if [[ $mode == invalid-digest ]]; then
+        bad=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        [[ $bad != "$CERTBOTBOT_RECOVERY_MANIFEST_SHA256" ]] ||
+          bad=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        certbotbot_recovery_verify valid-bucket production \
+          "$CERTBOTBOT_RECOVERY_GENERATION" "$bad"
+        [[ $? == 65 ]] || exit 76
+      fi
+      # A newly created workspace has no previous source candidate,
+      # checkpoint, or local manifest. Recovery is completely S3-backed.
+      gen=$CERTBOTBOT_RECOVERY_GENERATION
+      hash=$CERTBOTBOT_RECOVERY_MANIFEST_SHA256
+    else
+      [[ -z $CERTBOTBOT_RECOVERY_GENERATION &&
+        -z $CERTBOTBOT_RECOVERY_MANIFEST_SHA256 &&
+        $CERTBOTBOT_RECOVERY_PENDING_GENERATION =~ ^[a-f0-9]{32}$ ]] ||
+        exit 77
+    fi
+    certbotbot_publication_plan_discard || exit 78
+    certbotbot_checkpoint_discard || exit 79
+    certbotbot_publication_discard || exit 80
+    certbotbot_workspace_destroy || exit 81
+    if (( outcome == 0 )); then
+      certbotbot_workspace_create || exit 82
+      certbotbot_recovery_verify valid-bucket production "$gen" "$hash" ||
+        exit 83
+      printf "independent=ok\n"
+      certbotbot_workspace_destroy || exit 84
+    fi
+  ' _ "$CERTBOTBOT_ARTIFACT" "$mode" "$@"
+}
+
+@test "durable recovery saves exact previous bytes and verifies on new runner" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_recovery_mock
+  run_recovery_generation valid valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'persist=0'* && "$output" == *'independent=ok'* ]]
+  [ -f "$PUB_S3_STORE/common-latest.tar.gz" ]
+  [ -f "$PUB_S3_STORE/example.com-latest.tar.gz" ]
+  grep -Eq '^put-object:recovery/v1/[a-f0-9]{32}/manifest.tsv:\*$' \
+    "$RECOVERY_LOG"
+  ! grep -E '^put-object:(common|example.com)-latest' "$RECOVERY_LOG"
+}
+
+@test "first-run absence commits manifest without inventing prior objects" {
+  make_lineage example.com
+  enable_get_mock
+  enable_recovery_mock
+  run_recovery_generation valid valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'persist=0'* && "$output" == *'independent=ok'* ]]
+  ! grep -Eq '^put-object:recovery/v1/.*/[0-9]+.prior' "$RECOVERY_LOG"
+  grep -Fq '/manifest.tsv:*' "$RECOVERY_LOG"
+}
+
+@test "backup upload denial refuses a committed generation" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_recovery_mock
+  export RECOVERY_FAIL_AT=1.prior
+  run_recovery_generation failed valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'persist=69'* ]]
+  ! grep -Fq 'put-object:recovery/v1/'"$CERTBOTBOT_RECOVERY_GENERATION"'/manifest.tsv' "$RECOVERY_LOG"
+  [ -z "$(find "$PUB_S3_STORE/recovery" -name manifest.tsv -print -quit)" ]
+}
+
+@test "tampered S3 readback cannot be accepted as durable recovery" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_recovery_mock
+  export RECOVERY_CORRUPT_READ=true
+  run_recovery_generation failed valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'persist=65'* ]]
+  [ -z "$(find "$PUB_S3_STORE/recovery" -name manifest.tsv -print -quit)" ]
+}
+
+@test "manifest write denial cannot produce a completed remote checkpoint" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_recovery_mock
+  export RECOVERY_FAIL_AT=manifest.tsv
+  run_recovery_generation failed valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'persist=69'* ]]
+  [ -z "$(find "$PUB_S3_STORE/recovery" -name manifest.tsv -print -quit)" ]
+}
+
+@test "fresh runner rejects wrong trusted manifest digest" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_recovery_mock
+  run_recovery_generation invalid-digest valid-bucket \
+    "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'persist=0'* && "$output" == *'independent=ok'* ]]
+}
+
+@test "recovery writes are impossible without explicit affirmative consent" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_recovery_mock
+  run env PATH="$PUB_BIN:$PATH" bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_recovery_persist
+    [[ $? == 64 ]] || exit 2
+    certbotbot_workspace_destroy || exit 3
+  ' _ "$CERTBOTBOT_ARTIFACT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$RECOVERY_LOG" ]
+}

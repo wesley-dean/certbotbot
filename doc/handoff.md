@@ -578,3 +578,28 @@ retention and cross-runner partial-write recovery**.
 
 Real Let's Encrypt staging account portability, active import,
 operational issuance and release readiness remain blocked.
+
+## Phase 4R: remote durable recovery-generation preparation (ADR-047)
+
+The new internal `certbotbot_recovery_persist` requires explicit
+`CERTBOTBOT_RECOVERY_WRITE_CONFIRM=yes`, a complete ADR-042 proposed
+collection, validated ADR-043 prior checkpoint, and ADR-046 manifest.
+It uploads previous bytes only, using randomly generated recovery
+namespace keys and conditional create-only S3 writes. Every upload
+is read back and SHA-256 validated; a complete manifest is created
+last. No latest archive keys are written or deleted.
+
+A fresh runner can call `certbotbot_recovery_verify` with the bucket,
+environment, generation ID, and a separately trusted manifest digest
+to verify all previous objects without the producer's local state.
+Mock S3 tests cover first-run absence, full previous state, denied
+upload, changed readback, failed manifest commit, and independent
+verification. Incomplete attempts can leave orphan generation keys
+for operator investigation; no automatic destructive cleanup occurs.
+
+This is a restricted **internal S3 mutation** for recovery objects,
+not certificate publication. S3 compatibility must include
+`If-None-Match` conditional PutObject. The public issuer still exits
+69 and cannot invoke these functions. Real staging account evidence,
+active import, latest-alias publication, partial-failure rollback,
+and cross-platform writer serialization remain separate gates.

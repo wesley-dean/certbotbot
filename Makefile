@@ -24,7 +24,8 @@ CORE_SOURCE_FILES := lib/plugin-registry.bash lib/input.bash \
                      lib/gpg-archives.bash \
                      lib/s3-retrieval.bash \
                      lib/state-preflight.bash lib/publication-candidate.bash \
-                     lib/publication-checkpoint.bash lib/publication-plan.bash
+                     lib/publication-checkpoint.bash lib/publication-plan.bash \
+                     lib/recovery-generations.bash
 ## Plugins are discovered exclusively from maintained source at build time.
 ## Official provider modules are bundled into each standalone release artifact.
 PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash) \
