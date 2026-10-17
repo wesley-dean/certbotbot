@@ -1359,7 +1359,9 @@ case "$operation" in
     mkdir -p -- "${target%/*}" || exit 73
     cp -- "$body" "$target" || exit 73
     if [[ ${LATEST_FAILURE:-} == fail-domain-after &&
-      $key == example.com-latest.tar.gz ]]; then
+      $key == example.com-latest.tar.gz &&
+      ! -e "$PUB_S3_STORE/.lost-domain-response-once" ]]; then
+      : >"$PUB_S3_STORE/.lost-domain-response-once"
       exit 255
     fi
     ;;
