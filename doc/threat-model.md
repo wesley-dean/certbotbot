@@ -357,3 +357,23 @@ erasure, validate an ACME account with Let's Encrypt, or ensure
 multi-object remote atomicity. Last-known-good protection and
 independent-writer serialization remain mandatory before a remote
 publisher can be connected to the public issuer.
+
+## Previous-state checkpointing and remote rollback risk (ADR-043)
+
+A prepared publication candidate may represent valid replacement
+certificates, but safe replacement also requires knowing which old
+S3 objects existed and whether their prior state is structurally
+recoverable. The new read-only checkpoint binds the selected bucket
+and ACME environment, rejects ambiguous or untrusted retrieval,
+validates restored common/domain account and renewal state, and
+preserves exact old compressed or encrypted bytes with checksums
+inside owner-private local staging.
+
+Decrypted validation copies must not be confused with original
+ciphertext that would be necessary for an exact rollback. A clean
+local checkpoint is **not** a durable rollback guarantee across
+independent or crashing workers. Previous generations require
+separately durable remote retention and explicit recovery ordering
+before future latest-object writes. This addition does not claim
+S3 transactionality, prevent same-user workspace tampering, or
+authorize active Certbot import or issuance.
