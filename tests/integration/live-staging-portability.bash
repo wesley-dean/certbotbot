@@ -158,8 +158,13 @@ staging_save_archives() {
   common="$(mktemp -- "$root/common.XXXXXXXX")"
   lineage="$(mktemp -- "$root/domain.XXXXXXXX")"
   (umask 077; tar -czf "$common" -C "$config" accounts)
+  # Real Certbot creates informational README files under live/, including
+  # live/<lineage>/README.  The portable domain archive deliberately permits
+  # only approved certificate, renewal, and combined-PEM members.  Exclude
+  # README entries without relaxing the strict archive validator; any other
+  # unexpected Certbot file continues to fail closed on validation.
   (umask 077; tar -czf "$lineage" -C "$config" \
-    archive live renewal combined)
+    --exclude='*/README' archive live renewal combined)
   certbotbot_common_validate "$common"
   certbotbot_archive_validate_domain "$lineage" \
     "$CERTBOTBOT_STAGING_DOMAIN"
@@ -315,4 +320,8 @@ staging_main() {
   printf 'staging evidence phase %s completed\n' "$phase"
 }
 
-staging_main "$@"
+# Allow credential-free packaging tests to source the helper functions without
+# invoking the consent-gated integration entrypoint.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  staging_main "$@"
+fi
