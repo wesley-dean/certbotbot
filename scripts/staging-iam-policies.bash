@@ -124,16 +124,21 @@ staging_iam_main() {
     shift 2
   done
 
-  [[ $document == trust || $document == permissions ]] &&
-    [[ $account =~ ^[0-9]{12}$ ]] &&
-    [[ $repo =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ &&
-      ${#repo} -le 140 ]] &&
-    [[ $zone =~ ^Z[A-Z0-9]{5,35}$ ]] &&
-    staging_iam_hostname "$domain" &&
-    staging_iam_hostname "$extra" &&
-    staging_iam_hostname "$second" &&
-    [[ $extra == *".$domain" && $second == *".$domain" &&
-      $extra != "$second" ]] || { staging_iam_invalid; return 64; }
+  if ! {
+    [[ $document == trust || $document == permissions ]] &&
+      [[ $account =~ ^[0-9]{12}$ ]] &&
+      [[ $repo =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ &&
+        ${#repo} -le 140 ]] &&
+      [[ $zone =~ ^Z[A-Z0-9]{5,35}$ ]] &&
+      staging_iam_hostname "$domain" &&
+      staging_iam_hostname "$extra" &&
+      staging_iam_hostname "$second" &&
+      [[ $extra == *".$domain" && $second == *".$domain" &&
+        $extra != "$second" ]]
+  }; then
+    staging_iam_invalid
+    return 64
+  fi
 
   if [[ $document == trust ]]; then
     cat <<POLICY
