@@ -371,3 +371,23 @@ fatal. Tests use only local mock AWS reads across all three standalone
 artifacts; no PutObject call or release is authorized. This prepares
 a later remotely durable publication and partial-failure recovery
 design, but is not itself sufficient after a runner crash.
+
+### Phase 4O: genuine staging ACME evidence harness (ADR-044)
+
+The project now includes an explicitly operator-authorized,
+workflow-dispatch-only harness to investigate actual Certbot 5.8.0
+Route53 staging issuance, account reuse after decrypting portable
+split-state archives, unchanged no-op renewal, changed requested
+SANs under the same account, and an independent fourth restoration.
+The real test is not part of normal PR CI and requires narrowly
+scoped DNS authority, a protected environment, and a staging CA bundle.
+Encrypted, short-retention workflow artifacts are the only private
+state transferred between otherwise independent GitHub-hosted jobs.
+
+The regular CI matrix exercises guard tests without credentials.
+This addition **does not establish live evidence by itself** or
+relax ADR-037. Results from a manually run workflow must be
+reviewed, and observed real Certbot metadata differences must
+receive focused ADR and validation updates. S3 crash recovery,
+two coexisting active lineages, and failure-atomic production
+activation remain separate release gates.
