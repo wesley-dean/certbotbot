@@ -154,7 +154,7 @@ test-s3-interop: build
 		AWS_DEFAULT_REGION=us-east-1 AWS_EC2_METADATA_DISABLED=true \
 			bash tests/integration/s3-backend-interoperability.bash run; \
 		AWS_DEFAULT_REGION=us-east-1 AWS_EC2_METADATA_DISABLED=true \
-			bash tests/integration/s3-recovery-evidence.bash run "${PWD}/$artifact"; \
+			bash tests/integration/s3-recovery-evidence.bash run "$${PWD}/$$artifact"; \
 	done
 
 FORCE:
