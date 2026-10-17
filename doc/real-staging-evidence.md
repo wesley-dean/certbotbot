@@ -1,17 +1,39 @@
 # Real Let's Encrypt staging portability evidence
 
-This runbook covers the **opt-in integration harness**, not normal certbotbot
-usage. Production certificate issuance and S3 publication remain disabled.
+This runbook covers the **optional integration example and harness**, not
+normal certbotbot usage. Production certificate issuance and S3 publication
+remain disabled.
 See [ADR-044](adr/ADR-044-opt-in-real-acme-portability-evidence.md)
 and the existing [active-import restriction](adr/ADR-037-gated-active-certbot-import.md).
 
-## Before you enable the workflow
+## Inactive example versus installed workflow
 
-The workflow `.github/workflows/real-staging-evidence.yml` has only a
-`workflow_dispatch` trigger, checks for the `main` branch, and
+The GitHub Actions workflow is stored as an **inactive example** at
+`examples/github-actions/real-staging-evidence.yml`. GitHub Actions
+registers executable repository workflows from `.github/workflows/`,
+not from `examples/`. The certbotbot repository therefore ships no
+installed staging workflow: merging a PR containing the example does
+not create an Actions entry, enable manual dispatch, or run Certbot.
+
+The actual integration harness remains at
+`tests/integration/live-staging-portability.bash`. Normal Bats tests
+exercise its authorization guards without staging credentials,
+Route53 access, or ACME network operations.
+
+To collect real evidence, an authorized operator must explicitly choose
+a controlled GitHub repository containing the matching certbotbot
+source and build scripts, review the example and staging privileges,
+then copy the example YAML into that repository's
+`.github/workflows/real-staging-evidence.yml` on a reviewed trusted
+branch. Installing it is a separate operational choice, **not** part
+of the certbotbot build or release. Configure environment reviewers
+and secrets before dispatching it. After the evidence run, remove
+the installed workflow if continuous availability is not intended.
+
+Once intentionally installed, the workflow has only a
+`workflow_dispatch` trigger, checks the trusted `main` branch, and
 requires an explicit `authorize` checkbox. Its jobs use separate
-GitHub-hosted runners. It is **not** part of PR CI and does not run
-automatically when this PR merges.
+GitHub-hosted runners and never automatically run on ordinary PRs.
 
 Choose a dedicated, controlled domain under an AWS Route53 hosted zone
 where you explicitly authorize temporary TXT changes for Let's Encrypt
@@ -43,10 +65,12 @@ for the staging DNS-01 name, with read/list permissions as required by
 the pinned Route53 authenticator. Do not use an organization-wide
 DNS administrator role or static long-lived AWS user keys.
 
-## Manual run
+## Manual run after deliberate installation
 
-Open **Actions → Opt-in real ACME staging portability evidence →
-Run workflow**. Select `main` and supply:
+Only after the example has been copied into a controlled repository's
+active `.github/workflows/` directory, open **Actions → Example -
+opt-in real ACME staging portability evidence → Run workflow**.
+Select `main` and supply:
 
 - `domain`: a lower-case, owned apex/base name, such as
   `example.your-controlled-zone.test`, whose apex and wildcard
@@ -79,8 +103,9 @@ No job modifies S3, even under the staging prefix.
 
 ## Expected evidence and possible incompatibilities
 
-A complete successful run is useful evidence of real account key
-continuity, independent no-op renewal, changed SAN issuance under
+An explicitly installed and authorized run is useful evidence of real
+account key continuity only if every stage succeeds: independent no-op
+renewal, changed SAN issuance under
 the same account, encrypted archive handoff, and final independent
 restoration. Inspect the run's four job results rather than treating
 an intermediate success as conclusive.
