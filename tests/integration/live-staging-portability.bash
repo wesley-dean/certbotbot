@@ -203,6 +203,17 @@ staging_record_identity() {
   fi
 }
 
+## @fn staging_cleanup()
+## @brief Erase the private test workspace on exit or interrupted execution.
+## @par STDIN
+## Nothing is read from STDIN.
+## @returns Nothing is written to STDOUT.
+## @retval 0 No workspace remains.
+## @note Cleanup is ordinary deletion, not secure storage-media erasure.
+staging_cleanup() {
+  certbotbot_workspace_destroy || return 73
+}
+
 ## @fn staging_main()
 ## @brief Execute one separately approved staging evidence phase.
 ## @param phase guard, issue, noop, change, or verify.
@@ -235,6 +246,9 @@ staging_main() {
   [[ $- != *x* ]] || return 64
   export CERTBOTBOT_TMPDIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
   certbotbot_workspace_create || return $?
+  # All decrypted account and lineage state must be removed even if a
+  # downstream Certbot call or strict validator rejects the fixture.
+  trap staging_cleanup EXIT
   directory=$CERTBOTBOT_WORKSPACE_CONFIG
 
   if [[ $phase == issue ]]; then
