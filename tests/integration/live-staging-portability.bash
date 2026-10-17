@@ -213,7 +213,7 @@ staging_record_identity() {
 ## Nothing is read from STDIN.
 ## @returns Nothing is written to STDOUT.
 staging_main() {
-  local phase=${1:-} directory='' account_before='' leaf_before=''
+  local phase=${1:-} directory='' leaf_before=''
   (( $# == 1 )) || return 64
   case "$phase" in
     guard | issue | noop | change | verify) ;;
