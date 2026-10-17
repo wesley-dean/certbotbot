@@ -59,7 +59,7 @@ BUILD_COMMIT ?= $(shell commit="$$(git rev-parse --short=12 HEAD 2>/dev/null || 
 BUILD_DATE ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || printf 'unknown')
 SHFMT_ARGUMENTS := -i 2 -bn -ci -sr -kp
 
-.PHONY: all adr-index build check checksums clean deps deps-check distclean docs docs-clean FORCE format test test-report verify-bashdeps
+.PHONY: all adr-index build check checksums clean deps deps-check distclean docs docs-clean FORCE format test test-report test-s3-interop verify-bashdeps
 
 ## Synchronize repository dependencies, then build consumer artifacts.
 all: deps
@@ -140,6 +140,22 @@ test: build
 test-report: build
 	@mkdir -p "$(TEST_RESULTS_DIR)"
 	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; CERTBOTBOT_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
+
+
+## Run opt-in, loopback-only S3 API and independent-runner recovery evidence.
+## This target is intentionally not part of 'test' or CI without an explicitly
+## provisioned S3-compatible server. The harness rejects production endpoints,
+## missing confirmation, and inherited GPG passphrases before any cloud request.
+test-s3-interop: build
+	@bash -n tests/integration/s3-backend-interoperability.bash
+	@bash -n tests/integration/s3-recovery-evidence.bash
+	@set -e; for artifact in $(DIST_SCRIPTS); do \
+		printf 'S3 interoperability %s\n' "$artifact"; \
+		AWS_DEFAULT_REGION=us-east-1 AWS_EC2_METADATA_DISABLED=true \
+			bash tests/integration/s3-backend-interoperability.bash run; \
+		AWS_DEFAULT_REGION=us-east-1 AWS_EC2_METADATA_DISABLED=true \
+			bash tests/integration/s3-recovery-evidence.bash run "$PWD/$artifact"; \
+	done
 
 FORCE:
 
