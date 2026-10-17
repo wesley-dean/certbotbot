@@ -506,3 +506,21 @@ certificate issuance remains disabled pending real Let's Encrypt staging
 evidence, backend integration and acceptance of the active-state import
 decision. The protocol does not provide an atomic multi-object transaction
 or a cross-platform distributed lock.
+
+
+## Opt-in real S3 interoperability and fresh-worker recovery tests
+
+The repository now has an **explicitly authorized**, loopback-only real
+S3-compatible test path under `make test-s3-interop`. It runs against the
+operator's disposable local S3 service and executes the actual internal
+conditional-write, remote recovery-generation, and independent-runner
+rollback functions for all three standalone artifacts. The test matrix
+covers full replacement, partial replacement, first-run absence, simulated
+unrelated writes, and an interrupted worker terminated by SIGKILL.
+Credential-free refusal tests remain in the normal Bats suite.
+
+This is test-only infrastructure: it does not enable the public certificate
+issuer or prove real Let's Encrypt account continuity, real AWS S3 behavior,
+a distributed lock, or active Certbot import. See the
+[interop and recovery runbook](doc/s3-interoperability.md) for safeguards,
+manual setup, and evidence limits.
