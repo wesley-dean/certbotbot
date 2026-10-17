@@ -501,3 +501,16 @@ returning success. It remains an **ephemeral local plan**, not a
 remote backup, atomic publication, or permission to activate Certbot.
 
 See [ADR-046](adr/ADR-046-local-prepublication-recovery-manifest.md).
+
+### ADR-047: Write-Once, Remotely Verifiable S3 Recovery Generations
+
+A guarded internal operation can persist the exact previous-state checkpoint
+into new generation-scoped S3 keys, using conditional `If-None-Match: *`
+writes and byte-for-byte readback verification. It writes a checksummed
+manifest last and returns a generation ID and trusted checksum only after
+full verification. A fresh runner can verify every retained object without
+the original runner's filesystem. The public issuer and all `*-latest`
+aliases remain untouched; this is durable recovery *preparation*, not
+authorization to publish new certificate state.
+
+See [ADR-047](adr/ADR-047-durable-s3-recovery-generations.md).
