@@ -102,3 +102,9 @@ CERTBOT
   [ "$status" -eq 64 ]
   [ ! -e "$STAGING_TEST_MARKER" ]
 }
+
+@test "real staging evidence remains an example, not an installed workflow" {
+  [ -f "$BATS_TEST_DIRNAME/../examples/github-actions/real-staging-evidence.yml" ]
+  [ ! -e "$BATS_TEST_DIRNAME/../.github/workflows/real-staging-evidence.yml" ]
+  [ ! -e "$STAGING_TEST_MARKER" ]
+}
