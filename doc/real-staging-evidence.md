@@ -190,3 +190,43 @@ approval and short artifact retention are mandatory. Genuine AWS S3
 production interoperability, independently enforced external writer
 serialization, and a separately accepted failure-atomic activation
 decision remain outstanding after any successful real staging run.
+
+
+## Generate narrow IAM policies without cloud credentials (ADR-056)
+
+The checked-in `scripts/staging-iam-policies.bash` prints two standalone,
+reviewable JSON documents. Replace these **illustrative** values with
+your own AWS account, public staging hosted zone, and owned names:
+
+```bash
+for doc in trust permissions; do
+  bash scripts/staging-iam-policies.bash \
+    --document "$doc" \
+    --account-id 123456789012 \
+    --repository wesley-dean/certbotbot \
+    --zone-id Z12345ABCDE \
+    --domain staging.example.org \
+    --extra-name proof.staging.example.org \
+    --second-name second.staging.example.org >"staging-$doc.json"
+done
+```
+
+The trust output binds the chosen GitHub repository's protected
+`acme-staging` environment and OIDC audience. The permissions output
+allows changes only to three exact `_acme-challenge` TXT owners in the
+selected zone, with only CREATE/UPSERT/DELETE; listing hosted zones
+and polling DNS change status are separately read-only. Apex and
+wildcard DNS-01 validation share the same challenge record owner.
+
+The generator **never** calls GitHub or AWS. The operator must install
+the OIDC identity provider and IAM role, confirm this public hosted
+zone actually owns the names, check no other policies grant broader
+permissions, configure environment reviewers and main-only deployment,
+and supply the four environment settings listed above. The inactive
+example is installed and dispatched **only after explicit consent**.
+Failure to perform a DNS operation should be investigated against
+the pinned plugin's documented actions, not "fixed" by enabling broad
+zone administration.
+
+Policy references: [AWS Route53 record conditions](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/specifying-conditions-route53.html)
+and [Certbot Route53 plugin permissions](https://certbot-dns-route53.readthedocs.io/en/stable/).
