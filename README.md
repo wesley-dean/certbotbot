@@ -551,3 +551,15 @@ against an explicit CA and the exact requested SAN sets. This is
 an **internal integration and testing capability only**. It cannot
 register a new account, activate Certbot, issue or renew certificates,
 or publish S3 aliases. See [ADR-054](doc/adr/ADR-054-remote-verified-inactive-candidate.md).
+
+
+## Reviewable IAM setup for real ACME staging
+
+The offline `scripts/staging-iam-policies.bash` helper renders
+separate OIDC trust and restricted Route53 TXT permissions JSON for
+the inactive six-runner staging evidence workflow. It never
+accesses credentials or installs IAM/GitHub resources. See
+[ADR-056](doc/adr/ADR-056-offline-staging-iam-policies.md) and
+[the staging runbook](doc/real-staging-evidence.md). Real staging
+still requires the explicitly authorized setup in
+[Issue #46](https://github.com/wesley-dean/certbotbot/issues/46).
