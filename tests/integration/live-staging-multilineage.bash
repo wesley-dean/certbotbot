@@ -63,6 +63,9 @@ staging_multi_authorize() {
     -d $CERTBOTBOT_STAGING_INPUT_DIR &&
     ! -L $CERTBOTBOT_STAGING_INPUT_DIR &&
     $- != *x* ]] || return 64
+  if [[ $phase == verify-two ]]; then
+    [[ -n ${CERTBOTBOT_EXPECTED_SECOND_LEAF_SHA256:-} ]] || return 64
+  fi
   if [[ $phase == issue-second ]]; then
     [[ -n ${CERTBOT:-} && $CERTBOT == /* && -x $CERTBOT &&
       -n ${CERTBOTBOT_STAGING_EMAIL:-} &&
@@ -204,7 +207,12 @@ staging_multi_issue_second() {
   staging_load_private_archives
   staging_check_lineage true
   # Check restored account and first lineage before touching Route53.
-  staging_multi_check_fingerprints "$config" || return 65
+  [[ -n ${CERTBOTBOT_EXPECTED_ACCOUNT_SHA256:-} &&
+    "$(staging_account_digest "$config")" ==
+      "$CERTBOTBOT_EXPECTED_ACCOUNT_SHA256" &&
+    -n ${CERTBOTBOT_EXPECTED_LEAF_SHA256:-} &&
+    "$(staging_multi_hash "$config" "$CERTBOTBOT_STAGING_DOMAIN")" ==
+      "$CERTBOTBOT_EXPECTED_LEAF_SHA256" ]] || return 65
   "$CERTBOT" certonly --non-interactive --agree-tos \
     --email "$CERTBOTBOT_STAGING_EMAIL" \
     --server https://acme-staging-v02.api.letsencrypt.org/directory \
