@@ -34,6 +34,8 @@ PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash) \
                           $(wildcard lib/plugins/storage/*.bash))
 ENTRYPOINT_SOURCE := src/main.bash
 SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(ENTRYPOINT_SOURCE)
+## Offline operator support scripts are maintained, but not bundled into issuers.
+SUPPORT_SOURCE_FILES := $(sort $(wildcard scripts/*.bash))
 TEST_SCRIPTS := $(sort $(wildcard tests/*.bats))
 TEST_RESULTS_DIR := test-results
 
@@ -125,12 +127,12 @@ checksums: build
 
 ## Validate maintained Bash syntax and run ShellCheck against maintained source.
 check:
-	@for source in $(SOURCE_FILES); do bash -n "$$source"; done
-	shellcheck $(SOURCE_FILES)
+	@for source in $(SOURCE_FILES) $(SUPPORT_SOURCE_FILES); do bash -n "$source"; done
+	shellcheck $(SOURCE_FILES) $(SUPPORT_SOURCE_FILES)
 
 ## Format maintained Bash using the same arguments configured for MegaLinter.
 format:
-	shfmt $(SHFMT_ARGUMENTS) -w $(SOURCE_FILES)
+	shfmt $(SHFMT_ARGUMENTS) -w $(SOURCE_FILES) $(SUPPORT_SOURCE_FILES)
 
 ## Run the behavior suite against every generated artifact flavor.
 test: build
