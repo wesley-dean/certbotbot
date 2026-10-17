@@ -316,3 +316,23 @@ options, and unsafe active workspaces must leave no retained downloads or
 partially imported Certbot state. This is preparatory only: authenticated
 ACME account reuse, active state import, new issuance, encryption, and
 multi-object S3 publication remain separate release gates.
+
+### Phase 4L: optional encrypted archive format (ADR-041)
+
+The original ADR-021 symmetric encryption contract is now implemented
+in the internal local preparation and private retrieval boundary:
+GPG uses AES-256 with a non-argv passphrase FD; source and destination
+files remain owner-private, and a disposable GnuPG home avoids persistent
+runner keyring state. A nonempty `GPG_PASSPHRASE` selects the
+`.tar.gz.enc` format for both common and domain objects. No-passphrase
+mode selects plaintext `.tar.gz`. The retrieval path probes a missing
+selected-mode key for a conflicting opposite-mode object but never
+treats that alternate as a valid fallback. Failed or partial decryptions
+cannot authorize account registration or a fresh collection.
+
+New Bats tests exercise local encryption, wrong passwords, damaged
+ciphertext, encrypted two-lineage restoration across independent
+workspaces, format mismatch, and cleanup in every standalone artifact.
+A manual migration guide covers complete collections and recoverability.
+GPG-enabled **publication** remains blocked by the unfinished producer
+orchestrator and ADR-022 remote failure/rollback protocol.
