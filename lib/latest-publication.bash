@@ -229,7 +229,7 @@ certbotbot_latest_probe() {
 ## @returns Nothing is written to STDOUT.
 certbotbot_latest_publish() {
   local bucket='' env=${ACME_ENVIRONMENT:-production}
-  local root='' key='' file='' digest='' status=0 i=0 count=0
+  local root='' key='' file='' status=0 i=0 count=0
   (( $# == 0 )) || return 64
   [[ $- != *x* && ${CERTBOTBOT_LATEST_WRITE_CONFIRM:-} == yes &&
     ${CERTBOTBOT_RECOVERY_WRITE_CONFIRM:-} == yes &&
@@ -318,7 +318,7 @@ certbotbot_latest_recover() {
   local expected=${4:-} root='' manifest='' row='' key='' tag=''
   local number='' present='' oldhash='' oldsize='' newhash='' newsize=''
   local extra='' file='' recovery_key='' status=0 count=0 i=0
-  local mode='' suffix='' prefix='' leaf='' name=''
+  local suffix='' prefix=''
   local -a rows=() keys=() old_present=() old_hashes=()
   local -a old_sizes=() new_hashes=() new_sizes=()
   local -a states=() etags=()
