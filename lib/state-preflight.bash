@@ -116,6 +116,8 @@ certbotbot_state_assess_remote() {
     CERTBOTBOT_STATE_MISSING_NAMES=()
     return "$result"
   fi
+  # Caller-facing result is consumed after standalone assembly.
+  # shellcheck disable=SC2034
   CERTBOTBOT_STATE_MISSING_NAMES=("${missing[@]}")
   return 0
 }
