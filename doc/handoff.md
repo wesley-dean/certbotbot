@@ -603,3 +603,23 @@ not certificate publication. S3 compatibility must include
 69 and cannot invoke these functions. Real staging account evidence,
 active import, latest-alias publication, partial-failure rollback,
 and cross-platform writer serialization remain separate gates.
+
+## Phase 4S: read-only remote latest-state drift preflight (ADR-048)
+
+The `certbotbot_publication_precondition_check` helper now compares a
+freshly fetched S3 common/domain collection with the exact prior
+checkpoint already approved under ADRs 042, 043, and 046.
+It rejects changed bytes, missing previously existing objects,
+newly appearing objects, wrong encryption mode, and service errors.
+A completed read leaves no additional private staging and never
+touches latest aliases, active Certbot state, or recovery generations.
+
+All three standalone artifacts include Bats tests for unchanged
+existing/absent collections, changed, new and deleted objects,
+inconsistent common/domain state, mixed archive mode, denial,
+modified local inputs, and cleanup. A successful remote recheck
+does **not** serialize independent writers or guarantee that the
+collection cannot change before publication. An accepted conditional
+latest-publication protocol and end-to-end crash recovery are still
+outstanding under ADR-022. Real staging account continuity and
+ADR-037's active-import prohibition are unchanged.
