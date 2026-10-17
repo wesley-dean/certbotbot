@@ -403,3 +403,21 @@ credential-free guard checks and cannot invoke real staging work.
 No Checkov exception is present for this example, and no successful
 integration test alone authorizes product active import, public
 issuance, or remote publication under ADR-037 and ADR-022.
+
+## Complete inactive import candidates and failure isolation (ADR-045)
+
+A private builder assembles one shared account and multiple selected
+lineages only after copying all supplied archive inputs into fixed,
+owner-private snapshots and completing existing batch-wide validation.
+A late rejected member discards the entire private candidate rather
+than leaving a partial Certbot-shaped tree exposed. Candidate renewal
+paths are rebased in a subshell to the candidate config path, never
+the recorded active config. The active config must be empty before
+preparation and remains unchanged afterward.
+
+This narrows multi-lineage path-collision and partial-preparation
+risks, but it is not a transactionally activated Certbot import.
+The same-user workspace threat boundary, real account authenticity,
+cryptographic certificate/SAN validation, and active import
+rollback remain separate safety requirements. The public issuance
+and remote publication gates remain closed.
