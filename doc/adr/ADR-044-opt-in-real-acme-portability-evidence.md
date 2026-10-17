@@ -8,13 +8,21 @@ Accepted
 
 ## Decision
 
-Add a **manual-only, staging-only evidence workflow** to demonstrate the
-real account and lineage portability requirements withheld by ADR-037.
-The workflow is deliberately separate from the released certbotbot
-producer and its disabled issuance entrypoint. It runs only through
-`workflow_dispatch`, only from the repository's `main` branch, and
-only when the human initiating the job explicitly confirms that real
-DNS-01 changes and Let's Encrypt staging requests are authorized.
+Provide an **inactive, manually installable staging-only workflow example**
+at `examples/github-actions/real-staging-evidence.yml` and a separate
+integration harness at `tests/integration/live-staging-portability.bash`.
+The example documents how to gather real account and lineage portability
+evidence required by ADR-037, without registering an executable GitHub
+Action in the certbotbot repository. GitHub only discovers workflows
+installed under `.github/workflows/`; this example MUST remain outside
+that directory. It is not deployed by merge, release, or normal CI.
+
+If an operator deliberately installs the reviewed example into a
+controlled GitHub repository, it may run only via `workflow_dispatch`,
+from that repository's trusted `main` branch, with protected staging
+environment approval and an explicit false-by-default authorization
+for actual Route53 DNS updates and Let's Encrypt staging requests.
+Installation, execution, and removal are separate operator actions.
 
 This decision permits **test-only active Certbot configuration
 construction inside short-lived, isolated CI runners** after passing
@@ -23,8 +31,8 @@ validators. It does **not** authorize the product's active import,
 normal issuance command, AWS S3 mutation, release workflow, or
 production ACME authority.
 
-Each stage uses a newly provisioned GitHub-hosted runner with no
-persistent predecessor filesystem:
+When installed and explicitly authorized, the four-stage example uses
+newly provisioned GitHub-hosted runners without predecessor filesystem state:
 
 1. **Runner A: genuine staging issuance.** Pin Certbot and its
    Route53 authenticator to 5.8.0, obtain a staging DNS-01 certificate
@@ -52,8 +60,8 @@ persistent predecessor filesystem:
    certificate's chain, private key, and exact SAN identity. The
    account fingerprint must match A.
 
-The protocol uses **encrypted archive files only** as GitHub Actions
-artifacts between jobs. The common archive includes ACME account
+The example protocol uses **encrypted archive files only** as GitHub
+Actions artifacts between jobs. The common archive includes ACME account
 private keys and is encrypted just like the domain archive.
 `GPG_PASSPHRASE` is sourced only from a protected environment
 secret and is never passed as a CLI argument or written to workflow
@@ -61,14 +69,15 @@ logs. Each artifact is retained for no more than one day; the
 operator must also consider GitHub organization retention policies,
 artifact access, and repository backup controls.
 
-The evidence workflow never contacts the production ACME directory.
+The staging harness never contacts the production ACME directory.
 Its script hardcodes Let's Encrypt's staging ACME URL. The owned
 base name and additional SAN are strictly validated to reject
 wildcards in the lineage identity, extra names outside the base,
 shell metacharacters, and unsupported case or canonical forms.
 It never accepts arbitrary Certbot flags or ACME endpoints.
 
-The AWS OIDC role is made available only to runners A and C.
+When installed for an authorized run, the AWS OIDC role is available
+only to runners A and C.
 The role's trust policy must restrict GitHub repository, branch,
 workflow environment, and expected audience; the IAM policy must
 restrict Route53 TXT-record changes to the explicit authorized
@@ -76,6 +85,24 @@ hosted zone. Runners B and D have no AWS OIDC permission or
 credentials. The workflow's GitHub `acme-staging` environment
 should have required reviewers and the required secret/variable
 configuration described in the operator runbook.
+
+## Repository placement and installation boundary
+
+The producer repository maintains its own normal CI workflows. Those
+workflows MUST NOT install, import, dispatch, or indirectly trigger this
+live staging example. The complete workflow YAML belongs under
+`examples/github-actions/`, and the credential-free integration guard
+tests belong under `tests/`. An explicit review and operator action are
+required before any deployment into an active `.github/workflows/`
+directory, whether in this repository or another controlled environment.
+
+A staged example permits inspection, adaptation, and governance review
+without creating a standing trigger in the project's operational
+GitHub Actions interface. This separation is the default and MUST not
+be bypassed merely to run the integration test conveniently. The
+example includes all original manual dispatch inputs, approval gates,
+staging-only authority, and credential separation; moving its file
+does not relax those controls.
 
 ## Context and why now
 
@@ -147,6 +174,13 @@ insufficient to prove a real account registration and renewal.
 to untrusted code paths, credential exposure, nontrivial DNS
 side effects, CA rate limits, and fork-origin ambiguity.
 
+**Keep a manually invocable workflow installed in
+`.github/workflows/`** was rejected: even a manual-only workflow
+becomes part of the live repository Actions interface without an
+operator separately choosing to install the staging experiment.
+An inactive example preserves the multi-runner evidence design
+without that standing operational capability.
+
 **Transmit plaintext account and TLS private keys via artifacts**
 was rejected because collaborator and artifact access would then
 expose secrets beyond the immediate runner.
@@ -162,30 +196,23 @@ without DNS mutation authority.
 preserve ADR-030 environment isolation and ADR-022's publication
 safety requirements.
 
-## Scoped Checkov policy exception
+## Checkov and example validation
 
-Checkov's `CKV_GHA_7` applies the SLSA parameterless-build property to
-`workflow_dispatch` inputs.  This workflow is an operator-controlled,
-non-publishing integration test, not a release or build-provenance
-pipeline.  Its reviewed input parameters specify the owned DNS
-identities, scoped AWS region, and explicit false-by-default consent.
-Removing them merely to satisfy a build-oriented rule would weaken
-the authority boundary above and obscure which external DNS side
-effects the operator authorized.
-
-The workflow therefore carries a **resource-local CKV_GHA_7 skip**
-with an inline explanation.  Other Checkov policies remain enforced,
-including permission and workflow command security checks.  The
-exception must not be moved into a global Checkov skip list, copied
-to release workflows, or expanded to other rules without a
-separate security review.
+No Checkov policy suppression is required for this design.
+`CKV_GHA_7` applies to active `workflow_dispatch` workflow inputs.
+The staging example is intentionally not installed in
+`.github/workflows/`, so no active parameterized build workflow
+is introduced by this milestone. The previous local Checkov
+exception was removed from the example; global Checkov settings
+remain unchanged. The operator must review policy findings if the
+example is ever deliberately installed in a controlled environment.
 
 ## Threats, mitigations, and residual risks
 
 Assets include the ACME account private key, domain TLS private
 keys, scoped AWS role credentials, staging CA trust anchors, and
-the DNS zone's integrity. The trust boundaries are workflow
-dispatch and authorization, GitHub protected environment approval,
+the DNS zone's integrity. The trust boundaries, **only after deliberate installation**, are
+workflow dispatch and authorization, GitHub protected environment approval,
 OIDC credential issuance, real ACME/DNS requests, GPG-encrypted
 artifact transport, and test-only active Certbot file installation.
 
@@ -195,9 +222,9 @@ account fingerprints. It captures Certbot stdout/stderr only in
 private runner logs and does not upload those logs. Product
 issuance still exits status 69.
 
-Residual risks include malicious modifications to workflow
-source on `main`, compromise of GitHub-hosted runners or
-actions, compromised or overscoped AWS IAM, GitHub artifact
+Residual risks upon installation include malicious modifications
+to example or workflow source, compromise of GitHub-hosted runners
+or actions, compromised or overscoped AWS IAM, GitHub artifact
 access to ciphertext, exposure of the passphrase to processes
 with runner privileges, and staging CA or API availability
 changes. Required reviewers, code review, pinned actions,
@@ -213,11 +240,11 @@ unknown phase, absent encryption credentials, and a multiline
 secret cannot reach a fake Certbot executable. No real ACME/DNS
 operations occur on regular CI runs.
 
-The manually initiated workflow is expected to produce separate
-successful evidence for all four runner stages. A successful A or
-B alone is not enough for product import acceptance, nor is
-merely merging this workflow evidence that staging continuity
-has passed. If any phase fails, preserve only sanitized
+A separately installed and manually authorized execution of the
+example is expected to produce successful evidence for all four
+runner stages. A successful A or B alone is not enough for product
+import acceptance; merely merging the example does not register
+a workflow or establish any real staging evidence. If any phase fails, preserve only sanitized
 diagnostic facts, review the observed real Certbot output
 privately, update the relevant ADR/validator, and rerun with
 operator consent. Never loosen the renewal allowlist only
