@@ -13,7 +13,7 @@
 ## No real AWS, DNS, ACME, consumer plugins, or production issuer is enabled.
 ## @see doc/s3-interoperability.md
 
-set -e -o pipefail
+set -Ee -o pipefail
 umask 077
 
 ## @fn evidence_guard()
@@ -284,6 +284,10 @@ evidence_run() {
     else
       (( child == 0 )) || result=65
     fi
+    if (( result != 0 )); then
+      printf 'S3 recovery stage: scenario=%s status=%s\n' \
+        "$scenario" "$child" >&2
+    fi
     # Drop the old runner's local tree even when SIGKILL prevented its trap.
     rm -rf -- "$root/work" || result=73
     mkdir -m 0700 -- "$root/work" || result=73
@@ -292,6 +296,7 @@ evidence_run() {
         CERTBOTBOT_LATEST_ROLLBACK_CONFIRM=yes \
         bash "$0" recover "$artifact" "$bucket" "$scenario" \
         "$root/$scenario.record"; then
+        printf 'S3 recovery restore: scenario=%s failed\n' "$scenario" >&2
         result=65
       fi
     fi
@@ -317,6 +322,8 @@ case ${1:-} in
     evidence_guard || exit 64
     [[ $2 == certbotbot-interop-* &&
       ${CERTBOTBOT_TMPDIR:-} == /* ]] || exit 64
+    # The ERR trap reveals a source line and status, not the S3 credentials.
+    trap 'status=$?; printf "S3 E2E worker failure mode=%s line=%s status=%s\\n" "$mode" "$LINENO" "$status" >&2' ERR
     if [[ $mode == stage ]]; then
       evidence_stage "$@"
     else
