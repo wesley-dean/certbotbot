@@ -426,3 +426,20 @@ activated by the retrieval boundary; the separately reviewed archive and
 renewal validators remain mandatory.  A caller must discard a successful
 private S3 stage.  Real S3/MinIO interoperability and genuine ACME account
 continuity remain future integration milestones.
+
+## Phase 4K: assessed remote portable-state collections
+
+The internal `certbotbot_state_assess_remote` composes the typed ADR-039 S3
+retrieval with private common-account validation and batch-wide existing
+lineage assessment. It retrieves all requested objects before opening
+archives, validates the common account even for all-new lineages, and
+rejects malformed or mismatched existing state before reporting missing
+requested names. The result array is populated only on complete success
+and must never be interpreted as permission to register an account.
+
+No downloaded bytes remain staged after return. The active Certbot config
+remains empty, and normal issuer requests continue to fail with status 69.
+The mocked object-store tests use synthetic account material and do not
+prove actual S3 endpoint behavior or Let's Encrypt account ownership.
+Before activation, gather real staging account-reuse and renewal evidence
+and approve the separate candidate installation/rollback ADR.
