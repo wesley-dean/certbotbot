@@ -519,3 +519,21 @@ interoperability only, and requires review of the actual GitHub job evidence.
 External serialization, real AWS backend behavior, genuine Let's Encrypt
 staging continuity, and active-state import remain separate release gates.
 See `doc/s3-interoperability.md` and ADR-051.
+
+
+### Phase 4W: complete the real two-lineage staging evidence harness
+
+ADR-053 extends the inactive ADR-044 real staging workflow with a second
+independent staging Certbot lineage and a fresh, read-only two-lineage
+candidate validation runner. The first certificate retains its previous
+three-name SAN set, the second has a separate concrete name in the same
+authorized zone, and both must use the exact previously registered staging
+ACME account. Archives remain common/account plus **separately
+encrypted, disjoint domain objects**, not an all-lineages archive.
+Credential-free Bats guards and source packaging tests cover absent
+consent and cross-lineage member leakage.
+
+This code **does not establish real staging success by itself**. The
+operator must manually install and approve the separately governed example
+using a protected staging role and explicitly review all six genuine
+runner results. The public issuer remains disabled under ADR-037.
