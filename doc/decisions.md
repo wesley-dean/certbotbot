@@ -379,3 +379,180 @@ See [ADR-036](adr/ADR-036-exact-dns-san-verification.md).
 Isolated account and lineage restoration does not authorize installation into active Certbot configuration. Preparation and assessment remain non-activating until genuine staging account reuse, renewal and SAN-change evidence across independent workspaces, and a separate Accepted import/rollback decision. The public issuer and release gates remain disabled.
 
 See [ADR-037](adr/ADR-037-gated-active-certbot-import.md).
+
+### ADR-038: Strict, Non-Activating Restored Renewal-Option Policy
+
+Before a restored lineage passes private import assessment, the producer must
+validate the complete persisted Certbot renewal-option profile, not merely its
+account identity and five historical paths.  The initial Certbot 5.8.0
+Route53 allowlist accepts only explicitly reviewed fields, rejects unknown
+options and executable/plugin overrides, and permits the narrowly documented
+ARI retry scheduling update.  The policy does not authorize account import,
+Certbot execution, or S3 publication; those release gates remain closed.
+
+See [ADR-038](adr/ADR-038-restored-renewal-option-policy.md).
+
+### ADR-039: Typed S3 Retrieval and Private Collection Staging
+
+A producer must distinguish confirmed missing S3 objects from authorization,
+transport, and ambiguous service failures before treating storage as new.
+A bounded, non-activating retrieval operation downloads the common archive and
+selected domain objects into private staging, returns explicit presence flags,
+and rejects any orphaned domain archive without its common account.  Only
+an exact reviewed AWS CLI GetObject NoSuchKey signature confirms absence;
+a generic 404 remains fatal.  Archive validation, account reuse, issuance,
+and publication require separate evidence and remain disabled.
+
+See [ADR-039](adr/ADR-039-typed-s3-state-retrieval.md).
+
+### ADR-040: Non-Activating Assessment of Retrieved S3 State
+
+A selected remote common archive must be independently validated even when
+every requested lineage is confirmed absent. All present lineages are
+assessed as one batch against the downloaded common account state, including
+archive shape, account/authority references, renewal settings, and portable
+path previews. Missing requested lineage names are reported only after the
+whole existing collection passes, never as authorization for issuance.
+Remote bytes and private staging are discarded on success and failure;
+active Certbot state, account registration, and publishing remain disabled.
+
+See [ADR-040](adr/ADR-040-remote-state-assessment-boundary.md).
+
+### ADR-041: Encrypted Archive Preparation and Strict Retrieval Mode
+
+Optional GPG symmetric AES-256 encryption now has an internal private
+archive-transform helper and a strict encrypted retrieval path.
+A nonempty `GPG_PASSPHRASE` selects only `.tar.gz.enc` common/domain
+objects, with no plaintext fallback on failed retrieval or decryption.
+An absent selected-mode key triggers a presence-only check for the
+opposite suffix, and any existing opposite-mode object is a fatal
+migration mismatch. Both decrypted and downloaded secret bytes are
+discarded after non-activating assessment, and neither issuance nor
+S3 publication is enabled.
+
+See [ADR-041](adr/ADR-041-encrypted-state-retrieval-and-preparation.md).
+
+### ADR-042: Frozen, Cryptographically Verified Local Publication Candidates
+
+A non-publishing preparation helper now freezes a complete common/domain
+archive collection before validation, rather than checking mutable inputs
+and subsequently re-reading them. Every existing lineage must pass the
+isolation, account, renewal-option, X.509 chain/key, combined PEM, and
+exact requested DNS SAN checks before any local candidate is exposed.
+The approved candidate uses one plaintext or AES-256 encrypted format
+with fixed common-first S3 object keys and owner-private file bodies.
+No PutObject is called, and active Certbot import or issuance remains blocked.
+
+See [ADR-042](adr/ADR-042-local-publication-candidate-gate.md).
+
+### ADR-043: Verified, Exact-Byte Remote Recovery Checkpoints
+
+A verified local publication candidate must be paired with a
+bucket- and environment-bound, complete read-only snapshot of its
+previous S3 common and selected domain objects before any future
+publication can be considered. The new checkpoint validates restored
+account and renewal state, preserves exact original encrypted or
+plaintext remote bytes and presence flags, and records SHA-256 digests.
+Denied, missing-common, corrupt, or mixed-format remote inputs fail
+closed, and no S3 writes are enabled. A later publication ADR must
+provide durable **remote** rollback generations because a local
+checkpoint alone cannot survive a worker crash.
+
+See [ADR-043](adr/ADR-043-recoverable-s3-publication-checkpoint.md).
+
+### ADR-044: Operator-Authorized Real ACME Staging Portability Evidence
+
+A four-runner Let's Encrypt staging portability protocol is supplied
+as a deliberately **inactive example** under `examples/github-actions/`,
+alongside credential-free guard tests and an integration harness. It
+is not registered as an executable workflow by this repository; an
+operator must separately review, install, authorize, and configure it
+in a controlled GitHub environment to request real DNS-01 validation.
+The design protects split-state transfers with encryption and keeps
+test-only Certbot state import outside the product entrypoint.
+No Checkov rule exception is needed in this repository, and real
+staging evidence remains outstanding until a complete manually
+authorized run succeeds.
+
+See [ADR-044](adr/ADR-044-opt-in-real-acme-portability-evidence.md).
+
+### ADR-045: Complete, Non-Activating Multi-Lineage Import Candidates
+
+An internal preparation helper freezes common-account and selected lineage
+archives once, runs the full batch assessment, and assembles a complete
+multi-lineage Certbot-shaped candidate in a separate owner-private directory.
+Validated renewal paths are rebased only to this private candidate, never to
+the active configuration. Any rejected later lineage discards the entire
+candidate, with no Certbot, DNS, or S3 side effects. This establishes local
+**preparation atomicity** only; ADR-037 still forbids product activation
+pending reviewed live staging evidence and a separate activating ADR.
+
+See [ADR-045](adr/ADR-045-nonactivating-multilineage-import-candidates.md).
+
+### ADR-046: Local Manifest of Proposed and Previous Publication Bytes
+
+Before any future remote mutation, the producer can now pair its
+cryptographically verified proposed object collection with its exact
+validated previous-state checkpoint and create a private manifest.
+That manifest records the common-first key order, previous existence,
+old and new SHA-256 hashes, and byte lengths without writing to S3.
+The helper rechecks both collections and manifest integrity before
+returning success. It remains an **ephemeral local plan**, not a
+remote backup, atomic publication, or permission to activate Certbot.
+
+See [ADR-046](adr/ADR-046-local-prepublication-recovery-manifest.md).
+
+### ADR-047: Write-Once, Remotely Verifiable S3 Recovery Generations
+
+A guarded internal operation can persist the exact previous-state checkpoint
+into new generation-scoped S3 keys, using conditional `If-None-Match: *`
+writes and byte-for-byte readback verification. It writes a checksummed
+manifest last and returns a generation ID and trusted checksum only after
+full verification. A fresh runner can verify every retained object without
+the original runner's filesystem. The public issuer and all `*-latest`
+aliases remain untouched; this is durable recovery *preparation*, not
+authorization to publish new certificate state.
+
+See [ADR-047](adr/ADR-047-durable-s3-recovery-generations.md).
+
+### ADR-048: Read-Only Remote Latest-State Drift Preflight
+
+A new internal precondition re-reads every selected S3 latest object
+after a complete proposed collection, prior checkpoint, and local
+manifest have been validated. It rejects additions, removals,
+byte changes, wrong archive modes, and ambiguous S3 reads by
+comparing exact raw bytes and presence to the previous checkpoint.
+The operation never uploads and always discards its temporary read
+stage. This is a **freshness observation**, not an atomic multi-key
+snapshot, distributed lock, or permission to publish latest aliases.
+
+See [ADR-048](adr/ADR-048-remote-latest-drift-preflight.md).
+
+### ADR-049: ETag-Bound Publication Preconditions
+
+A read-only internal operation captures S3 conditional-write predicates
+for each latest object only after revalidating the complete local
+publication plan and fresh remote-state precondition. Existing objects
+must survive a GET conditioned on the service's opaque ETag and match
+their original checkpoint's SHA-256 and size; missing objects retain
+an explicit absent predicate. No partial predicate collection is
+exposed on error, and no AWS mutation occurs. These values can become
+stale immediately and are not a lock, multi-object transaction, or
+authorization to publish certificates.
+
+See [ADR-049](adr/ADR-049-etag-bound-publication-conditions.md).
+
+### ADR-050: Guarded Conditional Latest Publication and Fresh-Runner Recovery
+
+The internal S3 coordinator can conditionally update the validated common
+account and domain latest objects only after durable, independently verified
+previous-state recovery and explicit operator acknowledgement of the saved
+generation identifier and checksum. Every PUT uses an object-level ETag or
+absence condition and read-back verification. On an ambiguous partial failure
+the system preserves the backup and requires separate, expressly authorized
+recovery; a fresh runner restores old bytes or confirmed absence only if
+all current keys match saved old or proposed new state. Cross-platform
+serialization, real backend tests, and ADR-037's live ACME evidence remain
+required before enabling normal issuance.
+
+See [ADR-050](adr/ADR-050-conditional-latest-publication-and-recovery.md).

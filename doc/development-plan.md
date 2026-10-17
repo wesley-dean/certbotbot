@@ -277,3 +277,224 @@ Before each phase, review branch baseline and inherited governance, capture assu
 ### Phase 4I: controlled active-import boundary (ADR-037)
 
 Staged account and domain archive assessment remains non-activating while genuine ACME evidence is incomplete. Existing identity, archive, and path-preview validators may be composed into test-only preparation, but no preview is installed into active Certbot configuration. Before active import, demonstrate Let's Encrypt staging account registration and reuse, no-op renewal, and due renewal or changed SANs across independent workspaces. Review the complete renewal-option trust boundary. A subsequent Accepted ADR must define the active import and rollback mechanism. Normal issuance continues to fail with status 69, and automatic releases remain gated.
+
+### Phase 4I: restored renewal-option allowlist (ADR-038)
+
+The internal archive-to-assessment flow now checks the entire supported
+Certbot 5.8.0 Route53 renewal configuration profile, including optional
+DNS-only tuning and recognized ARI retry scheduling, before preparing a
+non-activating renewal-path preview.  This complements ADR-031's account
+identity and ADR-032's canonical path requirements but does not replace
+live account registration evidence.  Unsupported persisted settings,
+hooks, installer options, foreign credentials, and renewal timing controls
+fail closed.  Three artifact flavors, negative Bats tests, and the
+three-workspace network-guarded Certbot smoke test exercise the boundary.
+Normal issuance and object-store publication remain disabled.
+
+### Phase 4J: classified S3 retrieval (ADR-039)
+
+The internal S3 read path can now stage the entire selected common/domain
+object collection using the fixed production or staging namespace and
+typed object-presence results.  The only currently recognized missing-object
+signature is AWS CLI GetObject NoSuchKey; denied, ambiguous 404, and
+transport errors fail closed.  Newly requested domains may be absent when
+their common account exists, but a missing common archive alongside any
+existing domain is inconsistent.  Private bytes are not valid Certbot
+state until all existing archive and account identity checks succeed.
+The public issuer, GPG handling, S3 publication, and automatic release
+remain disabled until their separate prerequisites are met.
+
+### Phase 4K: remote collection assessment (ADR-040)
+
+The producer now has a private, non-activating path from selected
+production/staging S3 object names through typed retrieval to complete
+archive assessment. Common state is validated whether or not requested
+lineages already exist. All present lineages pass the existing batch
+validators before confirmed-missing domain names are reported. Failed
+retrieval, corrupted state, foreign account identity, unsupported renewal
+options, and unsafe active workspaces must leave no retained downloads or
+partially imported Certbot state. This is preparatory only: authenticated
+ACME account reuse, active state import, new issuance, encryption, and
+multi-object S3 publication remain separate release gates.
+
+### Phase 4L: optional encrypted archive format (ADR-041)
+
+The original ADR-021 symmetric encryption contract is now implemented
+in the internal local preparation and private retrieval boundary:
+GPG uses AES-256 with a non-argv passphrase FD; source and destination
+files remain owner-private, and a disposable GnuPG home avoids persistent
+runner keyring state. A nonempty `GPG_PASSPHRASE` selects the
+`.tar.gz.enc` format for both common and domain objects. No-passphrase
+mode selects plaintext `.tar.gz`. The retrieval path probes a missing
+selected-mode key for a conflicting opposite-mode object but never
+treats that alternate as a valid fallback. Failed or partial decryptions
+cannot authorize account registration or a fresh collection.
+
+New Bats tests exercise local encryption, wrong passwords, damaged
+ciphertext, encrypted two-lineage restoration across independent
+workspaces, format mismatch, and cleanup in every standalone artifact.
+A manual migration guide covers complete collections and recoverability.
+GPG-enabled **publication** remains blocked by the unfinished producer
+orchestrator and ADR-022 remote failure/rollback protocol.
+
+### Phase 4M: verified local publication candidate (ADR-042)
+
+An internal pre-publication coordinator now snapshots a complete local
+common/lineage archive collection and verifies each selected certificate
+against the exact authorized apex/wildcard SAN request. Trust-chain,
+private-key match, combined PEM, account identity, renewal-option, and
+lineage portability failures prevent candidate completion. Successful
+candidates contain deterministic common-first S3 keys and privately
+frozen plaintext or AES-256 encrypted object bodies, but no AWS PutObject
+operation occurs.
+
+CI tests use locally CA-signed certificates, trust bundle overrides for
+controlled fixtures, and assert no cloud mutation in all three standalone
+artifacts. Publication itself remains a separate guarded milestone with
+partial-write recovery and last-known-good version retention. Real
+Let's Encrypt staging registration, due renewal and SAN changes across
+independent runners must precede activating restored Certbot state.
+
+### Phase 4N: exact-byte remote recovery checkpoint (ADR-043)
+
+The local publication candidate now binds its original S3 bucket and
+environment, and a new internal read-only checkpoint retrieves and
+validates the complete previous common/domain collection.
+A successful checkpoint records per-key existence, SHA-256 digests,
+and exact prior object bytes in a private directory. Encrypted
+archives retain their original ciphertext for potential restoration;
+their separate decrypted copies are used only for validation.
+
+A complete absence remains distinct from corrupt or denied state,
+and a missing common account alongside an existing domain remains
+fatal. Tests use only local mock AWS reads across all three standalone
+artifacts; no PutObject call or release is authorized. This prepares
+a later remotely durable publication and partial-failure recovery
+design, but is not itself sufficient after a runner crash.
+
+### Phase 4O: inactive staging portability evidence example (ADR-044)
+
+An opt-in, **non-installed** GitHub Actions example documents a
+four-runner investigation of real Certbot 5.8.0 Route53 staging
+issuance, encrypted split-state handoff, account reuse, no-op renewal,
+changed SANs, and independent final restoration. It resides under
+`examples/github-actions/real-staging-evidence.yml` rather than
+`.github/workflows/`, and does not create an operational workflow
+upon merge. The harness remains at
+`tests/integration/live-staging-portability.bash`.
+
+Only a deliberate operator installation in a controlled repository
+with protected staging credentials, OIDC DNS scope, CA trust, and
+manual authorization can initiate the real test. Normal CI exercises
+only credential-free guards. This example is **not live evidence**,
+does not relax ADR-037, and requires no Checkov exception in the
+maintained operational workflows. S3 crash recovery, two coexisting
+active lineages, and failure-atomic activation remain separate gates.
+
+### Phase 4P: non-activating complete import candidate (ADR-045)
+
+The private preparation path now assembles one fully validated
+common-account tree with any explicitly selected, unique lineages
+into a fresh, inactive Certbot-shaped candidate directory.
+All source archive bytes are frozen before assessment, and the
+existing account/renewal validators and candidate-relative path
+preview gate each member. Failed validation or assembly discards
+the candidate without touching the active config.
+
+This closes a local multi-lineage composition gap, not the production
+active-import gate. Synthetic test fixtures cannot verify registered
+Let's Encrypt account continuity, live renewals, SAN changes, or
+rollback under a failed active install. Those requirements and
+durable S3 publication remain outstanding under ADRs 037 and 022.
+
+### Phase 4Q: local pre-publication recovery manifest (ADR-046)
+
+A private, read-only plan records the exact S3 keys and byte hashes
+of both the proposed cryptographically verified collection and its
+validated previous-state checkpoint. It distinguishes existing,
+missing, and newly proposed objects without accepting a failed
+GET as evidence of absence. The plan's manifest and both byte
+collections are rehashed before the internal plan is trusted.
+
+This milestone is strictly offline; it does not issue, upload, or
+grant release authorization. The next operational publication
+decision must establish durable remote backup generations,
+verification after writes, crash recovery from an independent
+runner, explicit handling of previous absence, and ordered latest
+aliases under ADR-022. Genuine staging evidence and ADR-037's
+activation ban remain unchanged.
+
+### Phase 4R: write-once durable S3 recovery generations (ADR-047)
+
+A guarded internal helper can now preserve exact validated previous
+account/domain object bytes under generation-scoped S3 backup keys,
+using conditionally created PUTs, read-back hashing, and a manifest
+committed last. The verifier can run on a fresh host with only
+the bucket, environment, generation ID, and trusted manifest SHA-256.
+The retained ciphertext (or plaintext when configured) matches the
+original remote bytes; fully absent prior keys remain explicit.
+
+This is the first **remote mutation** milestone, but it writes only
+to the reserved recovery prefix, requires affirmative internal
+authorization, and never touches latest archive aliases or the
+product entrypoint. Failure can leave incomplete orphaned backups
+but cannot claim a completed generation. The next publication ADR
+must cover current-state checks, safe latest writes, partial failure
+and crashed-writer recovery, and external serialization. Real ACME
+staging evidence and active Certbot import remain blocked.
+
+### Phase 4S: remote latest-state freshness precondition (ADR-048)
+
+A non-publishing S3 preflight now re-reads the exact previously
+selected latest-object keys and compares their raw bytes or
+confirmed absence against the ADR-043 checkpoint. It first
+revalidates ADR-046's proposed/prior manifest to ensure that
+no local input changed. Any remote drift, changed archive
+mode, or denied/indeterminate fetch aborts without cloud writes.
+
+This closes stale-remote-read detection as a preparatory step,
+not an atomic remote lock or compare-and-swap. Cross-platform
+writers still need external serialization, and the next S3
+publication milestone must govern conditional latest writes,
+partial failure recovery, and independent runner restoration
+under ADR-022. Active Certbot use still requires real staging
+evidence and a separately accepted ADR.
+
+### Phase 4T: read-only ETag-bound S3 publication predicates (ADR-049)
+
+A new internal helper captures complete common-first S3 condition
+tokens for the selected publication keys after verifying the local
+plan and rerunning the ADR-048 remote drift precondition. For each
+previously present object it binds a server-issued ETag to an
+`If-Match` conditional GET whose downloaded bytes must exactly
+match the prior checkpoint. Previously absent objects receive a
+distinct no-existing-object predicate, and no partial captures
+are returned on failure.
+
+This prepares a future per-key conditional PUT protocol; it does
+**not** perform any upload, supply an atomic multi-key transaction,
+or replace required external serialization. Publication still
+needs tested partial-write rollback and crash recovery before the
+latest aliases can be mutated. Real staging evidence and active
+Certbot import remain withheld under ADR-037.
+
+### Phase 4U: guarded conditional S3 publication and rollback (ADR-050)
+
+A new explicitly authorized internal protocol links the existing proposed
+archive collection, previous-state checkpoint, durable recovery generation,
+remote drift preflight, and ETag-bound predicates into one guarded publication
+operation. All latest alias PUTs use object-level S3 conditions and byte-for-
+byte readback, while an ambiguous or partial failure retains the completed
+recovery generation for operator action.
+
+The companion recovery operation works from an independent runner with only
+a trusted recovery identifier/checksum and storage credentials. It preflights
+every selected current key against old/proposed bytes before any mutation,
+then uses conditional reverse-order restoration, including conditional DELETE
+for keys that were originally absent.
+
+The internal writer is **not a public feature**. Real AWS/S3-compatible
+integration, explicit operator serialization, genuine Let's Encrypt staging
+portability, and a separate ADR-037 activation decision are the remaining
+end-to-end release gates. Multi-key transactions and distributed storage
+locking are not claimed.

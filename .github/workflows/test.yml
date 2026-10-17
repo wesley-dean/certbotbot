@@ -24,7 +24,7 @@ jobs:
       - name: Install system development tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bats curl doxygen graphviz make shellcheck shfmt
+          sudo apt-get install --yes bats curl doxygen gnupg graphviz make shellcheck shfmt
 
       - name: Verify build does not acquire missing dependencies
         run: |

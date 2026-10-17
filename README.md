@@ -296,3 +296,213 @@ Suspend all writers and use a private, restrictive local working directory.  Dow
 ## Safety and roadmap
 
 The producer handles TLS and ACME private keys, cloud credentials, and archives containing sensitive materials.  Review [the STRIDE threat model](doc/threat-model.md) before implementation or production use.  The first release will not claim atomic multi-object publishing or cross-platform locking.  [The development plan](doc/development-plan.md) divides work into reviewable phases.  See [CONTRIBUTING.md](CONTRIBUTING.md) for project standards.
+
+## Restored renewal-option safety gate
+
+The internal, non-activating restore assessment now checks the *entire*
+supported Certbot 5.8.0 Route53 renewal option profile against ADR-038.
+Unknown settings, executable hooks, unrelated plugin options, and unexpected
+renewal timing controls are refused; an explicitly documented ARI retry
+field is accepted.  This supplements the separate account/environment
+identity and historical-path checks.  It does **not** authenticate the
+restored account against Let's Encrypt, install Certbot state, or enable
+issuance.  Normal certificate requests continue to exit 69.
+
+## Classified S3 state retrieval
+
+An internal, non-activating S3 retrieval module now stages the common account
+archive and selected domain archives in a private workspace.  It distinguishes
+a confirmed missing GetObject key from denied or indeterminate reads and
+refuses a restored lineage when its common account archive is missing.
+A common archive may coexist with missing newly requested domain objects.
+Staged bytes are **not** interpreted as trusted certificates or an
+authenticated account until separate validation.  No public S3 restore or
+issuance workflow is enabled yet; normal requests still return status 69.
+
+## Non-activating remote collection assessment
+
+An internal read-only operation now connects classified S3 retrieval with
+the existing common-account and per-lineage archive validators. Every
+present requested archive is assessed before any selected lineage is
+reported missing, and the common account is checked even when all
+requested lineages are new. Failures discard downloaded bytes and leave
+the active configuration unchanged. The resulting missing-lineage
+report is not permission to register an account or issue certificates.
+Actual issuance and publishing remain unimplemented; normal certificate
+requests continue to exit 69.
+
+## Optional symmetric GPG archive mode
+
+The internal storage preparation and read-only retrieval path now supports
+ADR-021's optional GPG AES-256 mode. With nonempty
+`GPG_PASSPHRASE`, it reads only `.tar.gz.enc` objects, decrypts them
+into private temporary files, and applies the same common-account and
+lineage validators as plaintext mode. Without a passphrase, it retains
+the existing `.tar.gz` keys. An object found only under the opposite
+suffix is treated as a configuration/migration error, not a fallback
+or first-run certificate request. Decryption failures are fatal and
+all local data are discarded on completion.
+
+This remains internal, non-activating preparation. Certificate issuance
+and S3 publishing are not enabled. Operators must migrate *entire*
+collections under external writer serialization. See the
+[manual migration guide](doc/encryption-migration.md) and
+[ADR-041](doc/adr/ADR-041-encrypted-state-retrieval-and-preparation.md).
+
+## Local publication candidate checks
+
+The internal, non-publishing preparation path now builds a frozen
+candidate collection only after *all* selected lineages pass isolated
+archive/renewal inspection, X.509 chain verification, private-key
+matching, combined PEM checks, and exact requested DNS SAN matching.
+It selects fixed production/staging S3 keys and owner-private plaintext
+or GPG AES-256 local bytes. A failure discards the complete candidate.
+No object is uploaded, no certificate is issued, and the public
+entrypoint remains disabled. See
+[ADR-042](doc/adr/ADR-042-local-publication-candidate-gate.md).
+
+## Read-only recovery checkpoints before publication
+
+An internal recovery step now pairs a cryptographically verified
+local publication candidate with the exact prior common and selected
+domain bytes retrieved from its original S3 bucket and ACME
+environment. It validates existing archive/account identity and
+renewal policy, captures old objects and their SHA-256 digests, and
+records confirmed-missing keys distinctly. Encrypted mode retains
+**original ciphertext** alongside temporarily decrypted validation
+bytes; no plaintext fallback occurs.
+
+A private, local checkpoint does **not** protect against a runner
+crash after future remote writes. Durable remote generations and
+verified partial-write recovery remain necessary before a publisher
+can be enabled. The current tool still performs no S3 writes and
+normal certificate issuance still returns 69. See
+[ADR-043](doc/adr/ADR-043-recoverable-s3-publication-checkpoint.md).
+
+## Inactive example for real staging account portability evidence
+
+The repository provides an **inactive example** at
+[`examples/github-actions/real-staging-evidence.yml`](examples/github-actions/real-staging-evidence.yml)
+and an independent integration harness at
+`tests/integration/live-staging-portability.bash`. The example describes
+four separate runners for genuine staging DNS-01 issuance, restored
+account/no-op renewal, changed SANs, and final state verification.
+**It is not installed under `.github/workflows/` and cannot be
+invoked as a repository GitHub Action by merging this PR.**
+
+An authorized operator may explicitly install the example in a
+controlled repository after review and configure protected staging
+environment approval, scoped Route53 OIDC, an explicit CA trust
+anchor, a GPG secret, and manual consent. Only encrypted archive
+state is handed between runners. The normal tests use credential-free
+guards and do not make staging DNS/ACME calls. See
+[the setup/runbook](doc/real-staging-evidence.md) and
+[ADR-044](doc/adr/ADR-044-opt-in-real-acme-portability-evidence.md).
+No real staging portability evidence exists until a separately
+authorized complete run succeeds; issuance and S3 publication remain
+disabled.
+
+## Private, non-activating multi-lineage import candidate
+
+An internal helper can now assemble a complete **inactive** private
+Certbot-shaped candidate from a frozen common account archive and
+multiple independently validated lineages. Each renewal file is
+rebased to the candidate's private pathname, and any rejected
+lineage causes the entire candidate to be discarded. The recorded
+active Certbot configuration remains untouched, with no Certbot,
+DNS, or S3 operations.
+
+This is preparation-only behavior governed by
+[ADR-045](doc/adr/ADR-045-nonactivating-multilineage-import-candidates.md).
+It does not enable real account reuse or issuance, and ordinary
+certificate requests continue to exit status 69.
+
+## Read-only pre-publication recovery manifest
+
+An internal, non-publishing planning helper pairs a fully verified
+proposed S3 object collection with its validated previous-state
+checkpoint. It creates an owner-private TSV manifest describing
+common-first object keys, existence flags, exact prior/proposed
+SHA-256 digests, and object sizes. The helper detects local
+manifest or object-byte changes, and callers must explicitly
+discard the plan.
+
+This is an **ephemeral local inspection artifact**, not a durable
+remote generation or an atomic S3 transaction. It does not enable
+uploads, active Certbot import, certificate issuance, or releases.
+See [ADR-046](doc/adr/ADR-046-local-prepublication-recovery-manifest.md).
+
+## Durable, independently verifiable recovery snapshots
+
+ADR-047 introduces a guarded **internal** backup operation that
+preserves already verified previous account and domain archives to
+write-once S3 recovery-generation keys, not to their stable
+`*-latest` aliases. It requires a completed local proposal,
+checkpoint, and manifest plus explicit
+`CERTBOTBOT_RECOVERY_WRITE_CONFIRM=yes`. Stored old object bodies
+are read back and checked; a recovery manifest is written last.
+A fresh runner can verify a generation with its independently
+recorded identifier and manifest checksum, without any prior
+runner filesystem.
+
+This operation **does write to S3 under the reserved recovery
+prefix** when deliberately invoked. No public command invokes it,
+and it neither issues certificates nor publishes latest aliases.
+A remote snapshot does not provide distributed locking,
+transactional multi-object writes, or automatic rollback. See
+[ADR-047](doc/adr/ADR-047-durable-s3-recovery-generations.md).
+The product issuance path still exits status 69.
+
+## Pre-publication S3 drift detection
+
+An internal read-only preflight can now recheck that the selected
+common and domain `*-latest` objects still match the exact bytes
+or confirmed absence captured in the prior validated S3 checkpoint.
+It refuses changed, newly added, or removed objects, unexpected
+cipher modes, and indeterminate retrieval failures. Successful
+checks discard the private read staging and perform **no upload**.
+
+A successful observation is not a lock or atomic cross-object
+comparison; another runner may change the bucket after it
+finishes. Independent writers remain externally serialized until
+a governed conditional publication protocol exists. See
+[ADR-048](doc/adr/ADR-048-remote-latest-drift-preflight.md).
+Certificate issuance and latest-object writes remain disabled.
+
+## Read-only conditional publication predicates
+
+An internal ADR-049 helper obtains S3's own ETags for the selected
+common/domain latest keys and verifies each ETag with a conditional
+GET and exact previous-object checksum. Previously absent keys
+receive an explicit absence predicate for a future
+`If-None-Match: *` conditional PUT. No partial collection is
+returned on failure.
+
+This captures the conditional-write inputs a future publisher will
+need, but makes **no remote changes**. ETags are opaque comparison
+tokens, not generally content hashes, and may become stale at once.
+There is still no distributed lock or multi-object atomic commit.
+See [ADR-049](doc/adr/ADR-049-etag-bound-publication-conditions.md).
+The normal issuer remains disabled.
+
+## Guarded conditional S3 publication and recovery
+
+ADR-050 adds a tightly gated **internal** latest-object writer and an
+independent-runner rollback mechanism. The writer requires a complete
+verified candidate and a durable remote backup whose generation identifier
+and manifest digest have been retained by the operator. It uses S3
+`If-Match` or `If-None-Match` conditional PUTs and verifies every
+uploaded body before continuing. Ambiguous results leave a partial
+publication requiring review, rather than attempting a blind rollback.
+
+A fresh runner can verify the saved generation and restore a selected
+collection in reverse order, after confirming that every current key
+contains either the known old or proposed new bytes. A previously absent
+key is conditionally deleted, without touching unrelated content.
+
+**These internal operations can mutate S3 latest keys when explicitly
+authorized, but the public command cannot invoke them.** Normal
+certificate issuance remains disabled pending real Let's Encrypt staging
+evidence, backend integration and acceptance of the active-state import
+decision. The protocol does not provide an atomic multi-object transaction
+or a cross-platform distributed lock.

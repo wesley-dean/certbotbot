@@ -19,7 +19,14 @@ CORE_SOURCE_FILES := lib/plugin-registry.bash lib/input.bash \
                      lib/workspace.bash lib/pem.bash lib/archive-validate.bash \
                      lib/archive-restore.bash lib/account-archive.bash lib/certificate-verify.bash \
                      lib/acme-environment.bash lib/state-identity.bash \
-                     lib/renewal-paths.bash lib/import-assess.bash
+                     lib/renewal-paths.bash lib/renewal-policy.bash \
+                     lib/import-assess.bash lib/import-candidate.bash \
+                     lib/gpg-archives.bash \
+                     lib/s3-retrieval.bash \
+                     lib/state-preflight.bash lib/publication-candidate.bash \
+                     lib/publication-checkpoint.bash lib/publication-plan.bash \
+                     lib/recovery-generations.bash \
+                     lib/publication-precondition.bash lib/latest-conditions.bash lib/latest-publication.bash
 ## Plugins are discovered exclusively from maintained source at build time.
 ## Official provider modules are bundled into each standalone release artifact.
 PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash) \

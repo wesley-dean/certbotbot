@@ -349,3 +349,324 @@ The helper does not enable the public issuer or S3 operations.  Real
 ACME staging account reuse, due renewal, SAN changes, validated
 state-only publishing, and distributed coordination remain unresolved
 release gates.
+
+## Phase 4I local archive-to-assessment preparation
+
+The internal `certbotbot_import_assess_archives` helper composes the existing
+common-account and single-lineage archive restorers with the ADR-037
+non-activating assessment. It rejects any preexisting caller-owned staging
+state, then checks privately restored filesystem state, the selected account,
+and renewal path portability. Both staging trees and any path preview are
+discarded even when validation fails. Tests use synthetic local tar archives
+and cover success, damaged domain input, mismatched ACME environment, wrong
+lineage, cleanup, and preservation of preexisting staged state across all
+three standalone artifact flavors.
+
+The helper does not populate the active Certbot configuration, authenticate
+an account with Let's Encrypt, contact S3, or publish certificates. It handles
+one lineage at a time; batch-wide assessment and eventual activation require
+separate reviewed work, as does real account reuse and due renewal evidence.
+
+## Phase 4I complete-batch non-activating assessment
+
+The internal `certbotbot_import_assess_batch` helper now accepts an explicit
+common archive, selected ACME environment, and one or more canonical
+lineage/domain-archive pairs. It validates the complete pair list and rejects
+duplicate lineage identities, repeated archive paths, missing inputs,
+inconsistent ACME environment selection, and preexisting active configuration
+or staged state before opening a tar archive.
+
+The helper takes one mode-0600 private snapshot of the common archive and
+reuses those exact bytes for every independent per-domain assessment. The
+underlying archive-to-assessment helper validates, stages, and disposes each
+lineage sequentially. Later failures preserve the active configuration and
+leave no successful predecessor's staged state behind. The common snapshot
+is discarded on success and failure.
+
+This is not a persistent batch candidate, cryptographic certificate check,
+or active importer. The selected lineage identities and paths are passed as
+literal Bash arguments, without runtime plugin loading or shell evaluation.
+Genuine staging ACME account reuse, due renewal, SAN changes, account JSON
+verification, safe candidate assembly, and multi-object publication remain
+release-blocking. This work does not enable Certbot issuance or S3 writes.
+
+## Phase 4I: strict persisted renewal-option assessment (ADR-038)
+
+The reviewed internal `certbotbot_renewal_policy_check` applies a narrowly
+enumerated Certbot 5.8.0 Route53 renewal-file profile after the staged
+account/lineage identity check and before the private renewal-path preview.
+It rejects unexpected sections, duplicate fields, executable hooks,
+unknown authenticators or plugin parameters, non-DNS challenge options,
+unapproved paths, and unsupported renewal timing overrides.  A recognized
+ARI-only retry timestamp is accepted, and the real-Certbot three-workspace
+smoke test checks the accepted syntax after its no-op metadata update.
+
+This is only static option validation against separately staged archives.
+The module deliberately does not parse or authenticate account JSON,
+invoke Certbot, install an active renewal file, or publish S3 objects.
+There is no new runtime dependency.  The additional checks are exercised
+for all three bundled artifacts with negative Bats tests.  Real Let's Encrypt
+staging account registration and authenticated three-run portability remain
+the next major release-blocking milestone.
+
+## Typed S3 collection retrieval (ADR-039)
+
+The internal `certbotbot_s3_stage_collection` operation now retrieves
+`common-latest.tar.gz` and all selected lineage archives into owner-private
+local temporary files, deriving production or staging keys exclusively from
+the selected environment.  The caller receives an ordered path array and
+presence flags.  A valid common archive with absent newly requested domain
+objects is distinguishable from wholly empty storage; an orphaned domain
+without shared account state fails closed.
+
+Only a GetObject NoSuchKey service error is accepted as confirmed absence.
+Authorization problems, generic 404 responses, transport failure, partial
+downloads, and empty files are fatal.  No object bytes are extracted or
+activated by the retrieval boundary; the separately reviewed archive and
+renewal validators remain mandatory.  A caller must discard a successful
+private S3 stage.  Real S3/MinIO interoperability and genuine ACME account
+continuity remain future integration milestones.
+
+## Phase 4K: assessed remote portable-state collections
+
+The internal `certbotbot_state_assess_remote` composes the typed ADR-039 S3
+retrieval with private common-account validation and batch-wide existing
+lineage assessment. It retrieves all requested objects before opening
+archives, validates the common account even for all-new lineages, and
+rejects malformed or mismatched existing state before reporting missing
+requested names. The result array is populated only on complete success
+and must never be interpreted as permission to register an account.
+
+No downloaded bytes remain staged after return. The active Certbot config
+remains empty, and normal issuer requests continue to fail with status 69.
+The mocked object-store tests use synthetic account material and do not
+prove actual S3 endpoint behavior or Let's Encrypt account ownership.
+Before activation, gather real staging account-reuse and renewal evidence
+and approve the separate candidate installation/rollback ADR.
+
+## Phase 4L: encrypted portable-state preparation and retrieval
+
+ADR-041 implements optional local symmetric AES-256 archive transformation
+and mode-consistent S3 retrieval across every standalone flavor.
+`GPG_PASSPHRASE` is the sole mode selector; nonempty means encrypted
+`.tar.gz.enc` common and domain objects, empty means plaintext.
+Ciphertext is decrypted only to private owner-only workspace files before
+the existing read-only account/domain/renewal assessment. Wrong passphrases,
+corrupted ciphertext, and objects available only in the opposite mode
+fail closed. No automatic format migration, plaintext fallback, or
+replacement account registration is permitted.
+
+The passphrase reaches GPG via an FD instead of argv; AWS and GPG child
+environments do not inherit it. GPG's own temporary home is disposed.
+The test workflow installs GnuPG and includes cross-workspace encrypted
+mock-S3 assessment, local roundtrips, and negative mode tests for all
+three artifacts. Manual reversible migration and historical plaintext
+retention are documented in `doc/encryption-migration.md`.
+
+This milestone has not implemented encryption before remote upload
+because the reviewed publication coordinator does not exist yet.
+Issuance, active Certbot state import, real ACME account portability,
+and S3 publication remain blocked pending their separate acceptance gates.
+
+## Phase 4M: frozen, cryptographically verified publication candidates
+
+ADR-042 adds `certbotbot_publication_prepare`, an internal local-only
+coordinator that snapshots the requested common archive and all domain
+archives before validating them. It performs the existing complete
+non-activating account/lineage assessment and then restores each lineage
+separately to verify its X.509 chain, leaf/private-key identity,
+combined PEMs, and **exactly** the separately requested DNS SAN set.
+An explicit trusted CA bundle is accepted for controlled staging fixtures.
+A failed lineage invalidates the whole candidate and cleans private state.
+
+On success it exposes only a common-first key array and matching
+frozen plaintext or AES-256 encrypted private files, with explicit
+candidate cleanup required by its caller. Local tests use real OpenSSL
+certificates, synthetic account JSON, and no AWS writes. This is a
+pre-publication validation boundary, *not* the remote publication
+protocol: genuine staging account continuity, active import, due renewal,
+storage retries/partial-write recovery, and issuance remain release-blocking.
+
+## Phase 4N: private recovery checkpoint for proposed publication
+
+ADR-043 adds a read-only S3 recovery checkpoint associated with an
+approved ADR-042 publication candidate. The candidate now binds its
+bucket and ACME environment, and the checkpoint cannot read a
+different collection. Typed S3 retrieval returns original remote
+object-body paths as well as decrypted plaintext validation paths,
+so encrypted recovery saves the **exact previous ciphertext** rather
+than producing new ciphertext by re-encrypting it.
+
+Existing common and domain state is independently validated before
+its exact bytes, ordered key/presence metadata, and SHA-256 hashes
+are returned. Confirmed-missing old keys are explicit. Remote read
+errors, wrong accounts, corrupt archives, and cleanup failures
+reject the whole checkpoint; local staging is disposed of on error.
+
+This does **not** enable PutObject, release, or issuance. The captured
+private bytes are an in-process checkpoint only, not durable
+cross-runner recovery. A subsequent publication milestone still
+needs remotely retained previous generations, upload ordering,
+verified writes, partial-write recovery, and concurrency rules
+before storage mutation can be enabled.
+
+## Phase 4O: real Let's Encrypt staging portability example
+
+ADR-044 supplies an **inactive** example workflow at
+`examples/github-actions/real-staging-evidence.yml` plus the
+credential-free guard tests and staging harness at
+`tests/integration/live-staging-portability.bash`. Merging this PR
+does **not** register an Action in this repository. To run the
+example, an operator must explicitly install its YAML under a
+controlled repository's `.github/workflows/`, after review,
+and configure protected staging environment secrets and approval.
+
+The design uses four independently provisioned runners: A issues a
+real staging account/base-wildcard certificate; B restores encrypted
+state and proves a no-op renewal without AWS credentials; C restores
+the account and adds an authorized SAN using a scoped Route53 role;
+and D independently verifies the final state without AWS access.
+The encrypted account/private-key archives, pinned Certbot 5.8.0,
+explicit CA trust, and manual consent remain mandatory.
+
+The previous Checkov CKV_GHA_7 skip was removed: the example is
+not an installed parameterized workflow. The normal Bats matrix
+runs its local safety guards without contacting Route53 or
+Let's Encrypt. The example has **not** been executed against live
+staging merely because static CI succeeds. Real staging evidence
+must be reviewed before active import is considered. Public
+issuance still exits 69, and release and S3 publication remain gated.
+
+## Phase 4P: private complete multi-lineage import candidate (ADR-045)
+
+The internal `certbotbot_import_candidate_prepare` now freezes a common
+account archive and multiple selected domain archives and runs the full
+non-activating batch validation before assembling a private Certbot-shaped
+directory. The account tree is shared by the selected lineages; each
+lineage's archived members remain isolated, with relative live symlinks
+and reviewed renewal paths rebuilt against the private candidate root.
+
+A failed later lineage or local assembly step discards the whole candidate,
+and the recorded active config remains empty. The caller explicitly
+discards a successful candidate. The normal issuer still exits 69.
+CI exercises one and two lineages, duplicates, account mismatch,
+malicious renewal options, active config preservation, and cleanup
+across all three standalone artifacts.
+
+This **does not authorize active import**. The real staging example
+at `examples/github-actions/real-staging-evidence.yml` still needs
+to be deliberately installed and run with reviewed credentials.
+A separate Accepted ADR for live, failure-atomic activation remains
+required under ADR-037 after real evidence is reviewed.
+
+## Phase 4Q: read-only publication and recovery manifest (ADR-046)
+
+The new internal `certbotbot_publication_plan_prepare` consumes a
+complete ADR-042 publication candidate and its matching validated
+ADR-043 previous-S3 checkpoint. It creates a private mode-0600 TSV
+manifest listing common-first keys, exact prior presence, previous
+and proposed SHA-256 digests, and byte lengths. A companion verifier
+rehashes the local manifest and both archived collections, detecting
+changes before any future publisher could act on a stale plan.
+
+The helper performs no S3 writes, Certbot calls, DNS changes, active
+configuration import, or public CLI action. All three standalone
+flavors receive negative tests for local mutation and first-run
+absence. The manifest is a local preparation contract only; a
+future Accepted ADR must define **durable remote generation
+retention and cross-runner partial-write recovery**.
+
+Real Let's Encrypt staging account portability, active import,
+operational issuance and release readiness remain blocked.
+
+## Phase 4R: remote durable recovery-generation preparation (ADR-047)
+
+The new internal `certbotbot_recovery_persist` requires explicit
+`CERTBOTBOT_RECOVERY_WRITE_CONFIRM=yes`, a complete ADR-042 proposed
+collection, validated ADR-043 prior checkpoint, and ADR-046 manifest.
+It uploads previous bytes only, using randomly generated recovery
+namespace keys and conditional create-only S3 writes. Every upload
+is read back and SHA-256 validated; a complete manifest is created
+last. No latest archive keys are written or deleted.
+
+A fresh runner can call `certbotbot_recovery_verify` with the bucket,
+environment, generation ID, and a separately trusted manifest digest
+to verify all previous objects without the producer's local state.
+Mock S3 tests cover first-run absence, full previous state, denied
+upload, changed readback, failed manifest commit, and independent
+verification. Incomplete attempts can leave orphan generation keys
+for operator investigation; no automatic destructive cleanup occurs.
+
+This is a restricted **internal S3 mutation** for recovery objects,
+not certificate publication. S3 compatibility must include
+`If-None-Match` conditional PutObject. The public issuer still exits
+69 and cannot invoke these functions. Real staging account evidence,
+active import, latest-alias publication, partial-failure rollback,
+and cross-platform writer serialization remain separate gates.
+
+## Phase 4S: read-only remote latest-state drift preflight (ADR-048)
+
+The `certbotbot_publication_precondition_check` helper now compares a
+freshly fetched S3 common/domain collection with the exact prior
+checkpoint already approved under ADRs 042, 043, and 046.
+It rejects changed bytes, missing previously existing objects,
+newly appearing objects, wrong encryption mode, and service errors.
+A completed read leaves no additional private staging and never
+touches latest aliases, active Certbot state, or recovery generations.
+
+All three standalone artifacts include Bats tests for unchanged
+existing/absent collections, changed, new and deleted objects,
+inconsistent common/domain state, mixed archive mode, denial,
+modified local inputs, and cleanup. A successful remote recheck
+does **not** serialize independent writers or guarantee that the
+collection cannot change before publication. An accepted conditional
+latest-publication protocol and end-to-end crash recovery are still
+outstanding under ADR-022. Real staging account continuity and
+ADR-037's active-import prohibition are unchanged.
+
+## Phase 4T: S3 conditional-write predicate capture (ADR-049)
+
+The internal `certbotbot_latest_conditions_capture` now pairs a
+fresh ADR-048 remote drift comparison with a stronger per-key
+HeadObject/If-Match-GetObject sequence. Present objects must match
+the exact previous byte size and SHA-256; missing objects require
+the prior and fresh explicit absence evidence. Only after all keys
+pass does the helper publish common-first arrays of ETags/absence
+predicates bound to the current local plan digest.
+
+The helper never calls an S3 write or Certbot. The tests simulate
+changed objects between HEAD and GET, denied and malformed HEAD
+responses, conditional-read failures, corrupted bodies, first-run
+absence, and private cleanup across all three artifacts. Captured
+predicates are not a distributed lock or a multi-object snapshot.
+
+Next: govern and test guarded conditional latest-object PUTs with
+crash-safe recovery from an independent runner. Do not enable
+any such writer until its rollback contract is complete, and do
+not activate the issuer before reviewed real staging evidence.
+
+## Phase 4U: conditional latest publication and independent rollback (ADR-050)
+
+The internal `certbotbot_latest_publish` requires an ADR-042 proposed
+collection, ADR-043 prior checkpoint, ADR-046 plan, completed ADR-047 remote
+backup, and ADR-049 captured conditional write tokens. It requires separate
+explicit latest-write authorization and an operator-persisted recovery
+generation identifier and manifest checksum acknowledgement **before** its
+first mutation. It conditionally writes common first, then selected domain
+objects, with per-key SHA-256 readback. A lost response remains a partial
+state, never an implicit success.
+
+`certbotbot_latest_recover` runs from a new private workspace with only
+the trusted completed recovery identifier/checksum, bucket and environment.
+It checks the entire latest collection before any change, refuses third-party
+content, and reverses the selected keys domain-first using conditional PUTs
+of backed-up old bytes or ETag-bound DELETE for formerly absent objects.
+It rechecks each restored key and supports rerunning after partial recovery.
+
+Tests use a stateful mock S3 for partial and lost-response writes, conditional
+restore/delete, true first-run absence, conflicting external changes, and
+fresh runner behavior. **This milestone does write latest S3 aliases when
+explicitly invoked internally**; no normal CLI invokes the coordinator.
+The public issuer remains status 69. Backend interoperability, external
+writer serialization, and genuine real staging account reuse are still
+required to open the product release gate.

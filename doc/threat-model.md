@@ -264,3 +264,250 @@ surviving in a new deployable archive.  The human-readable OpenSSL
 extension format is a compatibility constraint, not a reason to ignore
 unrecognized entries.  The helper still needs mandatory integration
 with every future S3 publication path.
+
+## Restored Certbot renewal-option execution boundary
+
+ADR-038 adds a read-only allowlist for every persisted setting in a
+restored lineage's renewal file before non-activating import assessment
+can succeed.  Certbot interprets renewal options as configuration with
+potential plugin, path, hook, and scheduling consequences; validating the
+tar member list and account identity alone is insufficient to trust them.
+Unknown fields, hook/installer directives, unapproved authenticators,
+and unsupported challenge or timing settings fail closed.  The accepted
+ARI retry field is a narrowly scoped metadata exception.
+
+This guard does not validate account JSON authenticity, demonstrate a
+live ACME account registration, or authorize active Certbot state import.
+Genuine staging account reuse, renewal, and separately reviewed activation
+remain mandatory before exposing the issuer.
+
+## Remote object absence and typed S3 retrieval
+
+ADR-039 introduces private retrieval and classification before a future
+producer considers first registration or account restoration. AWS CLI
+GetObject success must result in a nonempty, privately staged object.
+Only the specific NoSuchKey service signature establishes an absent key;
+a generic 404, AccessDenied, transport error, or incomplete transfer is
+not evidence of a new collection. Partial local files and untrusted service
+diagnostics are discarded without being interpreted as valid archives.
+
+Existing domain objects with missing common state are an inconsistent,
+fatal condition rather than permission to replace their account.
+A missing selected domain is permissible with an existing common account,
+because a new lineage may be explicitly requested. These distinctions
+do not establish ACME account authenticity or a transactionally consistent
+multi-object snapshot; independent writer serialization and the downstream
+archive security checks remain mandatory.
+
+## Remote download-to-assessment trust transition
+
+ADR-040 requires a downloaded object to pass the complete isolated archive
+assessment before it can count as accepted existing producer state.
+Successful GetObject responses do not authenticate archive contents.
+The common account is structurally validated even when no requested
+domain is present. Every present domain archive must pass lineage identity,
+ACME authority, supported renewal-option grammar, and path portability
+checks before the selected missing-domain report is released.
+
+The entire local S3 staging area is removed on success and failure, and
+the active Certbot configuration is never populated. This is a static
+trust-boundary reduction, not proof that a restored account is recognized
+by Let's Encrypt or that separate S3 latest objects share a single
+transactional generation. Host-external serialization, real CA
+interoperability, private key verification, and remote write safety remain
+separate required controls.
+
+## Optional GPG archive confidentiality and mode-downgrade risks
+
+ADR-041 adds AES-256 symmetric preparation and decryption exclusively
+inside owner-private producer workspaces. The passphrase is passed through
+GPG's standard-input FD, not process argv or diagnostics; the GPG child
+and unrelated AWS CLI do not inherit `GPG_PASSPHRASE`. An enabled
+shell xtrace or a multiline passphrase fails closed. The GnuPG home is
+temporary rather than reusing a host keyring. Decrypted plaintext remains
+untrusted archive input subject to the existing common-account, tar,
+lineage, and renewal-file validators, and all local stages are discarded.
+
+An absent selected-mode object must not silently switch between
+`.tar.gz` and `.tar.gz.enc`. The producer checks opposite-mode
+presence only to reject a mixed or partially migrated collection.
+Wrong passphrases, altered ciphertext, and unexpected service errors
+remain fatal and cannot imply first registration. GPG does not
+authenticate the storage publisher or protect against privileged
+runner compromise, secret-bearing environment inspection, historical
+plaintext S3 versions, or filesystem snapshot retention. Publication,
+live Certbot operations, and multi-object atomicity are not activated.
+
+## Frozen local publication readiness (ADR-042)
+
+Source archives are snapshotted to owner-private files before any
+inspection so a mutable input path cannot silently substitute a
+different archive after validation. Every proposed lineage undergoes
+structural import assessment, complete certificate/chain/private-key
+verification, combined PEM comparison, and exact request-derived
+DNS SAN validation before local publication files and keys become
+available. An unexpected SAN or untrusted CA blocks the entire
+candidate. GPG encryption applies to all prepared objects in one
+consistent mode, never as a fallback.
+
+No S3 write is issued by the preparation module, and accepted private
+files are disposed by an explicit owner-only cleanup operation. This
+does not secure a compromised same-user runner, guarantee secure media
+erasure, validate an ACME account with Let's Encrypt, or ensure
+multi-object remote atomicity. Last-known-good protection and
+independent-writer serialization remain mandatory before a remote
+publisher can be connected to the public issuer.
+
+## Previous-state checkpointing and remote rollback risk (ADR-043)
+
+A prepared publication candidate may represent valid replacement
+certificates, but safe replacement also requires knowing which old
+S3 objects existed and whether their prior state is structurally
+recoverable. The new read-only checkpoint binds the selected bucket
+and ACME environment, rejects ambiguous or untrusted retrieval,
+validates restored common/domain account and renewal state, and
+preserves exact old compressed or encrypted bytes with checksums
+inside owner-private local staging.
+
+Decrypted validation copies must not be confused with original
+ciphertext that would be necessary for an exact rollback. A clean
+local checkpoint is **not** a durable rollback guarantee across
+independent or crashing workers. Previous generations require
+separately durable remote retention and explicit recovery ordering
+before future latest-object writes. This addition does not claim
+S3 transactionality, prevent same-user workspace tampering, or
+authorize active Certbot import or issuance.
+
+## Inactive real staging evidence example trust boundaries (ADR-044)
+
+The GitHub Actions staging protocol is distributed only as an
+**inactive example** in `examples/github-actions/`, not an installed
+`.github/workflows/` entry. Merging the example creates no new
+dispatch surface in the producer repository. Only a deliberate
+operator installation in a controlled repository can enable real
+Route53 TXT changes and Let's Encrypt staging requests.
+
+Once deliberately installed, its manual trigger still requires
+affirmative authorization, a trusted `main` ref, and protected
+`acme-staging` environment approval. Only issuance and changed-SAN
+jobs receive scoped AWS OIDC credentials; no-op and read-only
+validation jobs receive no AWS role. ACME and TLS private keys are
+passed between isolated jobs only in GPG-encrypted, short-retention
+artifacts, and test-only private state is discarded after each run.
+
+Residual risks arise only if installed and authorized: changes to
+workflow code, overbroad IAM/OIDC scope, compromised runner memory
+or secret storage, malicious DNS updates, staging CA/rate-limit
+issues, or access to encrypted artifacts. Regular CI runs
+credential-free guard checks and cannot invoke real staging work.
+No Checkov exception is present for this example, and no successful
+integration test alone authorizes product active import, public
+issuance, or remote publication under ADR-037 and ADR-022.
+
+## Complete inactive import candidates and failure isolation (ADR-045)
+
+A private builder assembles one shared account and multiple selected
+lineages only after copying all supplied archive inputs into fixed,
+owner-private snapshots and completing existing batch-wide validation.
+A late rejected member discards the entire private candidate rather
+than leaving a partial Certbot-shaped tree exposed. Candidate renewal
+paths are rebased with a command-scoped override to the candidate config path, never
+the recorded active config. The active config must be empty before
+preparation and remains unchanged afterward.
+
+This narrows multi-lineage path-collision and partial-preparation
+risks, but it is not a transactionally activated Certbot import.
+The same-user workspace threat boundary, real account authenticity,
+cryptographic certificate/SAN validation, and active import
+rollback remain separate safety requirements. The public issuance
+and remote publication gates remain closed.
+
+## Offline proposed/previous publication manifest (ADR-046)
+
+The plan helper pairs a complete validated replacement collection
+with the corresponding confirmed previous S3 collection and rejects
+changes to either local byte set. A private manifest records exact
+common-first keys, old-object existence, new and old SHA-256 hashes,
+and byte lengths; it contains no private filesystem paths or secret
+content. This decreases accidental mixed-collection and stale
+local snapshot risk before an eventual publisher runs.
+
+Checksums are not authenticated against same-user adversaries and
+cannot detect remote changes by another runner. The plan is not a
+durable backup, serialized lock, publication commit marker, or
+authorization to write latest aliases. A separate remote
+generation/rollback protocol remains required under ADR-022.
+
+## Conditional recovery-only S3 writes (ADR-047)
+
+A verified local prior-state checkpoint can now be persisted to
+unpredictable, generation-scoped remote keys, with conditional
+`If-None-Match: *` writes and mandatory readback hashing.
+The stable latest aliases are outside the allowed key grammar and
+cannot be modified by this module. A completion manifest is written
+after all present old objects have been checked; any failure
+prevents returning a verified generation token. Confirmation
+is explicitly required before crossing this remote-write boundary.
+
+A different runner can verify the retained bytes using an
+out-of-band trusted manifest digest, without relying on private
+files from the producer. Residual risks include stale snapshots,
+privileged deletion of backups, partial orphan objects, incompatible
+conditional-PUT implementations, a lost final response, compromised
+AWS credentials, same-user tampering, and uncoordinated external
+writers. No distributed lock, WORM guarantee, active Certbot import,
+latest publication, or automatic rollback is provided.
+
+## Read-only latest-object drift comparison (ADR-048)
+
+Before any later conditional remote publication, a fresh S3
+preflight rechecks each selected common/domain object against
+the exact previous-state checkpoint. It detects newly appearing
+objects, missing prior objects, modified raw ciphertext or
+plaintext, and mixed archive modes, and fails closed on denied or
+unknown reads rather than mistaking them for a first run.
+The operation has no AWS write authority and cleans its private
+staged downloads before return.
+
+This mitigates accidental publication based on an old local
+snapshot, but **does not provide a multi-object atomic read,
+cross-platform lock, fencing token, or compare-and-swap**. The
+latest state can change after the last read, so external writer
+serialization and explicit conditional publication/recovery
+semantics remain indispensable.
+
+## Binding S3 write predicates to prior object bodies (ADR-049)
+
+An internal read-only module now captures opaque remote ETags
+only after a full latest-state recheck and an If-Match GetObject
+whose body hashes exactly to the validated prior checkpoint.
+Confirmed absent objects instead retain an explicit absence
+predicate. HEAD denial, malformed tokens, stale conditional
+downloads, changed bytes, and local state drift fail closed,
+and neither partial ETag arrays nor secret material are exposed.
+
+These checks reduce stale and forged-precondition risk for a
+future guarded S3 writer but do **not** establish atomicity
+across object keys, prevent another runner from updating state
+after capture, or authorize unconditional PUTs. Cross-runner
+serialization and tested partial/crash recovery remain required.
+
+## Conditional latest publication and fresh-runner rollback (ADR-050)
+
+The guarded internal publisher requires explicit write authorization,
+verified previous-state S3 recovery, a separately retained recovery
+generation token, and real per-object conditional PUTs with SHA-256
+readback. It never silently retries with a changed ETag after a conflict.
+A failed or lost service response leaves remote state marked partial
+for deliberate operator intervention.
+
+A fresh runner may restore prior state only after independently verifying
+the durable generation and comparing every selected latest key with its
+saved old/proposed bytes. Conditional reverse-order rollback restores
+prior bodies or confirmed absence without overwriting unrelated changes.
+Residual risks remain: multi-object mixed-generation visibility,
+lost operator recovery identifiers, insufficient rollback IAM permission,
+S3-compatible conditional API differences, out-of-band audit compromise,
+and uncoordinated independent writers. The system still does not offer
+a distributed lock, transactional multi-key commit, or activated
+Certbot account import.
