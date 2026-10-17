@@ -411,7 +411,7 @@ lineages only after copying all supplied archive inputs into fixed,
 owner-private snapshots and completing existing batch-wide validation.
 A late rejected member discards the entire private candidate rather
 than leaving a partial Certbot-shaped tree exposed. Candidate renewal
-paths are rebased in a subshell to the candidate config path, never
+paths are rebased with a command-scoped override to the candidate config path, never
 the recorded active config. The active config must be empty before
 preparation and remains unchanged afterward.
 
