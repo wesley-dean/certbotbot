@@ -42,8 +42,8 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      account_sha256: ${{ steps.run-phase.outputs.account_sha256 }}
-      leaf_sha256: ${{ steps.run-phase.outputs.leaf_sha256 }}
+      account_sha256: ${{ steps.phase.outputs.account_sha256 }}
+      leaf_sha256: ${{ steps.phase.outputs.leaf_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install test dependencies
@@ -62,7 +62,7 @@ jobs:
           aws-region: ${{ inputs.aws_region }}
           role-session-name: certbotbot-staging-issue
       - name: Issue a genuine staging certificate and export encrypted state
-        id: run-phase
+        id: phase
         env:
           CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.bash
           CERTBOT: ${{ runner.temp }}/certbot-venv/bin/certbot
@@ -99,8 +99,8 @@ jobs:
     permissions:
       contents: read
     outputs:
-      account_sha256: ${{ steps.run-phase.outputs.account_sha256 }}
-      leaf_sha256: ${{ steps.run-phase.outputs.leaf_sha256 }}
+      account_sha256: ${{ steps.phase.outputs.account_sha256 }}
+      leaf_sha256: ${{ steps.phase.outputs.leaf_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install local tools and pinned Certbot
@@ -117,7 +117,7 @@ jobs:
           name: staging-a-${{ github.run_id }}
           path: ${{ runner.temp }}/archive-input
       - name: Reconstruct account and confirm genuine no-op renewal
-        id: run-phase
+        id: phase
         env:
           CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.bash
           CERTBOT: ${{ runner.temp }}/certbot-venv/bin/certbot
@@ -158,8 +158,8 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      account_sha256: ${{ steps.run-phase.outputs.account_sha256 }}
-      leaf_sha256: ${{ steps.run-phase.outputs.leaf_sha256 }}
+      account_sha256: ${{ steps.phase.outputs.account_sha256 }}
+      leaf_sha256: ${{ steps.phase.outputs.leaf_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install local tools and pinned Route53 Certbot
@@ -182,7 +182,7 @@ jobs:
           aws-region: ${{ inputs.aws_region }}
           role-session-name: certbotbot-staging-change
       - name: Replace selected lineage SAN set under the same account
-        id: run-phase
+        id: phase
         env:
           CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.bash
           CERTBOT: ${{ runner.temp }}/certbot-venv/bin/certbot
