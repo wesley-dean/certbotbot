@@ -127,7 +127,7 @@ checksums: build
 
 ## Validate maintained Bash syntax and run ShellCheck against maintained source.
 check:
-	@for source in $(SOURCE_FILES) $(SUPPORT_SOURCE_FILES); do bash -n "$source"; done
+	@for source in $(SOURCE_FILES) $(SUPPORT_SOURCE_FILES); do bash -n "$$source"; done
 	shellcheck $(SOURCE_FILES) $(SUPPORT_SOURCE_FILES)
 
 ## Format maintained Bash using the same arguments configured for MegaLinter.
