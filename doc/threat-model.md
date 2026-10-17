@@ -377,3 +377,29 @@ separately durable remote retention and explicit recovery ordering
 before future latest-object writes. This addition does not claim
 S3 transactionality, prevent same-user workspace tampering, or
 authorize active Certbot import or issuance.
+
+## Real staging evidence workflow trust boundaries (ADR-044)
+
+The opt-in integration harness is outside the product entrypoint.
+It performs real Route53 TXT changes and Let's Encrypt staging
+requests only after explicit workflow dispatch, a true authorization
+input, a `main` branch guard, and access to protected
+`acme-staging` environment secrets. Only the initial issuance
+and changed-SAN jobs obtain a short-lived, scoped AWS OIDC role.
+The no-op and independent validation jobs receive no AWS role.
+
+ACME and TLS private keys are transferred only in GPG-encrypted
+short-retention artifacts. The secret is excluded from GPG argv,
+Certbot logs are retained only within disposable runner workspaces,
+and stages validate the archive/renewal path before test-only
+Certbot import. The workflow never contacts the production ACME
+directory or uploads state to S3.
+
+Residual risks include a compromised protected branch or GitHub
+action, overscoped OIDC trust, exposed environment secrets or runner
+memory, unauthorized DNS effects, staging CA/root mismatch,
+certificate rate limits, and collaborators who can retrieve
+ciphertext artifacts. The `acme-staging` environment should require
+approval and be restricted to the trusted default branch.
+A successful test cannot authorize product active import or
+remote publication without separate ADR-037/ADR-022 reviews.
