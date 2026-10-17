@@ -509,3 +509,29 @@ cross-runner recovery. A subsequent publication milestone still
 needs remotely retained previous generations, upload ordering,
 verified writes, partial-write recovery, and concurrency rules
 before storage mutation can be enabled.
+
+## Phase 4O: real Let’s Encrypt staging portability evidence
+
+ADR-044 adds `.github/workflows/real-staging-evidence.yml` and
+`tests/integration/live-staging-portability.bash`, a **manual-only**
+staging DNS-01 exercise over four separate GitHub-hosted runners.
+A obtains the initial real staging account/lineage, B reconstructs
+and performs a no-op renewal without AWS credentials, C adds a
+requested SAN under the same account with a scoped Route53 OIDC role,
+and D independently validates the final encrypted portable state.
+Account key fingerprints must remain identical and the leaf
+certificate must change only for the requested SAN replacement.
+
+No plaintext account/domain state is transferred between jobs.
+The harness requires a protected `acme-staging` environment, scoped
+role, CA trust PEM, high-entropy one-line GPG secret, and explicit
+manual confirmation. The ordinary Bats matrix tests invalid inputs
+and missing consent without touching Route53 or Let's Encrypt.
+See `doc/real-staging-evidence.md` for setup and risk controls.
+
+The workflow has **not been run against real credentials** merely
+because it exists or passes static CI. Observed real Certbot behavior
+must be reviewed before accepting any active-import policy.
+Public issuance still fails 69; releases and S3 publishing remain
+gated, and the separate ADR-037 activation/rollback decision
+has not been made.
