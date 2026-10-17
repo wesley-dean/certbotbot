@@ -324,7 +324,7 @@ case ${1:-} in
     shift
     (( $# == 1 )) || exit 64
     evidence_guard || exit 64
-    evidence_run "$@" || exit $?
+    evidence_run "$@"
     ;;
   *)
     printf 'usage: %s guard|run ARTIFACT\n' "$0" >&2
