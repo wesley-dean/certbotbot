@@ -1080,3 +1080,223 @@ run_latest_drift() {
   [ "$status" -eq 0 ]
   [[ "$output" == *'precondition=65'* ]]
 }
+
+## HEAD and conditional GET mock with opaque ETags, no writes permitted.
+enable_etag_mock() {
+  export ETAG_MOCK_MODE=normal
+  cat >"$PUB_BIN/aws" <<'AWS'
+#!/usr/bin/env bash
+set -u
+[[ ${1:-} == --endpoint-url ]] && shift 2
+[[ ${1:-} == s3api ]] || exit 88
+op=${2:-}
+shift 2
+bucket='' key='' destination='' predicate=''
+while (( $# > 0 )); do
+  case "$1" in
+    --bucket) bucket=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    --if-match) predicate=$2; shift 2 ;;
+    --query|--output) shift 2 ;;
+    *) destination=$1; shift ;;
+  esac
+done
+printf '%s:%s:%s\n' "$op" "$key" "$predicate" >>"$PUB_AWS_LOG"
+[[ $bucket == valid-bucket ]] || exit 87
+[[ $op == get-object || $op == head-object ]] || {
+  printf 'PROHIBITED_WRITE\n' >>"$PUB_AWS_LOG"
+  exit 88
+}
+if [[ ${PUB_S3_MODE:-normal} == denied ||
+  ( ${ETAG_MOCK_MODE:-normal} == denied-head && $op == head-object ) ]]; then
+  printf 'An error occurred (AccessDenied) when calling the %s operation\n' "$op" >&2
+  exit 254
+fi
+source="$PUB_S3_STORE/$key"
+if [[ ! -f $source ]]; then
+  printf 'An error occurred (NoSuchKey) when calling the GetObject operation: Missing\n' >&2
+  exit 254
+fi
+if [[ $op == head-object && ${ETAG_MOCK_MODE:-normal} == change-on-head &&
+  $key == *example.com-latest.tar.gz ]]; then
+  printf 'concurrent writer\n' >>"$source"
+fi
+etag="\"$(sha256sum -- "$source" | cut -c1-32)\""
+if [[ $op == head-object ]]; then
+  if [[ ${ETAG_MOCK_MODE:-normal} == malformed-head ]]; then
+    printf 'malformed-token\n'
+  else
+    printf '%s\n' "$etag"
+  fi
+  exit 0
+fi
+if [[ -n $predicate ]]; then
+  if [[ ${ETAG_MOCK_MODE:-normal} == refuse-conditional ||
+    $predicate != "$etag" ]]; then
+    printf 'An error occurred (PreconditionFailed) when calling the GetObject operation\n' >&2
+    exit 254
+  fi
+fi
+cp -- "$source" "$destination" || exit 73
+if [[ -n $predicate && ${ETAG_MOCK_MODE:-normal} == corrupt-conditional &&
+  $key == *example.com-latest.tar.gz ]]; then
+  printf 'bad returned data\n' >>"$destination"
+fi
+AWS
+  chmod 0700 "$PUB_BIN/aws"
+}
+
+run_etag_conditions() {
+  run env PATH="$PUB_BIN:$PATH" bash -c '
+    source "$1" --version >/dev/null
+    shift
+    certbotbot_workspace_create || exit 90
+    certbotbot_publication_prepare "$@" || exit 91
+    certbotbot_publication_checkpoint valid-bucket || exit 92
+    certbotbot_publication_plan_prepare || exit 93
+    certbotbot_latest_conditions_capture
+    code=$?
+    printf "capture=%s\n" "$code"
+    if (( code == 0 )); then
+      count=${#CERTBOTBOT_PUBLICATION_KEYS[@]}
+      [[ ${#CERTBOTBOT_LATEST_CONDITION_KEYS[@]} -eq "$count" &&
+        ${#CERTBOTBOT_LATEST_CONDITION_KINDS[@]} -eq "$count" &&
+        ${#CERTBOTBOT_LATEST_CONDITION_VALUES[@]} -eq "$count" &&
+        $CERTBOTBOT_LATEST_CONDITION_PLAN_SHA256 == \
+          "$CERTBOTBOT_PLAN_DIGEST" ]] || exit 94
+      for (( i=0; i<count; i++ )); do
+        printf "kind-%s=%s\n" "$i" \
+          "${CERTBOTBOT_LATEST_CONDITION_KINDS[i]}"
+        if [[ ${CERTBOTBOT_LATEST_CONDITION_KINDS[i]} == etag ]]; then
+          [[ ${CERTBOTBOT_LATEST_CONDITION_VALUES[i]} =~ ^\"[A-Za-z0-9_.-]+\"$ ]] ||
+            exit 95
+        else
+          [[ ${CERTBOTBOT_LATEST_CONDITION_KINDS[i]} == absent &&
+            -z ${CERTBOTBOT_LATEST_CONDITION_VALUES[i]} ]] || exit 96
+        fi
+      done
+      certbotbot_latest_conditions_capture
+      [[ $? == 64 ]] || exit 97
+    else
+      [[ ${#CERTBOTBOT_LATEST_CONDITION_KEYS[@]} == 0 &&
+        ${#CERTBOTBOT_LATEST_CONDITION_VALUES[@]} == 0 &&
+        -z $CERTBOTBOT_LATEST_CONDITION_PLAN_SHA256 ]] || exit 98
+    fi
+    certbotbot_latest_conditions_discard || exit 99
+    certbotbot_publication_plan_discard || exit 100
+    certbotbot_checkpoint_discard || exit 101
+    certbotbot_publication_discard || exit 102
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 103
+    certbotbot_workspace_destroy || exit 104
+  ' _ "$CERTBOTBOT_ARTIFACT" "$@"
+}
+
+@test "existing old bytes produce ETags only after matching conditional GETs" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_etag_mock
+  run_etag_conditions valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'capture=0'* && "$output" == *'kind-0=etag'* &&
+    "$output" == *'kind-1=etag'* ]]
+  grep -Fq 'head-object:common-latest.tar.gz:' "$PUB_AWS_LOG"
+  grep -Eq '^get-object:example.com-latest.tar.gz:"[a-f0-9]{32}"$' "$PUB_AWS_LOG"
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "confirmed absent keys produce explicit no-existing-object predicate" {
+  make_lineage example.com
+  enable_get_mock
+  enable_etag_mock
+  run_etag_conditions valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'capture=0'* && "$output" == *'kind-0=absent'* &&
+    "$output" == *'kind-1=absent'* ]]
+  ! grep -Fq 'head-object:' "$PUB_AWS_LOG"
+}
+
+@test "old common but new requested domain yields mixed etag/absent predicates" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous
+  enable_etag_mock
+  run_etag_conditions valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'capture=0'* && "$output" == *'kind-0=etag'* &&
+    "$output" == *'kind-1=absent'* ]]
+}
+
+@test "denied HEAD leaves no accepted conditional tokens" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_etag_mock
+  export ETAG_MOCK_MODE=denied-head
+  run_etag_conditions valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'capture=69'* ]]
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "malformed service ETag is rejected instead of shell-interpreted" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_etag_mock
+  export ETAG_MOCK_MODE=malformed-head
+  run_etag_conditions valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'capture=69'* ]]
+}
+
+@test "conditional read failure is fatal even after successful HEAD" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_etag_mock
+  export ETAG_MOCK_MODE=refuse-conditional
+  run_etag_conditions valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'capture=69'* ]]
+}
+
+@test "changed remote bytes after HEAD cannot inherit a stale checkpoint" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_etag_mock
+  export ETAG_MOCK_MODE=change-on-head
+  run_etag_conditions valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'capture=65'* ]]
+}
+
+@test "corrupt conditional download bytes are rejected despite matching token" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  enable_etag_mock
+  export ETAG_MOCK_MODE=corrupt-conditional
+  run_etag_conditions valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'capture=65'* ]]
+}

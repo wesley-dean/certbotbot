@@ -475,3 +475,19 @@ cross-platform lock, fencing token, or compare-and-swap**. The
 latest state can change after the last read, so external writer
 serialization and explicit conditional publication/recovery
 semantics remain indispensable.
+
+## Binding S3 write predicates to prior object bodies (ADR-049)
+
+An internal read-only module now captures opaque remote ETags
+only after a full latest-state recheck and an If-Match GetObject
+whose body hashes exactly to the validated prior checkpoint.
+Confirmed absent objects instead retain an explicit absence
+predicate. HEAD denial, malformed tokens, stale conditional
+downloads, changed bytes, and local state drift fail closed,
+and neither partial ETag arrays nor secret material are exposed.
+
+These checks reduce stale and forged-precondition risk for a
+future guarded S3 writer but do **not** establish atomicity
+across object keys, prevent another runner from updating state
+after capture, or authorize unconditional PUTs. Cross-runner
+serialization and tested partial/crash recovery remain required.

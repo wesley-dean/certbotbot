@@ -459,3 +459,21 @@ publication milestone must govern conditional latest writes,
 partial failure recovery, and independent runner restoration
 under ADR-022. Active Certbot use still requires real staging
 evidence and a separately accepted ADR.
+
+### Phase 4T: read-only ETag-bound S3 publication predicates (ADR-049)
+
+A new internal helper captures complete common-first S3 condition
+tokens for the selected publication keys after verifying the local
+plan and rerunning the ADR-048 remote drift precondition. For each
+previously present object it binds a server-issued ETag to an
+`If-Match` conditional GET whose downloaded bytes must exactly
+match the prior checkpoint. Previously absent objects receive a
+distinct no-existing-object predicate, and no partial captures
+are returned on failure.
+
+This prepares a future per-key conditional PUT protocol; it does
+**not** perform any upload, supply an atomic multi-key transaction,
+or replace required external serialization. Publication still
+needs tested partial-write rollback and crash recovery before the
+latest aliases can be mutated. Real staging evidence and active
+Certbot import remain withheld under ADR-037.
