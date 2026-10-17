@@ -318,3 +318,15 @@ A common archive may coexist with missing newly requested domain objects.
 Staged bytes are **not** interpreted as trusted certificates or an
 authenticated account until separate validation.  No public S3 restore or
 issuance workflow is enabled yet; normal requests still return status 69.
+
+## Non-activating remote collection assessment
+
+An internal read-only operation now connects classified S3 retrieval with
+the existing common-account and per-lineage archive validators. Every
+present requested archive is assessed before any selected lineage is
+reported missing, and the common account is checked even when all
+requested lineages are new. Failures discard downloaded bytes and leave
+the active configuration unchanged. The resulting missing-lineage
+report is not permission to register an account or issue certificates.
+Actual issuance and publishing remain unimplemented; normal certificate
+requests continue to exit 69.
