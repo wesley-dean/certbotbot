@@ -28,6 +28,7 @@ AWS
   export AWS_SECRET_ACCESS_KEY=isolated-test-only
   unset CERTBOTBOT_S3_INTEROP_CONFIRM || :
   unset GPG_PASSPHRASE || :
+  unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy || :
 }
 
 @test "both real-service harnesses reject absent authorization without AWS calls" {
@@ -77,6 +78,17 @@ AWS
       run bash "$script" guard
       [ "$status" -eq 64 ]
     done
+  done
+  [ ! -e "$S3_GUARD_CALLS" ]
+}
+
+@test "proxy settings cannot redirect an otherwise loopback S3 operation" {
+  local script=''
+  export CERTBOTBOT_S3_INTEROP_CONFIRM=yes
+  export HTTPS_PROXY=http://proxy.example.test:8080
+  for script in "$S3_GUARD_BASIC" "$S3_GUARD_RECOVERY"; do
+    run bash "$script" guard
+    [ "$status" -eq 64 ]
   done
   [ ! -e "$S3_GUARD_CALLS" ]
 }
