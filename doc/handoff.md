@@ -749,3 +749,14 @@ CA-signed certificate fixtures.
 **Still withheld:** activation, first-run registration, any Certbot
 issuer call or S3 write, real ACME staging evidence, and final
 external writer coordination. The public product remains status 69.
+
+
+## Phase 4Y: staging IAM permission documents
+
+`scripts/staging-iam-policies.bash` renders a tightly scoped OIDC
+trust policy or Route53 TXT-only change permissions with no external
+calls, no secret access, and no cloud side effects. The runbook shows
+the two-document invocation; Bats validates JSON semantics and rejects
+injection-shaped, duplicated, malformed, or out-of-zone names.
+Issue #46 remains the operator-controlled staging setup and execution
+boundary. Production issuance is still disabled by ADR-037.
