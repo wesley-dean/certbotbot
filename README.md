@@ -401,3 +401,18 @@ guards and do not make staging DNS/ACME calls. See
 No real staging portability evidence exists until a separately
 authorized complete run succeeds; issuance and S3 publication remain
 disabled.
+
+## Private, non-activating multi-lineage import candidate
+
+An internal helper can now assemble a complete **inactive** private
+Certbot-shaped candidate from a frozen common account archive and
+multiple independently validated lineages. Each renewal file is
+rebased to the candidate's private pathname, and any rejected
+lineage causes the entire candidate to be discarded. The recorded
+active Certbot configuration remains untouched, with no Certbot,
+DNS, or S3 operations.
+
+This is preparation-only behavior governed by
+[ADR-045](doc/adr/ADR-045-nonactivating-multilineage-import-candidates.md).
+It does not enable real account reuse or issuance, and ordinary
+certificate requests continue to exit status 69.

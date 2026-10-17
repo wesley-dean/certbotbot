@@ -390,3 +390,19 @@ only credential-free guards. This example is **not live evidence**,
 does not relax ADR-037, and requires no Checkov exception in the
 maintained operational workflows. S3 crash recovery, two coexisting
 active lineages, and failure-atomic activation remain separate gates.
+
+### Phase 4P: non-activating complete import candidate (ADR-045)
+
+The private preparation path now assembles one fully validated
+common-account tree with any explicitly selected, unique lineages
+into a fresh, inactive Certbot-shaped candidate directory.
+All source archive bytes are frozen before assessment, and the
+existing account/renewal validators and candidate-relative path
+preview gate each member. Failed validation or assembly discards
+the candidate without touching the active config.
+
+This closes a local multi-lineage composition gap, not the production
+active-import gate. Synthetic test fixtures cannot verify registered
+Let's Encrypt account continuity, live renewals, SAN changes, or
+rollback under a failed active install. Those requirements and
+durable S3 publication remain outstanding under ADRs 037 and 022.

@@ -20,7 +20,8 @@ CORE_SOURCE_FILES := lib/plugin-registry.bash lib/input.bash \
                      lib/archive-restore.bash lib/account-archive.bash lib/certificate-verify.bash \
                      lib/acme-environment.bash lib/state-identity.bash \
                      lib/renewal-paths.bash lib/renewal-policy.bash \
-                     lib/import-assess.bash lib/gpg-archives.bash \
+                     lib/import-assess.bash lib/import-candidate.bash \
+                     lib/gpg-archives.bash \
                      lib/s3-retrieval.bash \
                      lib/state-preflight.bash lib/publication-candidate.bash \
                      lib/publication-checkpoint.bash
