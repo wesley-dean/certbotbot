@@ -168,6 +168,50 @@ run_prepare() {
   [ ! -e "$ASSEMBLY_EXTERNAL_CALLS" ]
 }
 
+
+@test "second lineage assembly copy failure discards the entire private candidate" {
+  common_archive
+  lineage_archive example.com
+  lineage_archive example.net
+  local fakebin="$BATS_TEST_TMPDIR/failing-bin"
+  mkdir -m 0700 "$fakebin"
+  cat >"$fakebin/cp" <<'FAKE_CP'
+#!/usr/bin/env bash
+for argument in "$@"; do
+  case "$argument" in
+    */renewal/example.net.conf)
+      exit 73
+      ;;
+  esac
+done
+exec /bin/cp "$@"
+FAKE_CP
+  chmod 0700 "$fakebin/cp"
+  run env PATH="$fakebin:$ASSEMBLY_BIN:$PATH" bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 80
+    certbotbot_import_candidate_prepare "$2" production \
+      example.com "$3" example.net "$4"
+    result=$?
+    [[ $result == 73 &&
+      -z $CERTBOTBOT_IMPORT_CANDIDATE_ROOT &&
+      -z $CERTBOTBOT_IMPORT_CANDIDATE_CONFIG &&
+      -z $CERTBOTBOT_COMMON_STAGE &&
+      -z $CERTBOTBOT_RESTORE_ROOT &&
+      -z $CERTBOTBOT_RENEWAL_PREVIEW ]] || exit 81
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_CONFIG" \
+      -mindepth 1 -print -quit)" ]] || exit 82
+    [[ -z "$(find "$CERTBOTBOT_WORKSPACE_ROOT" \
+      -mindepth 1 -maxdepth 1 ! -name config ! -name work \
+      ! -name logs -print -quit)" ]] || exit 83
+    certbotbot_workspace_destroy || exit 84
+  ' _ "$CERTBOTBOT_ARTIFACT" "$ASSEMBLY_COMMON" \
+    "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    "$BATS_TEST_TMPDIR/example.net.tar.gz"
+  [ "$status" -eq 0 ]
+  [ ! -e "$ASSEMBLY_EXTERNAL_CALLS" ]
+}
+
 @test "account mismatch in second lineage rejects complete batch" {
   common_archive
   lineage_archive example.com
