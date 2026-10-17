@@ -484,3 +484,25 @@ tokens, not generally content hashes, and may become stale at once.
 There is still no distributed lock or multi-object atomic commit.
 See [ADR-049](doc/adr/ADR-049-etag-bound-publication-conditions.md).
 The normal issuer remains disabled.
+
+## Guarded conditional S3 publication and recovery
+
+ADR-050 adds a tightly gated **internal** latest-object writer and an
+independent-runner rollback mechanism. The writer requires a complete
+verified candidate and a durable remote backup whose generation identifier
+and manifest digest have been retained by the operator. It uses S3
+`If-Match` or `If-None-Match` conditional PUTs and verifies every
+uploaded body before continuing. Ambiguous results leave a partial
+publication requiring review, rather than attempting a blind rollback.
+
+A fresh runner can verify the saved generation and restore a selected
+collection in reverse order, after confirming that every current key
+contains either the known old or proposed new bytes. A previously absent
+key is conditionally deleted, without touching unrelated content.
+
+**These internal operations can mutate S3 latest keys when explicitly
+authorized, but the public command cannot invoke them.** Normal
+certificate issuance remains disabled pending real Let's Encrypt staging
+evidence, backend integration and acceptance of the active-state import
+decision. The protocol does not provide an atomic multi-object transaction
+or a cross-platform distributed lock.
