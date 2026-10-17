@@ -498,3 +498,21 @@ integration, explicit operator serialization, genuine Let's Encrypt staging
 portability, and a separate ADR-037 activation decision are the remaining
 end-to-end release gates. Multi-key transactions and distributed storage
 locking are not claimed.
+
+
+### Phase 4V: opt-in real S3 conditional API and independent recovery evidence
+
+The `test-s3-interop` Make target runs both actual S3 API operations and
+the internal ADR-047/050 recovery protocol against a disposable,
+operator-controlled loopback S3-compatible endpoint. Every release flavor
+receives full/partial/first-run/conflicting-writer/crashed-worker scenarios.
+A killed worker cannot pass its private filesystem to the recovery process;
+only the separately recorded verified recovery generation and manifest
+checksum survive. Credential-free Bats guards prevent normal CI from
+crossing this network and remote mutation boundary.
+
+No S3 emulator is auto-installed or started in required CI, and this
+infrastructure has not itself established a passing real-service result.
+External serialization, real AWS backend behavior, genuine Let's Encrypt
+staging continuity, and active-state import still require distinct evidence
+or decisions. See `doc/s3-interoperability.md`.
