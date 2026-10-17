@@ -1159,9 +1159,9 @@ run_etag_conditions() {
     printf "capture=%s\n" "$code"
     if (( code == 0 )); then
       count=${#CERTBOTBOT_PUBLICATION_KEYS[@]}
-      [[ ${#CERTBOTBOT_LATEST_CONDITION_KEYS[@]} == count &&
-        ${#CERTBOTBOT_LATEST_CONDITION_KINDS[@]} == count &&
-        ${#CERTBOTBOT_LATEST_CONDITION_VALUES[@]} == count &&
+      [[ ${#CERTBOTBOT_LATEST_CONDITION_KEYS[@]} -eq "$count" &&
+        ${#CERTBOTBOT_LATEST_CONDITION_KINDS[@]} -eq "$count" &&
+        ${#CERTBOTBOT_LATEST_CONDITION_VALUES[@]} -eq "$count" &&
         $CERTBOTBOT_LATEST_CONDITION_PLAN_SHA256 == \
           "$CERTBOTBOT_PLAN_DIGEST" ]] || exit 94
       for (( i=0; i<count; i++ )); do
