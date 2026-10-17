@@ -38,6 +38,26 @@ case "${S3_FAKE_MODE:-normal}" in
     printf 'An error occurred (AccessDenied) when calling the GetObject operation: Denied\n' >&2
     exit 254
     ;;
+  prefixed-denied)
+    printf 'aws: [ERROR]: An error occurred (AccessDenied) when calling the GetObject operation: Denied\n' >&2
+    exit 254
+    ;;
+  prefixed-404)
+    printf 'aws: [ERROR]: An error occurred (404) when calling the GetObject operation: Ambiguous\n' >&2
+    exit 254
+    ;;
+  misleading-prefix)
+    printf 'other-aws: [ERROR]: An error occurred (NoSuchKey) when calling the GetObject operation: Unknown\n' >&2
+    exit 254
+    ;;
+  wrong-operation)
+    printf 'aws: [ERROR]: An error occurred (NoSuchKey) when calling the HeadObject operation: Unknown\n' >&2
+    exit 254
+    ;;
+  prefixed-invalid-status)
+    printf 'aws: [ERROR]: An error occurred (NoSuchKey) when calling the GetObject operation: Unknown\n' >&2
+    exit 255
+    ;;
   generic404)
     printf 'An error occurred (404) when calling the GetObject operation: Unknown\n' >&2
     exit 254
@@ -53,7 +73,11 @@ case "${S3_FAKE_MODE:-normal}" in
     ;;
 esac
 if [[ ! -f "$S3_FAKE_STORE/$key" ]]; then
-  printf 'An error occurred (NoSuchKey) when calling the GetObject operation: Missing\n' >&2
+  if [[ ${S3_FAKE_MODE:-normal} == prefixed-nosuchkey ]]; then
+    printf 'aws: [ERROR]: An error occurred (NoSuchKey) when calling the GetObject operation: Missing\n' >&2
+  else
+    printf 'An error occurred (NoSuchKey) when calling the GetObject operation: Missing\n' >&2
+  fi
   exit 254
 fi
 cp -- "$S3_FAKE_STORE/$key" "$destination" || exit 73
@@ -137,6 +161,33 @@ run_stage() {
   run_stage production example.com
   [ "$status" -eq 0 ]
   [[ "$output" == *'result=65'* ]]
+}
+
+@test "AWS CLI 2.37 prefixed NoSuchKey preserves confirmed absence" {
+  S3_FAKE_MODE=prefixed-nosuchkey
+  run_stage production example.com example.net
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=10'* ]]
+}
+
+@test "AWS CLI 2.37 prefixed missing domain preserves existing common state" {
+  create_state
+  rm "$S3_FAKE_STORE/example.net-latest.tar.gz"
+  S3_FAKE_MODE=prefixed-nosuchkey
+  run_stage production example.com example.net
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=0'* && "$output" == *'present-2=0'* ]]
+}
+
+@test "prefixed access denied, ambiguous 404, wrong operation, or status refuse absence" {
+  local mode=''
+  for mode in prefixed-denied prefixed-404 misleading-prefix \
+    wrong-operation prefixed-invalid-status; do
+    S3_FAKE_MODE=$mode
+    run_stage production example.com
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'result=69'* ]]
+  done
 }
 
 @test "access denied is fatal rather than evidence of a new collection" {
