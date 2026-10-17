@@ -53,6 +53,8 @@ jobs:
       leaf_sha256: ${{ steps.phase.outputs.leaf_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install --yes curl make openssl gnupg
       - name: Prepare real Certbot 5.8.0 with Route53 plugin
@@ -110,6 +112,8 @@ jobs:
       leaf_sha256: ${{ steps.phase.outputs.leaf_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install local tools and pinned Certbot
         run: |
           sudo apt-get update
@@ -169,6 +173,8 @@ jobs:
       leaf_sha256: ${{ steps.phase.outputs.leaf_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install local tools and pinned Route53 Certbot
         run: |
           sudo apt-get update
@@ -230,6 +236,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install offline reconstruction tools
         run: |
           sudo apt-get update

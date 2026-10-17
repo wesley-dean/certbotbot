@@ -78,6 +78,10 @@ Select `main` and supply:
 - `extra_name`: a different lower-case, non-wildcard DNS name
   strictly below that base, such as
   `proof.example.your-controlled-zone.test`.
+- `second_name`: a distinct, previously unused, lower-case concrete
+  subdomain beneath `domain` (for example, `second.example.your-controlled-zone.test`).
+  Both the second name and its `*.` wildcard are requested in its new
+  certificate, so explicitly authorize its DNS-01 TXT challenge records.
 - `aws_region`: the AWS region used by the scoped OIDC role.
 - `authorize`: explicitly set to true after checking DNS ownership
   and the intended external staging requests.
@@ -114,8 +118,10 @@ An explicitly installed and authorized run is useful evidence of real
 account key continuity only if every stage succeeds: independent no-op
 renewal, changed SAN issuance under
 the same account, encrypted archive handoff, and final independent
-restoration. Inspect the run's four job results rather than treating
-an intermediate success as conclusive.
+restoration. Inspect **all six** job results rather than treating an intermediate
+success as conclusive. The fifth runner issues the independent
+base-plus-wildcard second lineage; the sixth verifies both restored
+lineages without a DNS role.
 
 A failure is also useful evidence. The strict renewal-option
 allowlist may reject new settings written by real Certbot, or the
@@ -150,15 +156,17 @@ The inactive example now accepts a third independently owned DNS name via
 `second_name`, distinct from both `domain` and `extra_name` and a concrete,
 lower-case subdomain within the same authorized DNS zone. Do not use a
 production customer name. The role must allow only the expected staging
-`_acme-challenge` TXT records, including the second name, and must not
-allow unrelated hosted zones or record types.
+`_acme-challenge` TXT records, including both the second base name
+and its wildcard challenge (which can use the same DNS-01 TXT owner
+name), and must not allow unrelated hosted zones or record types.
 
 After the original four successful staging jobs, the fifth fresh runner
 downloads their encrypted account/first-lineage archive and obtains
 a **second independent lineage** under the same staging ACME account.
 The script verifies that the previously issued base/wildcard/extra-SAN
-certificate is unchanged, verifies the new certificate has exactly the
-`second_name` SAN and matches the explicitly provided staging CA bundle,
+certificate is unchanged, verifies the new certificate has exactly the `second_name` and
+`*.second_name` SANs, as required by ADR-018 and ADR-055, and matches
+the explicitly provided staging CA bundle,
 then exports three independently encrypted validated objects:
 `common.tar.gz.enc`, `domain.tar.gz.enc`, and `second.tar.gz.enc`.
 The per-domain archive validator must reject any accidental inclusion

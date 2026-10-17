@@ -620,3 +620,18 @@ or verification never authorizes Certbot activation, account registration,
 DNS challenges, S3 mutation, or changes to public issuer exit 69.
 
 See [ADR-054](adr/ADR-054-remote-verified-inactive-candidate.md).
+
+
+### ADR-055: Mandatory Apex-and-Wildcard SANs in the Second Real Staging Lineage
+
+The real staging two-lineage example previously attempted to issue and validate
+a bare-name second lineage, even though ADR-018/036 require both the selected
+base DNS name and its wildcard for every certificate group. The fifth and
+sixth runners now use that exact canonical SAN pair, removing an inevitable
+validation failure without weakening the public certificate validator.
+This decision supersedes only ADR-053's single-SAN second-lineage clause;
+the workflow remains manually installed, staging-only, and prohibited from
+activating public issuance. Offline tests with locally CA-signed X.509
+fixtures validate the corrected success and bare-name rejection paths.
+
+See [ADR-055](adr/ADR-055-real-staging-second-lineage-sans.md).

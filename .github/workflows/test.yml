@@ -128,6 +128,11 @@ jobs:
           CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.dev.bash
         run: bats tests/remote-candidate.bats
 
+      - name: Validate second-lineage staging identities before full matrix
+        env:
+          CERTBOTBOT_ARTIFACT: ${{ github.workspace }}/dist/certbotbot.dev.bash
+        run: bats tests/staging-second-lineage-sans.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true
