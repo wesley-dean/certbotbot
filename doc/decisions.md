@@ -475,3 +475,16 @@ staging evidence remains outstanding until a complete manually
 authorized run succeeds.
 
 See [ADR-044](adr/ADR-044-opt-in-real-acme-portability-evidence.md).
+
+### ADR-045: Complete, Non-Activating Multi-Lineage Import Candidates
+
+An internal preparation helper freezes common-account and selected lineage
+archives once, runs the full batch assessment, and assembles a complete
+multi-lineage Certbot-shaped candidate in a separate owner-private directory.
+Validated renewal paths are rebased only to this private candidate, never to
+the active configuration. Any rejected later lineage discards the entire
+candidate, with no Certbot, DNS, or S3 side effects. This establishes local
+**preparation atomicity** only; ADR-037 still forbids product activation
+pending reviewed live staging evidence and a separate activating ADR.
+
+See [ADR-045](adr/ADR-045-nonactivating-multilineage-import-candidates.md).
