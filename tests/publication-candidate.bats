@@ -556,7 +556,7 @@ run_local_plan() {
         "$CERTBOTBOT_PLAN_MANIFEST")"
       printf "first=%s\n" "$(sed -n "5p" \
         "$CERTBOTBOT_PLAN_MANIFEST" | cut -f3)"
-      grep -Fq $'\''certbotbot-prepublication-plan\t1'\'' \
+      grep -q "^certbotbot-prepublication-plan" \
         "$CERTBOTBOT_PLAN_MANIFEST" || exit 84
       case "$mode" in
         valid)
