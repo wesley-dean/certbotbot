@@ -315,7 +315,7 @@ jobs:
           CERTBOTBOT_STAGING_INPUT_DIR: ${{ runner.temp }}/archive-input
           CERTBOTBOT_STAGING_OUTPUT_DIR: ${{ runner.temp }}/archive-export
           CERTBOTBOT_EXPECTED_ACCOUNT_SHA256: ${{ needs.issue.outputs.account_sha256 }}
-          CERTBOTBOT_EXPECTED_LEAF_SHA256: ${{ needs.change-sans.outputs.leaf_sha256 }}
+          CERTBOTBOT_EXPECTED_LEAF_SHA256: ${{ needs['change-sans'].outputs.leaf_sha256 }}
           ACME_ENVIRONMENT: staging
           GPG_PASSPHRASE: ${{ secrets.CERTBOTBOT_STAGING_GPG_PASSPHRASE }}
         run: |
@@ -366,7 +366,7 @@ jobs:
           CERTBOTBOT_STAGING_CA_BUNDLE: ${{ runner.temp }}/staging-ca.pem
           CERTBOTBOT_STAGING_INPUT_DIR: ${{ runner.temp }}/archive-input
           CERTBOTBOT_EXPECTED_ACCOUNT_SHA256: ${{ needs.issue.outputs.account_sha256 }}
-          CERTBOTBOT_EXPECTED_LEAF_SHA256: ${{ needs.change-sans.outputs.leaf_sha256 }}
+          CERTBOTBOT_EXPECTED_LEAF_SHA256: ${{ needs['change-sans'].outputs.leaf_sha256 }}
           CERTBOTBOT_EXPECTED_SECOND_LEAF_SHA256: ${{ needs.second_lineage.outputs.second_leaf_sha256 }}
           ACME_ENVIRONMENT: staging
           GPG_PASSPHRASE: ${{ secrets.CERTBOTBOT_STAGING_GPG_PASSPHRASE }}
