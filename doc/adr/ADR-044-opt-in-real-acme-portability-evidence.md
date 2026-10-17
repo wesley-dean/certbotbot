@@ -162,6 +162,24 @@ without DNS mutation authority.
 preserve ADR-030 environment isolation and ADR-022's publication
 safety requirements.
 
+## Scoped Checkov policy exception
+
+Checkov's `CKV_GHA_7` applies the SLSA parameterless-build property to
+`workflow_dispatch` inputs.  This workflow is an operator-controlled,
+non-publishing integration test, not a release or build-provenance
+pipeline.  Its reviewed input parameters specify the owned DNS
+identities, scoped AWS region, and explicit false-by-default consent.
+Removing them merely to satisfy a build-oriented rule would weaken
+the authority boundary above and obscure which external DNS side
+effects the operator authorized.
+
+The workflow therefore carries a **resource-local CKV_GHA_7 skip**
+with an inline explanation.  Other Checkov policies remain enforced,
+including permission and workflow command security checks.  The
+exception must not be moved into a global Checkov skip list, copied
+to release workflows, or expanded to other rules without a
+separate security review.
+
 ## Threats, mitigations, and residual risks
 
 Assets include the ACME account private key, domain TLS private
