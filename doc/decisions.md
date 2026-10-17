@@ -404,3 +404,16 @@ a generic 404 remains fatal.  Archive validation, account reuse, issuance,
 and publication require separate evidence and remain disabled.
 
 See [ADR-039](adr/ADR-039-typed-s3-state-retrieval.md).
+
+### ADR-040: Non-Activating Assessment of Retrieved S3 State
+
+A selected remote common archive must be independently validated even when
+every requested lineage is confirmed absent. All present lineages are
+assessed as one batch against the downloaded common account state, including
+archive shape, account/authority references, renewal settings, and portable
+path previews. Missing requested lineage names are reported only after the
+whole existing collection passes, never as authorization for issuance.
+Remote bytes and private staging are discarded on success and failure;
+active Certbot state, account registration, and publishing remain disabled.
+
+See [ADR-040](adr/ADR-040-remote-state-assessment-boundary.md).
