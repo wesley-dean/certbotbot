@@ -417,3 +417,17 @@ Remote bytes and private staging are discarded on success and failure;
 active Certbot state, account registration, and publishing remain disabled.
 
 See [ADR-040](adr/ADR-040-remote-state-assessment-boundary.md).
+
+### ADR-041: Encrypted Archive Preparation and Strict Retrieval Mode
+
+Optional GPG symmetric AES-256 encryption now has an internal private
+archive-transform helper and a strict encrypted retrieval path.
+A nonempty `GPG_PASSPHRASE` selects only `.tar.gz.enc` common/domain
+objects, with no plaintext fallback on failed retrieval or decryption.
+An absent selected-mode key triggers a presence-only check for the
+opposite suffix, and any existing opposite-mode object is a fatal
+migration mismatch. Both decrypted and downloaded secret bytes are
+discarded after non-activating assessment, and neither issuance nor
+S3 publication is enabled.
+
+See [ADR-041](adr/ADR-041-encrypted-state-retrieval-and-preparation.md).
