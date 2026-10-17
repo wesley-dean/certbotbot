@@ -136,7 +136,7 @@ certbotbot_remote_candidate_verify() {
     # An already prepared candidate must not remain usable after an invalid
     # verification request; this is the same full-batch failure boundary.
     if [[ -n ${CERTBOTBOT_IMPORT_CANDIDATE_ROOT:-} &&
-      ${CERTBOTBOT_IMPORT_CANDIDATE_CONFIG:-} ==
+      ${CERTBOTBOT_IMPORT_CANDIDATE_CONFIG:-} == \
         "$CERTBOTBOT_IMPORT_CANDIDATE_ROOT/config" ]]; then
       certbotbot_remote_candidate_discard || return 73
     fi
