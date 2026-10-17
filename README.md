@@ -348,3 +348,15 @@ and S3 publishing are not enabled. Operators must migrate *entire*
 collections under external writer serialization. See the
 [manual migration guide](doc/encryption-migration.md) and
 [ADR-041](doc/adr/ADR-041-encrypted-state-retrieval-and-preparation.md).
+
+## Local publication candidate checks
+
+The internal, non-publishing preparation path now builds a frozen
+candidate collection only after *all* selected lineages pass isolated
+archive/renewal inspection, X.509 chain verification, private-key
+matching, combined PEM checks, and exact requested DNS SAN matching.
+It selects fixed production/staging S3 keys and owner-private plaintext
+or GPG AES-256 local bytes. A failure discards the complete candidate.
+No object is uploaded, no certificate is issued, and the public
+entrypoint remains disabled. See
+[ADR-042](doc/adr/ADR-042-local-publication-candidate-gate.md).
