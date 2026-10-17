@@ -488,3 +488,16 @@ candidate, with no Certbot, DNS, or S3 side effects. This establishes local
 pending reviewed live staging evidence and a separate activating ADR.
 
 See [ADR-045](adr/ADR-045-nonactivating-multilineage-import-candidates.md).
+
+### ADR-046: Local Manifest of Proposed and Previous Publication Bytes
+
+Before any future remote mutation, the producer can now pair its
+cryptographically verified proposed object collection with its exact
+validated previous-state checkpoint and create a private manifest.
+That manifest records the common-first key order, previous existence,
+old and new SHA-256 hashes, and byte lengths without writing to S3.
+The helper rechecks both collections and manifest integrity before
+returning success. It remains an **ephemeral local plan**, not a
+remote backup, atomic publication, or permission to activate Certbot.
+
+See [ADR-046](adr/ADR-046-local-prepublication-recovery-manifest.md).
