@@ -298,3 +298,21 @@ because a new lineage may be explicitly requested. These distinctions
 do not establish ACME account authenticity or a transactionally consistent
 multi-object snapshot; independent writer serialization and the downstream
 archive security checks remain mandatory.
+
+## Remote download-to-assessment trust transition
+
+ADR-040 requires a downloaded object to pass the complete isolated archive
+assessment before it can count as accepted existing producer state.
+Successful GetObject responses do not authenticate archive contents.
+The common account is structurally validated even when no requested
+domain is present. Every present domain archive must pass lineage identity,
+ACME authority, supported renewal-option grammar, and path portability
+checks before the selected missing-domain report is released.
+
+The entire local S3 staging area is removed on success and failure, and
+the active Certbot configuration is never populated. This is a static
+trust-boundary reduction, not proof that a restored account is recognized
+by Let's Encrypt or that separate S3 latest objects share a single
+transactional generation. Host-external serialization, real CA
+interoperability, private key verification, and remote write safety remain
+separate required controls.
