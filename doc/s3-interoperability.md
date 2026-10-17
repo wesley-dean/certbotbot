@@ -9,7 +9,8 @@ changes, Let's Encrypt requests, or production S3 publication.
 The suites use **synthetic, non-certificate bytes**. Their results can
 establish S3 conditional-write interoperability and recovery behavior but
 cannot establish certificate validity or ACME portability. ADRs
-[039](adr/ADR-039-typed-s3-state-retrieval.md),
+[039](adr/ADR-039-typed-s3-state-retrieval.md) and
+[052](adr/ADR-052-awscli-prefixed-nosuchkey.md),
 [047](adr/ADR-047-durable-s3-recovery-generations.md), and
 [050](adr/ADR-050-conditional-latest-publication-and-recovery.md) govern
 the existing implementation. [ADR-037](adr/ADR-037-gated-active-certbot-import.md)
