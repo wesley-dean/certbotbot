@@ -57,7 +57,7 @@ staging_validate_request() {
 ## @retval 0 Exactly one staging account exists.
 ## @retval 65 Staging account contents are incomplete or ambiguous.
 staging_account_digest() {
-  local config=$1 base='' key='' count=0
+  local config=$1 base='' key=''
   local -a keys=()
   base="$config/accounts/acme-staging-v02.api.letsencrypt.org/directory"
   [[ -d $base && ! -L $base ]] || return 65
@@ -183,8 +183,8 @@ staging_save_archives() {
 staging_record_identity() {
   local account='' leaf=''
   account="$(staging_account_digest "$CERTBOTBOT_WORKSPACE_CONFIG")"
-  leaf="$(sha256sum -- "$CERTBOTBOT_WORKSPACE_CONFIG/archive/"\
-"$CERTBOTBOT_STAGING_DOMAIN/cert1.pem" | cut -d ' ' -f1)"
+  leaf="$(sha256sum -- "$CERTBOTBOT_WORKSPACE_CONFIG/live/"\
+"$CERTBOTBOT_STAGING_DOMAIN/cert.pem" | cut -d ' ' -f1)"
   if [[ -n ${CERTBOTBOT_EXPECTED_ACCOUNT_SHA256:-} &&
     $account != "$CERTBOTBOT_EXPECTED_ACCOUNT_SHA256" ]]; then
     staging_abort 'staging ACME account key changed across runners'
@@ -256,7 +256,7 @@ staging_main() {
     staging_load_private_archives
     if [[ $phase == noop ]]; then
       leaf_before="$(sha256sum -- \
-        "$directory/archive/$CERTBOTBOT_STAGING_DOMAIN/cert1.pem" |
+        "$directory/live/$CERTBOTBOT_STAGING_DOMAIN/cert.pem" |
         cut -d ' ' -f1)"
       "$CERTBOT" renew --non-interactive \
         --no-directory-hooks --no-random-sleep-on-renew \
@@ -267,7 +267,7 @@ staging_main() {
         >"$CERTBOTBOT_WORKSPACE_ROOT/noop.log" 2>&1 ||
         staging_abort 'staging no-op renewal failed (private runner log)'
       [[ "$(sha256sum -- \
-        "$directory/archive/$CERTBOTBOT_STAGING_DOMAIN/cert1.pem" |
+        "$directory/live/$CERTBOTBOT_STAGING_DOMAIN/cert.pem" |
         cut -d ' ' -f1)" == "$leaf_before" ]] ||
         staging_abort 'unexpected certificate renewal in no-op phase'
       staging_check_lineage false
