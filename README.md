@@ -378,3 +378,18 @@ verified partial-write recovery remain necessary before a publisher
 can be enabled. The current tool still performs no S3 writes and
 normal certificate issuance still returns 69. See
 [ADR-043](doc/adr/ADR-043-recoverable-s3-publication-checkpoint.md).
+
+## Opt-in real staging account portability evidence
+
+A **manual-only** GitHub Actions workflow is now available to gather
+genuine Let's Encrypt staging evidence across independent runners:
+initial DNS-01 issuance, restored account/no-op renewal, changed-SAN
+reissuance, and final read-only archive restoration. A protected
+`acme-staging` environment, scoped Route53 OIDC role, explicit CA
+trust anchor, long GPG secret, and manual authorization are required.
+Only encrypted state archives move between jobs. It never runs on
+pushes or pull requests and cannot activate normal issuance or S3
+publication. See the [setup/runbook](doc/real-staging-evidence.md)
+and [ADR-044](doc/adr/ADR-044-opt-in-real-acme-portability-evidence.md).
+Merging the workflow **does not** prove account portability until
+a separately authorized complete staging run succeeds.
