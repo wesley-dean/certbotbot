@@ -635,3 +635,17 @@ activating public issuance. Offline tests with locally CA-signed X.509
 fixtures validate the corrected success and bare-name rejection paths.
 
 See [ADR-055](adr/ADR-055-real-staging-second-lineage-sans.md).
+
+
+### ADR-056: Offline Staging IAM Policy Documents
+
+An offline Bash-only generator produces reviewable OIDC trust and Route53
+permissions policies from strictly validated AWS account, GitHub repository,
+hosted zone, and three DNS names. The trust policy binds the protected
+`acme-staging` environment, and DNS write access is restricted to its
+three exact TXT challenge owners with explicit action and type constraints.
+The operator still creates and reviews the role and environment, installs
+the inactive workflow separately, and explicitly approves real staging.
+Neither this generator nor synthetic tests authorize production issuance.
+
+See [ADR-056](adr/ADR-056-offline-staging-iam-policies.md).
