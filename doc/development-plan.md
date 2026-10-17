@@ -442,3 +442,20 @@ but cannot claim a completed generation. The next publication ADR
 must cover current-state checks, safe latest writes, partial failure
 and crashed-writer recovery, and external serialization. Real ACME
 staging evidence and active Certbot import remain blocked.
+
+### Phase 4S: remote latest-state freshness precondition (ADR-048)
+
+A non-publishing S3 preflight now re-reads the exact previously
+selected latest-object keys and compares their raw bytes or
+confirmed absence against the ADR-043 checkpoint. It first
+revalidates ADR-046's proposed/prior manifest to ensure that
+no local input changed. Any remote drift, changed archive
+mode, or denied/indeterminate fetch aborts without cloud writes.
+
+This closes stale-remote-read detection as a preparatory step,
+not an atomic remote lock or compare-and-swap. Cross-platform
+writers still need external serialization, and the next S3
+publication milestone must govern conditional latest writes,
+partial failure recovery, and independent runner restoration
+under ADR-022. Active Certbot use still requires real staging
+evidence and a separately accepted ADR.
