@@ -7,9 +7,9 @@ name: Opt-in real ACME staging portability evidence
 # and an explicit false-by-default authorization for external staging calls.
 # ADR-044 requires these per-dispatch controls plus main-only execution,
 # protected acme-staging approval, fixed ACME URL, and scoped AWS credentials.
-# checkov:skip=CKV_GHA_7: Manual staging evidence needs reviewed DNS inputs and explicit opt-in
 # yamllint disable-line rule:truthy
 on:
+  # checkov:skip=CKV_GHA_7: Reviewed DNS inputs and explicit opt-in, per ADR-044
   workflow_dispatch:
     inputs:
       domain:
