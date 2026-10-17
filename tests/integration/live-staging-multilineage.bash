@@ -210,10 +210,10 @@ staging_multi_issue_second() {
   staging_check_lineage true
   # Check restored account and first lineage before touching Route53.
   [[ -n ${CERTBOTBOT_EXPECTED_ACCOUNT_SHA256:-} &&
-    "$(staging_account_digest "$config")" ==
+    "$(staging_account_digest "$config")" == \
       "$CERTBOTBOT_EXPECTED_ACCOUNT_SHA256" &&
     -n ${CERTBOTBOT_EXPECTED_LEAF_SHA256:-} &&
-    "$(staging_multi_hash "$config" "$CERTBOTBOT_STAGING_DOMAIN")" ==
+    "$(staging_multi_hash "$config" "$CERTBOTBOT_STAGING_DOMAIN")" == \
       "$CERTBOTBOT_EXPECTED_LEAF_SHA256" ]] || return 65
   "$CERTBOT" certonly --non-interactive --agree-tos \
     --email "$CERTBOTBOT_STAGING_EMAIL" \
