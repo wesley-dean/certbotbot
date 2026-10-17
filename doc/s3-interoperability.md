@@ -45,13 +45,16 @@ export AWS_SECRET_ACCESS_KEY=disposable-local-secret
 export AWS_DEFAULT_REGION=us-east-1
 export AWS_EC2_METADATA_DISABLED=true
 unset GPG_PASSPHRASE
+unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 
 make test
 make test-s3-interop
 ```
 
 The test host should have no unrelated AWS credentials or secrets and
-must not send loopback traffic through an external proxy. The shell guard
+must not send loopback traffic through an external proxy. The harness
+refuses all inherited HTTP(S) or SOCKS proxy variables before the first
+S3 command. The shell guard
 runs before any AWS invocation. The Make target invokes both live API and
 cross-runner suites for all three release artifact flavors.
 
