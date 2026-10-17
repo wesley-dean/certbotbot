@@ -52,9 +52,9 @@ certbotbot_import_candidate_discard() {
 ## @fn certbotbot_import_candidate_preview()
 ## @brief Creates a path-rebased renewal file solely inside a private candidate.
 ## @details
-## A subshell temporarily targets the candidate config for ADR-032 path
-## previewing, leaving the caller's active config variable and preview slot
-## unchanged. The normal preview retains the complete ADR-031/038 validation
+## A command-scoped Bash assignment temporarily targets the candidate
+## config for ADR-032 previewing, preserving the caller's recorded active
+## configuration path. The normal preview retains the complete ADR-031/038 validation
 ## chain; it is never installed into the active Certbot configuration.
 ## @param candidate_config Owner-private candidate config root.
 ## @param name Canonical selected lineage.
@@ -66,21 +66,27 @@ certbotbot_import_candidate_discard() {
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @returns Nothing is written to STDOUT.
-certbotbot_import_candidate_preview() (
+certbotbot_import_candidate_preview() {
   local target=${1:-} name=${2:-} environment=${3:-}
-  (( $# == 3 )) || exit 64
+  (( $# == 3 )) || return 64
   [[ -n ${CERTBOTBOT_WORKSPACE_ROOT:-} &&
     $target == "$CERTBOTBOT_WORKSPACE_ROOT"/import-candidate.????????/config ]] ||
-    exit 64
-  [[ -d $target && ! -L $target && -O $target ]] || exit 64
-  CERTBOTBOT_WORKSPACE_CONFIG=$target
-  certbotbot_renewal_path_preview "$name" "$environment" || exit $?
-  if ! cp -- "$CERTBOTBOT_RENEWAL_PREVIEW" "$target/renewal/$name.conf"; then
-    certbotbot_renewal_preview_discard || exit 73
-    exit 73
+    return 64
+  [[ -d $target && ! -L $target && -O $target ]] || return 64
+  # Bash temporarily scopes this variable to the called function.  The
+  # caller's recorded active config path remains unchanged on return.
+  if CERTBOTBOT_WORKSPACE_CONFIG="$target" \
+    certbotbot_renewal_path_preview "$name" "$environment"; then
+    :
+  else
+    return $?
   fi
-  certbotbot_renewal_preview_discard || exit 73
-)
+  if ! cp -- "$CERTBOTBOT_RENEWAL_PREVIEW" "$target/renewal/$name.conf"; then
+    certbotbot_renewal_preview_discard || return 73
+    return 73
+  fi
+  certbotbot_renewal_preview_discard || return 73
+}
 
 ## @fn certbotbot_import_candidate_prepare()
 ## @brief Freeze, assess, and assemble a complete, inactive multi-lineage tree.
