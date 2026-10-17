@@ -336,3 +336,21 @@ workspaces, format mismatch, and cleanup in every standalone artifact.
 A manual migration guide covers complete collections and recoverability.
 GPG-enabled **publication** remains blocked by the unfinished producer
 orchestrator and ADR-022 remote failure/rollback protocol.
+
+### Phase 4M: verified local publication candidate (ADR-042)
+
+An internal pre-publication coordinator now snapshots a complete local
+common/lineage archive collection and verifies each selected certificate
+against the exact authorized apex/wildcard SAN request. Trust-chain,
+private-key match, combined PEM, account identity, renewal-option, and
+lineage portability failures prevent candidate completion. Successful
+candidates contain deterministic common-first S3 keys and privately
+frozen plaintext or AES-256 encrypted object bodies, but no AWS PutObject
+operation occurs.
+
+CI tests use locally CA-signed certificates, trust bundle overrides for
+controlled fixtures, and assert no cloud mutation in all three standalone
+artifacts. Publication itself remains a separate guarded milestone with
+partial-write recovery and last-known-good version retention. Real
+Let's Encrypt staging registration, due renewal and SAN changes across
+independent runners must precede activating restored Certbot state.
