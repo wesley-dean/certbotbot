@@ -691,6 +691,14 @@ supply only synthetic test credentials and run `make test-s3-interop`. The norma
 asserts missing authorization, production scope, external endpoints, and
 inherited passphrases are rejected without any AWS invocation.
 
+**Additional compatibility evidence (ADR-052):** The enabled SeaweedFS
+end-to-end CI exposed AWS CLI 2.37.13's literal `aws: [ERROR]: `
+service-error prefix. The exact `GetObject NoSuchKey` status-254 parser
+now accepts that single additional observed form; Bats negative tests
+continue to reject ambiguous 404, denied service codes, wrong operations,
+and other prefixes. No missing-state shortcut or generic 404 acceptance
+was introduced.
+
 **Not yet evidenced:** a successful run against a real service (it requires
 operator-provisioned infrastructure), actual AWS S3 compatibility,
 real Let's Encrypt staging account/SAN continuity, distributed writer
