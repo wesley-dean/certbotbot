@@ -536,3 +536,25 @@ Let's Encrypt. The example has **not** been executed against live
 staging merely because static CI succeeds. Real staging evidence
 must be reviewed before active import is considered. Public
 issuance still exits 69, and release and S3 publication remain gated.
+
+## Phase 4P: private complete multi-lineage import candidate (ADR-045)
+
+The internal `certbotbot_import_candidate_prepare` now freezes a common
+account archive and multiple selected domain archives and runs the full
+non-activating batch validation before assembling a private Certbot-shaped
+directory. The account tree is shared by the selected lineages; each
+lineage's archived members remain isolated, with relative live symlinks
+and reviewed renewal paths rebuilt against the private candidate root.
+
+A failed later lineage or local assembly step discards the whole candidate,
+and the recorded active config remains empty. The caller explicitly
+discards a successful candidate. The normal issuer still exits 69.
+CI exercises one and two lineages, duplicates, account mismatch,
+malicious renewal options, active config preservation, and cleanup
+across all three standalone artifacts.
+
+This **does not authorize active import**. The real staging example
+at `examples/github-actions/real-staging-evidence.yml` still needs
+to be deliberately installed and run with reviewed credentials.
+A separate Accepted ADR for live, failure-atomic activation remains
+required under ADR-037 after real evidence is reviewed.
