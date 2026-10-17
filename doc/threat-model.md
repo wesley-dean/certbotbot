@@ -316,3 +316,24 @@ by Let's Encrypt or that separate S3 latest objects share a single
 transactional generation. Host-external serialization, real CA
 interoperability, private key verification, and remote write safety remain
 separate required controls.
+
+## Optional GPG archive confidentiality and mode-downgrade risks
+
+ADR-041 adds AES-256 symmetric preparation and decryption exclusively
+inside owner-private producer workspaces. The passphrase is passed through
+GPG's standard-input FD, not process argv or diagnostics; the GPG child
+and unrelated AWS CLI do not inherit `GPG_PASSPHRASE`. An enabled
+shell xtrace or a multiline passphrase fails closed. The GnuPG home is
+temporary rather than reusing a host keyring. Decrypted plaintext remains
+untrusted archive input subject to the existing common-account, tar,
+lineage, and renewal-file validators, and all local stages are discarded.
+
+An absent selected-mode object must not silently switch between
+`.tar.gz` and `.tar.gz.enc`. The producer checks opposite-mode
+presence only to reject a mixed or partially migrated collection.
+Wrong passphrases, altered ciphertext, and unexpected service errors
+remain fatal and cannot imply first registration. GPG does not
+authenticate the storage publisher or protect against privileged
+runner compromise, secret-bearing environment inspection, historical
+plaintext S3 versions, or filesystem snapshot retention. Publication,
+live Certbot operations, and multi-object atomicity are not activated.
