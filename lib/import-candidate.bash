@@ -69,8 +69,8 @@ certbotbot_import_candidate_discard() {
 certbotbot_import_candidate_preview() (
   local target=${1:-} name=${2:-} environment=${3:-}
   (( $# == 3 )) || exit 64
-  [[ $target == ${CERTBOTBOT_WORKSPACE_ROOT:-}/import-candidate.????????/config ||
-    $target == ${CERTBOTBOT_WORKSPACE_ROOT:-}/import-candidate.????????/config ]] ||
+  [[ -n ${CERTBOTBOT_WORKSPACE_ROOT:-} &&
+    $target == "$CERTBOTBOT_WORKSPACE_ROOT"/import-candidate.????????/config ]] ||
     exit 64
   [[ -d $target && ! -L $target && -O $target ]] || exit 64
   CERTBOTBOT_WORKSPACE_CONFIG=$target
@@ -109,7 +109,7 @@ certbotbot_import_candidate_preview() (
 ## @returns Nothing is written to STDOUT.
 certbotbot_import_candidate_prepare() {
   local common=${1:-} environment=${2:-} root='' target=''
-  local name='' archive='' frozen='' result=0 index=0 mode='' item=''
+  local name='' archive='' frozen='' result=0 index=0 mode='' item='' kind=''
   local cleanup_failed=false
   local -a requests=() copies=() pairs=()
   local -A names=() paths=()
@@ -203,7 +203,8 @@ certbotbot_import_candidate_prepare() {
     if certbotbot_common_restore "${copies[0]}"; then
       cp -a -- "$CERTBOTBOT_COMMON_STAGE/accounts" "$target/accounts" ||
         result=73
-      certbotbot_common_discard || cleanup_failed=true
+      # Keep the validated account stage available through every lineage
+      # identity check and renewal-path preview. Cleanup happens below.
     else
       result=$?
     fi
@@ -221,11 +222,12 @@ certbotbot_import_candidate_prepare() {
       name=${requests[index]}
       archive=${copies[index/2+1]}
       if certbotbot_restore_domain "$archive" "$name"; then
-        if ! certbotbot_state_verify_identity \
-          "$target" "$CERTBOTBOT_RESTORE_ROOT" "$name" "$environment"; then
-          # Identity verification is performed with the separately restored
-          # account stage below; do not treat a raw archive as authority.
-          result=65
+        certbotbot_state_verify_identity \
+          "$CERTBOTBOT_COMMON_STAGE" "$CERTBOTBOT_RESTORE_ROOT" \
+          "$name" "$environment" || result=$?
+        if (( result == 0 )); then
+          certbotbot_renewal_policy_check "$name" "$environment" ||
+            result=$?
         fi
         if (( result == 0 )); then
           if ! cp -a -- "$CERTBOTBOT_RESTORE_ROOT/archive/$name" \
@@ -236,6 +238,16 @@ certbotbot_import_candidate_prepare() {
               "$target/combined/$name.pem"; then
             result=73
           fi
+        fi
+        if (( result == 0 )); then
+          certbotbot_import_candidate_preview "$target" "$name" \
+            "$environment" || result=$?
+        fi
+        if (( result == 0 )); then
+          for kind in cert chain fullchain privkey; do
+            certbotbot_pem_check_link "$target" "$name" "$kind" ||
+              { result=64; break; }
+          done
         fi
         certbotbot_restore_discard || cleanup_failed=true
       else
