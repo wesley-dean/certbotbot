@@ -479,3 +479,58 @@ run_checkpoint() {
   [ "$status" -eq 0 ]
   [ ! -e "$PUB_AWS_LOG" ]
 }
+
+@test "encrypted recovery preserves exact previous ciphertext bytes" {
+  command -v gpg >/dev/null 2>&1 || skip 'GPG required'
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  export GPG_PASSPHRASE='recovery-only fixture passphrase'
+  env GPG_PASSPHRASE="$GPG_PASSPHRASE" bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    for remote in "$PUB_S3_STORE"/*.tar.gz; do
+      plain="$(mktemp -- "$CERTBOTBOT_WORKSPACE_ROOT/plain.XXXXXXXX")" ||
+        exit 2
+      cipher="$(mktemp -- "$CERTBOTBOT_WORKSPACE_ROOT/cipher.XXXXXXXX")" ||
+        exit 3
+      cp -- "$remote" "$plain" || exit 4
+      certbotbot_gpg_encrypt_archive "$plain" "$cipher" || exit 5
+      cp -- "$cipher" "$remote.enc" || exit 6
+      rm -f -- "$remote" "$plain" "$cipher" || exit 7
+    done
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT"
+  run_checkpoint valid-bucket "$PUB_COMMON" "$PUB_CA" \
+    example.com "$BATS_TEST_TMPDIR/example.com.tar.gz" \
+    'example.com,*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'result=0'* && "$output" == *'present-0=1'* &&
+    "$output" == *'present-1=1'* && "$output" == *'empty=false'* ]]
+  grep -Fq ':common-latest.tar.gz.enc' "$PUB_AWS_LOG"
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
+
+@test "changing frozen rollback bytes invalidates its recorded digest" {
+  make_lineage example.com
+  enable_get_mock
+  stage_previous example.com
+  run env PATH="$PUB_BIN:$PATH" bash -c '
+    source "$1" --version >/dev/null
+    certbotbot_workspace_create || exit 1
+    certbotbot_publication_prepare valid-bucket "$2" "$3" \
+      example.com "$4" "example.com,*.example.com" || exit 2
+    certbotbot_publication_checkpoint valid-bucket || exit 3
+    path="${CERTBOTBOT_CHECKPOINT_FILES[1]}"
+    printf "tampered\n" >"$path"
+    certbotbot_checkpoint_verify
+    result=$?
+    [[ $result -eq 65 ]] || exit 4
+    certbotbot_checkpoint_discard || exit 5
+    certbotbot_publication_discard || exit 6
+    certbotbot_workspace_destroy
+  ' _ "$CERTBOTBOT_ARTIFACT" "$PUB_COMMON" "$PUB_CA" \
+    "$BATS_TEST_TMPDIR/example.com.tar.gz"
+  [ "$status" -eq 0 ]
+  ! grep -Fq PROHIBITED_WRITE "$PUB_AWS_LOG"
+}
