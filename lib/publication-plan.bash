@@ -67,6 +67,7 @@ certbotbot_publication_plan_discard() {
 ## @note Internal helper requires the already validated candidate/checkpoint.
 certbotbot_publication_plan_write() {
   local dest=${1:-} i=0 count=${#CERTBOTBOT_PUBLICATION_KEYS[@]}
+  local oldsize=0
   (( $# == 1 )) || return 64
   {
     printf 'certbotbot-prepublication-plan\t1\n'
@@ -74,12 +75,16 @@ certbotbot_publication_plan_write() {
     printf 'bucket\t%s\n' "$CERTBOTBOT_PUBLICATION_BUCKET"
     printf 'objects\t%d\n' "$count"
     for (( i=0; i<count; i++ )); do
+      oldsize=0
+      if [[ ${CERTBOTBOT_CHECKPOINT_PRESENT[i]} == 1 ]]; then
+        oldsize="$(stat -c '%s' -- \
+          "${CERTBOTBOT_CHECKPOINT_FILES[i]}")" || return 73
+      fi
       printf 'object\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$i" "${CERTBOTBOT_PUBLICATION_KEYS[i]}" \
         "${CERTBOTBOT_CHECKPOINT_PRESENT[i]}" \
         "${CERTBOTBOT_CHECKPOINT_SHA256[i]:--}" \
-        "${CERTBOTBOT_PLAN_NEW_DIGESTS[i]}" \
-        "${CERTBOTBOT_CHECKPOINT_PRESENT[i]}" \
+        "$oldsize" "${CERTBOTBOT_PLAN_NEW_DIGESTS[i]}" \
         "${CERTBOTBOT_PLAN_NEW_SIZES[i]}"
     done
   } >"$dest" || return 73
