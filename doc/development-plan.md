@@ -354,3 +354,20 @@ artifacts. Publication itself remains a separate guarded milestone with
 partial-write recovery and last-known-good version retention. Real
 Let's Encrypt staging registration, due renewal and SAN changes across
 independent runners must precede activating restored Certbot state.
+
+### Phase 4N: exact-byte remote recovery checkpoint (ADR-043)
+
+The local publication candidate now binds its original S3 bucket and
+environment, and a new internal read-only checkpoint retrieves and
+validates the complete previous common/domain collection.
+A successful checkpoint records per-key existence, SHA-256 digests,
+and exact prior object bytes in a private directory. Encrypted
+archives retain their original ciphertext for potential restoration;
+their separate decrypted copies are used only for validation.
+
+A complete absence remains distinct from corrupt or denied state,
+and a missing common account alongside an existing domain remains
+fatal. Tests use only local mock AWS reads across all three standalone
+artifacts; no PutObject call or release is authorized. This prepares
+a later remotely durable publication and partial-failure recovery
+design, but is not itself sufficient after a runner crash.
