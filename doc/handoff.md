@@ -558,3 +558,23 @@ at `examples/github-actions/real-staging-evidence.yml` still needs
 to be deliberately installed and run with reviewed credentials.
 A separate Accepted ADR for live, failure-atomic activation remains
 required under ADR-037 after real evidence is reviewed.
+
+## Phase 4Q: read-only publication and recovery manifest (ADR-046)
+
+The new internal `certbotbot_publication_plan_prepare` consumes a
+complete ADR-042 publication candidate and its matching validated
+ADR-043 previous-S3 checkpoint. It creates a private mode-0600 TSV
+manifest listing common-first keys, exact prior presence, previous
+and proposed SHA-256 digests, and byte lengths. A companion verifier
+rehashes the local manifest and both archived collections, detecting
+changes before any future publisher could act on a stale plan.
+
+The helper performs no S3 writes, Certbot calls, DNS changes, active
+configuration import, or public CLI action. All three standalone
+flavors receive negative tests for local mutation and first-run
+absence. The manifest is a local preparation contract only; a
+future Accepted ADR must define **durable remote generation
+retention and cross-runner partial-write recovery**.
+
+Real Let's Encrypt staging account portability, active import,
+operational issuance and release readiness remain blocked.

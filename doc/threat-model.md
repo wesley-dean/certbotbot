@@ -421,3 +421,19 @@ The same-user workspace threat boundary, real account authenticity,
 cryptographic certificate/SAN validation, and active import
 rollback remain separate safety requirements. The public issuance
 and remote publication gates remain closed.
+
+## Offline proposed/previous publication manifest (ADR-046)
+
+The plan helper pairs a complete validated replacement collection
+with the corresponding confirmed previous S3 collection and rejects
+changes to either local byte set. A private manifest records exact
+common-first keys, old-object existence, new and old SHA-256 hashes,
+and byte lengths; it contains no private filesystem paths or secret
+content. This decreases accidental mixed-collection and stale
+local snapshot risk before an eventual publisher runs.
+
+Checksums are not authenticated against same-user adversaries and
+cannot detect remote changes by another runner. The plan is not a
+durable backup, serialized lock, publication commit marker, or
+authorization to write latest aliases. A separate remote
+generation/rollback protocol remains required under ADR-022.

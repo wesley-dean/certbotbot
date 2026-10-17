@@ -416,3 +416,18 @@ This is preparation-only behavior governed by
 [ADR-045](doc/adr/ADR-045-nonactivating-multilineage-import-candidates.md).
 It does not enable real account reuse or issuance, and ordinary
 certificate requests continue to exit status 69.
+
+## Read-only pre-publication recovery manifest
+
+An internal, non-publishing planning helper pairs a fully verified
+proposed S3 object collection with its validated previous-state
+checkpoint. It creates an owner-private TSV manifest describing
+common-first object keys, existence flags, exact prior/proposed
+SHA-256 digests, and object sizes. The helper detects local
+manifest or object-byte changes, and callers must explicitly
+discard the plan.
+
+This is an **ephemeral local inspection artifact**, not a durable
+remote generation or an atomic S3 transaction. It does not enable
+uploads, active Certbot import, certificate issuance, or releases.
+See [ADR-046](doc/adr/ADR-046-local-prepublication-recovery-manifest.md).
