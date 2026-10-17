@@ -391,3 +391,16 @@ ARI retry scheduling update.  The policy does not authorize account import,
 Certbot execution, or S3 publication; those release gates remain closed.
 
 See [ADR-038](adr/ADR-038-restored-renewal-option-policy.md).
+
+### ADR-039: Typed S3 Retrieval and Private Collection Staging
+
+A producer must distinguish confirmed missing S3 objects from authorization,
+transport, and ambiguous service failures before treating storage as new.
+A bounded, non-activating retrieval operation downloads the common archive and
+selected domain objects into private staging, returns explicit presence flags,
+and rejects any orphaned domain archive without its common account.  Only
+an exact reviewed AWS CLI GetObject NoSuchKey signature confirms absence;
+a generic 404 remains fatal.  Archive validation, account reuse, issuance,
+and publication require separate evidence and remain disabled.
+
+See [ADR-039](adr/ADR-039-typed-s3-state-retrieval.md).

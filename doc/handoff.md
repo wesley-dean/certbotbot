@@ -408,3 +408,21 @@ There is no new runtime dependency.  The additional checks are exercised
 for all three bundled artifacts with negative Bats tests.  Real Let's Encrypt
 staging account registration and authenticated three-run portability remain
 the next major release-blocking milestone.
+
+## Typed S3 collection retrieval (ADR-039)
+
+The internal `certbotbot_s3_stage_collection` operation now retrieves
+`common-latest.tar.gz` and all selected lineage archives into owner-private
+local temporary files, deriving production or staging keys exclusively from
+the selected environment.  The caller receives an ordered path array and
+presence flags.  A valid common archive with absent newly requested domain
+objects is distinguishable from wholly empty storage; an orphaned domain
+without shared account state fails closed.
+
+Only a GetObject NoSuchKey service error is accepted as confirmed absence.
+Authorization problems, generic 404 responses, transport failure, partial
+downloads, and empty files are fatal.  No object bytes are extracted or
+activated by the retrieval boundary; the separately reviewed archive and
+renewal validators remain mandatory.  A caller must discard a successful
+private S3 stage.  Real S3/MinIO interoperability and genuine ACME account
+continuity remain future integration milestones.

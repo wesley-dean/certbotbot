@@ -307,3 +307,14 @@ field is accepted.  This supplements the separate account/environment
 identity and historical-path checks.  It does **not** authenticate the
 restored account against Let's Encrypt, install Certbot state, or enable
 issuance.  Normal certificate requests continue to exit 69.
+
+## Classified S3 state retrieval
+
+An internal, non-activating S3 retrieval module now stages the common account
+archive and selected domain archives in a private workspace.  It distinguishes
+a confirmed missing GetObject key from denied or indeterminate reads and
+refuses a restored lineage when its common account archive is missing.
+A common archive may coexist with missing newly requested domain objects.
+Staged bytes are **not** interpreted as trusted certificates or an
+authenticated account until separate validation.  No public S3 restore or
+issuance workflow is enabled yet; normal requests still return status 69.

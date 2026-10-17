@@ -280,3 +280,21 @@ This guard does not validate account JSON authenticity, demonstrate a
 live ACME account registration, or authorize active Certbot state import.
 Genuine staging account reuse, renewal, and separately reviewed activation
 remain mandatory before exposing the issuer.
+
+## Remote object absence and typed S3 retrieval
+
+ADR-039 introduces private retrieval and classification before a future
+producer considers first registration or account restoration. AWS CLI
+GetObject success must result in a nonempty, privately staged object.
+Only the specific NoSuchKey service signature establishes an absent key;
+a generic 404, AccessDenied, transport error, or incomplete transfer is
+not evidence of a new collection. Partial local files and untrusted service
+diagnostics are discarded without being interpreted as valid archives.
+
+Existing domain objects with missing common state are an inconsistent,
+fatal condition rather than permission to replace their account.
+A missing selected domain is permissible with an existing common account,
+because a new lineage may be explicitly requested. These distinctions
+do not establish ACME account authenticity or a transactionally consistent
+multi-object snapshot; independent writer serialization and the downstream
+archive security checks remain mandatory.
