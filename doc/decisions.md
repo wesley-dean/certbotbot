@@ -527,3 +527,17 @@ stage. This is a **freshness observation**, not an atomic multi-key
 snapshot, distributed lock, or permission to publish latest aliases.
 
 See [ADR-048](adr/ADR-048-remote-latest-drift-preflight.md).
+
+### ADR-049: ETag-Bound Publication Preconditions
+
+A read-only internal operation captures S3 conditional-write predicates
+for each latest object only after revalidating the complete local
+publication plan and fresh remote-state precondition. Existing objects
+must survive a GET conditioned on the service's opaque ETag and match
+their original checkpoint's SHA-256 and size; missing objects retain
+an explicit absent predicate. No partial predicate collection is
+exposed on error, and no AWS mutation occurs. These values can become
+stale immediately and are not a lock, multi-object transaction, or
+authorization to publish certificates.
+
+See [ADR-049](adr/ADR-049-etag-bound-publication-conditions.md).
