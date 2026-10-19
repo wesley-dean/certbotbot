@@ -1,0 +1,103 @@
+---
+# yamllint disable-line rule:truthy
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+name: Versioning
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.ref }}-${{ github.workflow }}"
+  cancel-in-progress: true
+
+jobs:
+  versioning:
+    runs-on: ubuntu-24.04
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Calculate version
+        id: calculate-version
+        uses: bitshifted/git-auto-semver@c4e8f005e839f822325356f141939cf6c76b5701 # v1
+        with:
+          create_tag: false
+          initial_version: 0.0.1
+          tag_prefix: v
+
+      - name: Install system release tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats curl make shellcheck shfmt
+
+      - name: Validate maintained source
+        run: make check
+
+      - name: Synchronize and verify repository dependencies
+        run: |
+          make deps
+          make deps-check
+
+      - name: Build release artifacts and checksums
+        run: |
+          make build VERSION="${{ steps.calculate-version.outputs.version-string }}"
+
+      - name: Validate exact release artifacts
+        run: |
+          make test VERSION="${{ steps.calculate-version.outputs.version-string }}"
+          mapfile -t artifacts < <(find dist -maxdepth 1 -type f -name '*.bash' -perm -u+x -print | sort)
+          test "${#artifacts[@]}" -eq 3
+          for artifact in "${artifacts[@]}"; do
+            bash -n "${artifact}"
+          done
+
+      - name: Validate exact release artifacts with Bash 4.3
+        run: |
+          for artifact in dist/*.bash; do
+            docker run --rm \
+              --env BASH_STARTER_ARTIFACT="/work/${artifact}" \
+              --volume "${GITHUB_WORKSPACE}:/work:ro" \
+              --workdir /work \
+              bash:4.3 \
+              bash tests/compat-bash43.bash
+          done
+
+      - name: Verify checksums
+        run: |
+          cd dist
+          for checksum in *.bash.sha256; do
+            sha256sum -c "${checksum}"
+          done
+
+      - name: Attest release artifacts
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.bash
+            dist/*.bash.sha256
+
+      - name: Create release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          name: "v${{ steps.calculate-version.outputs.version-string }}"
+          tag_name: "v${{ steps.calculate-version.outputs.version-string }}"
+          target_commitish: "${{ github.sha }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/*.bash
+            dist/*.bash.sha256

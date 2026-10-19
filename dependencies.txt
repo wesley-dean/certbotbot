@@ -1,0 +1,12 @@
+# Repository dependencies synchronized by the released vendor/bashdeps.bash bootstrap.
+#
+# bashdeps itself is pinned and verified by the Makefile because a dependency
+# manager cannot use this manifest to obtain its first local copy.  System tools
+# and operating-system packages are intentionally outside this manifest.
+#
+# Keep each dependency on one physical line for compatibility with the pinned
+# bashdeps release.
+
+id=wesley-dean/bash-doxygen@0.0.6 url=https://raw.githubusercontent.com/wesley-dean/bash-doxygen/v0.0.6/doxygen-bash.awk dest=vendor/doxygen-bash.awk digest=sha256:dc09bccac7cdb69940b2b34f0c2a92d862c5979d578364ec66782ac92338a3ea
+id=Zuzzuc/Bash-minifier@9c824e20815a5bca2153ec25ecc02a4edea1430e url=https://raw.githubusercontent.com/Zuzzuc/Bash-minifier/9c824e20815a5bca2153ec25ecc02a4edea1430e/Minify.sh dest=vendor/bash-minifier.bash digest=sha256:93cb422360db4cc410d19b068eb074da020a4a743f0eebc9c442d1e5acd90e9b
+id=wesley-dean/adrctl@0.0.14 url=https://github.com/wesley-dean/adrctl/releases/download/v0.0.14/adrctl.bash dest=vendor/adrctl.bash digest=sha256:2a8efefdabf679528c8d0c62b49515cb67f4eefe079ac3e0d752a4d56f96975a
