@@ -181,3 +181,17 @@ Documentation generation stays offline, graph-free for routine ADR navigation,
 and independent of template runtime and release artifacts.
 
 See [ADR-017](adr/ADR-017-generate-adr-navigation-ephemerally.md).
+
+### ADR-018: Adopt a Verified Released Coding Standards Snapshot
+
+The repository adopts `coding_standards@v2.1.0` as a fully committed,
+externally managed snapshot under `doc/standards/`, with source and
+artifact SHA-256 recorded in `.codingstandardrc`. Applicable general,
+cross-cutting, and language-specific standards are binding unless
+an Accepted project ADR or explicit local policy refines them.
+Standards examples are non-normative, and repository-specific exceptions
+belong in local governance, never in the imported snapshot.
+The historical research under `doc/research/` remains non-governing
+until individual requirements are explicitly approved.
+
+See [ADR-018](adr/ADR-018-adopt-released-coding-standards.md).

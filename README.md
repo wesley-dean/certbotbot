@@ -226,3 +226,23 @@ This project is dedicated to the public domain under CC0 1.0 Universal.  See
 `LICENSE` and `CONTRIBUTING.md` for details, `SUPPORT.md` for ordinary support,
 `SECURITY.md` for vulnerability reporting, and `CODE_OF_CONDUCT.md` for the
 project's expectations for respectful collaboration.
+
+## Project Planning Research and Adopted Standards
+
+The research record from the earlier rebuild lives under
+[`doc/research/`](doc/research/README.md). The previous implementation
+is preserved in [certbotbot-research](https://github.com/wesley-dean/certbotbot-research).
+This new repository is the planning destination for an intentionally small
+one-domain, one-archive Phase 1. The research documents are **draft or
+historical**, not independent implementation authorization. Product scope and
+issue backlog are being finalized separately.
+
+The repository adopts a concrete released snapshot of
+[wesley-dean/coding_standards](https://github.com/wesley-dean/coding_standards)
+under [`doc/standards/`](doc/standards/). The project-root
+[`.codingstandardrc`](.codingstandardrc) pins the release version,
+source, and archive SHA-256 digest. Applicable general, cross-cutting,
+and language-specific standards are governing requirements unless an
+Accepted project-specific ADR or explicit local policy refines them.
+The bundled examples are illustrative. Imported files must not be edited
+locally; project exceptions belong in local governance (ADR-018).

@@ -217,3 +217,23 @@ catch locally correct architectural drift.
 Before releasing a derived project, review repository-facing documentation and
 GitHub templates for stale starter names, unrelated project references, broken
 links, or policies that no longer match the derived project's real contract.
+
+## Released Coding Standards (ADR-018)
+
+The committed `doc/standards/` tree is the externally managed snapshot of the
+released standards declared in `.codingstandardrc`. Before modifying
+repository content, identify and read the applicable standards. General and
+cross-cutting standards apply where relevant; language-specific standards
+apply only to the maintained content in that language. Files under
+`doc/standards/examples/` are illustrative rather than normative unless a
+governing standard explicitly states otherwise.
+
+Applicable standards are governing requirements. Only an Accepted
+repository-specific ADR or explicit local repository policy can refine or
+supersede them. Never quietly disregard a standard or edit the imported
+snapshot to add project-specific exceptions. Changes to the snapshot must
+come from a separately verified released `coding_standards` artifact.
+
+The drafts under `doc/research/` preserve exploratory findings, not
+approved Phase 1 requirements. Engineering work must use the approved product
+backlog and current local governance, consulting research only where relevant.

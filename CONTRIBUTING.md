@@ -15,6 +15,17 @@ Before consequential work, please read:
 - `doc/testing.md` before changing tests or generated artifacts; and
 - `doc/release-verification.md` before changing release behavior.
 
+## Adopted Coding Standards
+
+Before proposing changes, read the applicable documents under
+[`doc/standards/`](doc/standards/) and the relevant local ADRs.
+The concrete release and digest are recorded in `.codingstandardrc`.
+Applicable standards are mandatory unless a repository-specific Accepted
+ADR or explicit local policy refines or supersedes them.
+Imported standards are externally managed and must not be edited locally.
+The `examples/` entries are illustrations, not additional universal
+requirements. See ADR-018.
+
 ## Development Expectations
 
 Prefer focused changes with a clear contract.  Consequential architectural work
