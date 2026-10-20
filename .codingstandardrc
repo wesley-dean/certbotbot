@@ -1,0 +1,5 @@
+source = "https://github.com/wesley-dean/coding_standards.git"
+version = "coding_standards@v2.2.0"
+sha256 = "90a1e4be90c1b1f87d55665034bf6ce129e77d889382da5743536e07370becd5"
+destination = "doc/standards"
+three_phase_development = true

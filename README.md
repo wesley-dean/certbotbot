@@ -226,3 +226,44 @@ This project is dedicated to the public domain under CC0 1.0 Universal.  See
 `LICENSE` and `CONTRIBUTING.md` for details, `SUPPORT.md` for ordinary support,
 `SECURITY.md` for vulnerability reporting, and `CODE_OF_CONDUCT.md` for the
 project's expectations for respectful collaboration.
+
+## Project Planning Research and Adopted Standards
+
+The research record from the earlier rebuild lives under
+[`doc/research/`](doc/research/README.md). The previous implementation
+is preserved in [certbotbot-research](https://github.com/wesley-dean/certbotbot-research).
+This new repository is the planning destination for an intentionally small
+one-domain, one-archive Phase 1. The research documents are **draft or
+historical**, not independent implementation authorization. Product scope and
+issue backlog are being finalized separately.
+
+The repository adopts a concrete released snapshot of
+[wesley-dean/coding_standards](https://github.com/wesley-dean/coding_standards)
+under [`doc/standards/`](doc/standards/). The project-root
+[`.codingstandardrc`](.codingstandardrc) pins the release version,
+source, and archive SHA-256 digest. Applicable general, cross-cutting,
+and language-specific standards are governing requirements unless an
+Accepted project-specific ADR or explicit local policy refines them.
+The bundled examples are illustrative. Imported files must not be edited
+locally; project exceptions belong in local governance (ADR-018).
+
+### Opt-In Three-Phase Development
+
+This repository **explicitly opts in** to the three-phase development
+governance introduced in coding standards v2.2.0, as recorded by
+`three_phase_development = true` in `.codingstandardrc`. The
+[governing standard](doc/standards/general/three-phase-development-governance.md)
+defines separately approved stages:
+
+1. **Project planning:** Product Owner-approved user stories, measurable
+   acceptance criteria, scope, and priorities; Project Manager support.
+2. **Technical planning:** Linked engineering tasks, reviewed ADRs,
+   dependencies, and Technical Architect approval for development.
+3. **Development:** Implement approved tasks, link PRs, and independently
+   verify acceptance criteria before marking stories complete.
+
+GitHub Issues, issue links, milestones, and labels record the backlog
+and handoff between phases. No GitHub Projects board is required.
+An approval label is not itself authorization: recorded, attributable
+human approval is required at the relevant phase boundary.
+Research drafts do not constitute such approval.

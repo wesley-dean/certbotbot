@@ -15,6 +15,29 @@ Before consequential work, please read:
 - `doc/testing.md` before changing tests or generated artifacts; and
 - `doc/release-verification.md` before changing release behavior.
 
+## Adopted Coding Standards
+
+Before proposing changes, read the applicable documents under
+[`doc/standards/`](doc/standards/) and the relevant local ADRs.
+The concrete release and digest are recorded in `.codingstandardrc`.
+Applicable standards are mandatory unless a repository-specific Accepted
+ADR or explicit local policy refines or supersedes them.
+Imported standards are externally managed and must not be edited locally.
+The `examples/` entries are illustrations, not additional universal
+requirements. See ADR-018.
+
+## Opt-In Three-Phase Development
+
+The root `.codingstandardrc` sets `three_phase_development = true`.
+Follow the committed
+`doc/standards/general/three-phase-development-governance.md`.
+Product Owner approval of user stories is required before technical
+planning; Technical Architect approval of the linked technical tasks
+is required before execution. The phases are separately authorized,
+and labels alone do not constitute authorization. Changes to
+approved scope require an attributable human reapproval. Record
+dependencies and verification in GitHub Issues and link PRs to tasks.
+
 ## Development Expectations
 
 Prefer focused changes with a clear contract.  Consequential architectural work
