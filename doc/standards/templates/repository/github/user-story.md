@@ -1,6 +1,6 @@
 ---
 name: User story
-about: Propose product behavior for Product Owner approval
+about: Describe product behavior and acceptance criteria
 title: ""
 labels: "type:story"
 assignees: ""
@@ -12,7 +12,7 @@ As a [role], so that [benefit], I want [capability].
 
 ## Problem and Value
 
-<!-- Explain the product need without prescribing unapproved implementation. -->
+<!-- Explain the product need without prescribing implementation. -->
 
 ## Acceptance Criteria
 
@@ -30,11 +30,7 @@ As a [role], so that [benefit], I want [capability].
 
 ## Related Technical Tasks
 
-<!-- Maintain references to the technical-task issues as approved. -->
+<!-- Maintain references to related technical-task issues. -->
 
 - [ ] #123
 
-## Authorization
-
-<!-- Product Owner approval must be explicitly recorded in an issue comment.
-Do not apply approved based solely on an issue's existence or milestone. -->

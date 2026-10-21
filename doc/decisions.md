@@ -184,8 +184,8 @@ See [ADR-017](adr/ADR-017-generate-adr-navigation-ephemerally.md).
 
 ### ADR-018: Adopt a Verified Released Coding Standards Snapshot
 
-The repository adopts `coding_standards@v2.2.0` as a fully committed,
-externally managed snapshot under `doc/standards/`, with source and
+The repository initially adopted `coding_standards@v2.2.0` as a fully
+committed, externally managed snapshot under `doc/standards/`, with source and
 artifact SHA-256 recorded in `.codingstandardrc`. Applicable general,
 cross-cutting, and language-specific standards are binding unless
 an Accepted project ADR or explicit local policy refines them.
@@ -194,11 +194,24 @@ belong in local governance, never in the imported snapshot.
 The historical research under `doc/research/` remains non-governing
 until individual requirements are explicitly approved.
 
-The project explicitly opts into the v2.2.0 three-phase process using
+The project explicitly opts into three-phase development using
 `three_phase_development = true` in `.codingstandardrc`.
-Project Manager/Product Owner story planning, Technical Architect
-approval of linked tasks, and engineering execution have separate
-authorization boundaries; completion requires verified acceptance.
-Workflow labels are not approval evidence.
+Story planning, Technical Architect approval of linked tasks, and
+engineering execution have separate authorization boundaries;
+completion requires verified acceptance. ADR-019 supersedes ADR-018's
+original approval-evidence rule following the v2.2.1 upgrade.
 
 See [ADR-018](adr/ADR-018-adopt-released-coding-standards.md).
+
+### ADR-019: Treat Current GitHub Approval Labels as Authoritative
+
+With the adoption of `coding_standards@v2.2.1`, each issue's current
+`approved` label is the authoritative and sufficient workflow approval
+for that issue's current scope and phase. The responsible human makes
+the approval decision, and may apply the label or direct an agent to
+apply it to identified issues; a separate dated approval comment is
+not required. The label does not confer repository permissions or waive
+security, accepted ADRs, dependency checks, or PR review gates. Scope
+changes require removal of `approved` and renewed authorization.
+
+See [ADR-019](adr/ADR-019-authoritative-approval-labels.md).

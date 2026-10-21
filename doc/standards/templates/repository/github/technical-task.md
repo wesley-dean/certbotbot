@@ -1,6 +1,6 @@
 ---
 name: Technical task
-about: Propose bounded engineering work for Technical Architect approval
+about: Describe bounded engineering work and verification
 title: ""
 labels: "type:task"
 assignees: ""
@@ -8,8 +8,8 @@ assignees: ""
 
 ## Parent Story or Maintenance Exception
 
-<!-- Reference the parent story, e.g. #123, or document the explicitly approved
-lightweight maintenance exception. -->
+<!-- Reference the parent story, e.g. #123, or describe the bounded maintenance
+work when no parent story applies. -->
 
 ## Technical Objective and Implementation
 
@@ -29,7 +29,3 @@ lightweight maintenance exception. -->
 
 - [ ] ...
 
-## Authorization
-
-<!-- Technical Architect approval must be explicit and scope-specific.
-An approved parent story does not approve this task. -->

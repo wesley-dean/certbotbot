@@ -32,11 +32,16 @@ The root `.codingstandardrc` sets `three_phase_development = true`.
 Follow the committed
 `doc/standards/general/three-phase-development-governance.md`.
 Product Owner approval of user stories is required before technical
-planning; Technical Architect approval of the linked technical tasks
-is required before execution. The phases are separately authorized,
-and labels alone do not constitute authorization. Changes to
-approved scope require an attributable human reapproval. Record
-dependencies and verification in GitHub Issues and link PRs to tasks.
+planning; Technical Architect approval of linked technical tasks is
+required before execution. Under v2.2.1, each issue's current `approved`
+label is authoritative and sufficient for its own phase; a separate
+approval comment is not required. The approval decision must come from
+the authorized human or expressly designated authority, who may apply the
+label or direct an agent to do so for specific issues. Materially changed
+scope requires removing the label and obtaining a fresh decision. The
+label is not a substitute for ADRs, security controls, or PR review.
+Record dependencies and verification in GitHub Issues and link PRs to
+tasks. See ADR-019.
 
 ## Development Expectations
 
