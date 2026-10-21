@@ -255,10 +255,15 @@ before implementation. In Phase 3, the implementer selects actionable
 approved technical tasks, follows dependency/priority rules, submits
 reviewable PRs, and verifies the stories' acceptance criteria separately.
 
-Record phase-specific human authorization in attributable issue
-comments. Do not treat an `approved` label, proposed issue, agent's
-self-assigned role, or approved parent story as implementation approval.
-Materially changed scope requires renewed approval. Newly discovered
-work is unapproved by default, unless it is necessary detail already
-within an approved task. No old research ADR or draft authorizes work
-unless formally adopted in this repository.
+The current live `approved` label on each GitHub issue is the authoritative
+and sufficient record of approval for that issue's scope and phase. A
+`type:story` issue requires Product Owner authorization; a `type:task` issue
+requires Technical Architect authorization. The human authority may apply
+the label directly or explicitly direct an agent to apply it to identified
+issues. No separate approval comment is required. An agent must not decide
+to approve its own proposals, infer approval from silence, or inherit an
+approval from a parent issue. Recheck labels before consequential work.
+Remove `approved` when scope materially changes, and obtain a new decision
+before restoring it. Approval labels do not replace ADR, security, repository
+permission, or PR review requirements. See ADR-019. Historical research
+and drafts do not authorize implementation.

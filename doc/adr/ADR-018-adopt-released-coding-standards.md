@@ -136,6 +136,11 @@ link changes and PRs to tasks, and prove task and story completion
 against their respective definitions of done. A merged PR does
 not itself establish story acceptance.
 
+**Supersession notice (2026-10-21):** The approval-evidence rule in the
+following historical paragraph was superseded by ADR-019 when the
+repository adopted `coding_standards@v2.2.1`. Consult ADR-019 and the
+currently pinned standard for the authoritative approval contract.
+
 The process uses ordinary GitHub Issues, milestones, and labels;
 GitHub Projects is optional and not required. Status labels such
 as `approved` and `in-progress` are indexing aids, not trusted

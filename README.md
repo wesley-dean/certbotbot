@@ -264,6 +264,12 @@ defines separately approved stages:
 
 GitHub Issues, issue links, milestones, and labels record the backlog
 and handoff between phases. No GitHub Projects board is required.
-An approval label is not itself authorization: recorded, attributable
-human approval is required at the relevant phase boundary.
+The current `approved` label is the authoritative and sufficient workflow
+approval record for an individual issue's scope and phase. The Product
+Owner decides story approval, and the Technical Architect decides task
+approval; authorized humans may apply labels or direct agents to do so
+for identified issues. A separate approval comment is not required.
+Approvals do not transfer between issues or phases, and materially changed
+scope must lose its label until reapproved. Agents cannot self-approve.
+Labels do not replace security, ADR, or PR review controls (ADR-019).
 Research drafts do not constitute such approval.
