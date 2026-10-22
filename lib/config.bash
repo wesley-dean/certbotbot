@@ -7,6 +7,10 @@
 ## assignment and overlaid according to the public MVP configuration contract.
 ## Invalid configuration fails before any cloud operation is attempted.
 
+## @var CERTBOTBOT_FILE_VALUES
+## @brief Associative literal values parsed from the selected configuration.
+declare -A CERTBOTBOT_FILE_VALUES=()
+
 ## @fn certbotbot_error()
 ## @brief Reports a non-sensitive configuration error.
 ## @param message Static diagnostic without user-supplied values.
