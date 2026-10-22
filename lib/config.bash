@@ -38,7 +38,8 @@ certbotbot_read_env_file() {
   local -A seen=()
   [[ -f "$file" && -r "$file" ]] || { certbotbot_error 'configuration file is missing or unreadable'; return 64; }
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "${line#"${line%%[![:space:]]*}"}" == \#* ]] && continue
     if [[ ! "$line" =~ ^([A-Z_]+)=(.*)$ ]]; then
       certbotbot_error 'invalid configuration syntax'
       return 64
