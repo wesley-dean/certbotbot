@@ -17,6 +17,7 @@
 ## @retval 1 The DNS name is invalid.
 certbotbot_dns_valid() {
   local name="$1" label
+  [[ "$name" != *. && "$name" != .* && "$name" != *..* ]] || return 1
   [[ "$name" == \*.* ]] && name="${name#\*.}"
   [[ "${#name}" -le 253 && "$name" == *.* && "$name" != *\** ]] || return 1
   [[ "$name" == "${name,,}" ]] || return 1
