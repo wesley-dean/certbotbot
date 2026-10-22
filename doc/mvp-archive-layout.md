@@ -110,3 +110,35 @@ live symlinks and renewal configuration paths must both be accounted
 for, including when installed under a new absolute workspace path.
 
 Reference: https://eff-certbot.readthedocs.io/en/stable/using.html
+
+
+## Header-level format preflight (task #37)
+
+The initial verifier handles ordinary GNU-tar and POSIX ustar headers with
+short effective member names and supported ustar prefix fields. It rejects
+long-name/long-link extension records, PAX headers, sparse records, unknown
+types, invalid checksums, duplicate paths, escaping/unsupported links,
+noncanonical member names, world/group-writable entries, and nonzero trailing
+records. Each archive must contain the two terminal zero blocks. A valid
+archive need not contain any issued lineage; account-only state is supported.
+The verifier limits gzip-expanded bytes to 32 MiB and total members to 2,048.
+
+Member names are restricted to ASCII letters, digits, underscore, hyphen, dot,
+and slash. Relative \`./\` prefixes are accepted for GNU tar's ordinary
+\`tar -czf -C <root> .\` form. Symlinks are accepted only for the standard
+four \`live/<lineage>/*.pem\` paths targeting an existing regular PEM under
+the matching \`archive/<lineage>/\` directory.
+
+Archives requiring GNU LongLink, PAX, GNU sparse or alternate encoding are
+**unsupported and rejected**, even if GNU tar itself can list them. This
+restriction may exclude previously created archives with long ACME account
+paths. Such archives must not be silently rewritten; supporting another format
+requires explicit compatibility fixtures and a reviewed extension to the
+validator. Account directory contents and renewal semantics remain separate
+trust checks before any extraction or Certbot operation.
+
+Successful format preflight does not assert that the external tar extractor is
+safe for arbitrary hostile inputs, that the account is registered, or that
+renewal metadata contains no executable hooks. The public lifecycle must
+continue returning its fail-closed unavailable status until extraction, account
+validation and reversible renewal path mapping have independent evidence.
