@@ -1,57 +1,59 @@
 #!/usr/bin/env bats
 
 setup() {
-  : "${BASH_STARTER_ARTIFACT:?BASH_STARTER_ARTIFACT must identify the artifact under test}"
+  : "${BASH_STARTER_ARTIFACT:?Artifact path required}"
 }
 
-@test "help describes the starter commands" {
+@test "help documents the public certificate interface" {
   run "${BASH_STARTER_ARTIFACT}" --help
-  [ "${status}" -eq 0 ]
-  [[ "${output}" == *"run <plugin> [args]"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--include-subdomains"* ]]
+  [[ "$output" == *"--upload-no-renewal"* ]]
 }
 
-@test "version reports all build provenance fields" {
-  run "${BASH_STARTER_ARTIFACT}" version
-  [ "${status}" -eq 0 ]
-  [[ "${output}" == *"version:"* ]]
-  [[ "${output}" == *"build-date:"* ]]
-  [[ "${output}" == *"build-commit:"* ]]
+@test "version retains release provenance" {
+  run "${BASH_STARTER_ARTIFACT}" --version
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"build-commit:"* ]]
 }
 
-@test "noop plugin is automatically registered exactly once" {
-  run "${BASH_STARTER_ARTIFACT}" plugins
-  [ "${status}" -eq 0 ]
-  [ "${#lines[@]}" -eq 1 ]
-  [[ "${lines[0]}" == $'noop\tReference plugin that performs no operation.' ]]
+@test "missing identity is rejected without external calls" {
+  run env -u DOMAIN "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket
+  [ "$status" -eq 64 ]
 }
 
-@test "noop plugin executes successfully without output" {
-  run "${BASH_STARTER_ARTIFACT}" run noop
-  [ "${status}" -eq 0 ]
-  [ -z "${output}" ]
+@test "multiple identities are rejected without external calls" {
+  run "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket example.com foo.example.com
+  [ "$status" -eq 64 ]
 }
 
-@test "noop plugin accepts arguments without changing observable behavior" {
-  run "${BASH_STARTER_ARTIFACT}" run noop alpha "two words"
-  [ "${status}" -eq 0 ]
-  [ -z "${output}" ]
+@test "malformed wildcard is rejected before lifecycle" {
+  run "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket 'foo.*.example.com'
+  [ "$status" -eq 64 ]
 }
 
-@test "run without a plugin name is rejected before registry lookup" {
-  run "${BASH_STARTER_ARTIFACT}" run
-  [ "${status}" -eq 64 ]
-  [[ "${output}" == *"run requires a plugin name"* ]]
-  [[ "${output}" != *"bad array subscript"* ]]
+@test "a valid identity fails closed until lifecycle exists" {
+  run "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket example.com
+  [ "$status" -eq 69 ]
+  [[ "$output" == *"lifecycle implementation not yet available"* ]]
 }
 
-@test "unknown plugin fails conservatively" {
-  run "${BASH_STARTER_ARTIFACT}" run missing-plugin
-  [ "${status}" -eq 69 ]
-  [[ "${output}" == *"unknown plugin: missing-plugin"* ]]
+@test "explicit false is accepted without a cloud operation" {
+  run env INCLUDE_SUBDOMAINS=true "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket --include-subdomains=false example.com
+  [ "$status" -eq 69 ]
 }
 
-@test "unknown command is rejected" {
-  run "${BASH_STARTER_ARTIFACT}" definitely-not-a-command
-  [ "${status}" -eq 64 ]
-  [[ "${output}" == *"unknown command"* ]]
+@test "invalid boolean is rejected" {
+  run "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket --upload-no-renewal=yes example.com
+  [ "$status" -eq 64 ]
+}
+
+@test "configuration data cannot execute shell substitutions" {
+  local temp
+  temp="$(mktemp -d)"
+  printf 'S3_BUCKET=$(touch %s/compromised)\n' "$temp" > "$temp/.env"
+  run "${BASH_STARTER_ARTIFACT}" --config "$temp/.env" example.com
+  [ "$status" -eq 64 ]
+  [ ! -e "$temp/compromised" ]
+  rm -rf "$temp"
 }
