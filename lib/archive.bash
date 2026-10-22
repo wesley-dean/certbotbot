@@ -33,7 +33,7 @@
 ## certbotbot_archive_validate "$workspace/downloaded.tar.gz" || exit $?
 ## # Do not extract or run Certbot based on format validation alone.
 ## @endcode
-certbotbot_archive_validate() (
+certbotbot_archive_validate() {
   umask 077
   local archive temp decoded length
   if (( $# != 1 )); then
@@ -55,20 +55,21 @@ certbotbot_archive_validate() (
     printf '%s\n' 'certbotbot: private archive staging failed' >&2
     return 65
   }
-  trap 'rm -rf -- "$temp"' EXIT
   decoded="$temp/decoded.tar"
   if ! (set -o pipefail; gzip -cd -- "$archive" 2>/dev/null |
     head -c 33554433 >"$decoded"); then
+    rm -rf -- "$temp"
     printf '%s\n' 'certbotbot: invalid or oversized archive' >&2
     return 65
   fi
-  length="$(wc -c <"$decoded")" || return 65
+  length="$(wc -c <"$decoded")" || { rm -rf -- "$temp"; return 65; }
   if (( length < 1024 || length > 33554432 || length % 512 != 0 )); then
+    rm -rf -- "$temp"
     printf '%s\n' 'certbotbot: invalid archive boundaries' >&2
     return 65
   fi
   if ! (set -o pipefail; LC_ALL=C od -An -v -tu1 -w512 -- "$decoded" |
-    LC_ALL=C awk '
+    LC_ALL=C awk -f /dev/fd/3 3<<'CERTBOTBOT_ARCHIVE_AWK'
     function reject() { invalid=1; exit 1 }
     function field(start,width,  i,x,s,ended) {
       s=""; ended=0
@@ -174,9 +175,12 @@ certbotbot_archive_validate() (
           exit 1
       }
     }
-    '); then
+CERTBOTBOT_ARCHIVE_AWK
+  ); then
+    rm -rf -- "$temp"
     printf '%s\n' 'certbotbot: unsafe or unsupported archive contents' >&2
     return 65
   fi
+  rm -rf -- "$temp"
   return 0
-)
+}
