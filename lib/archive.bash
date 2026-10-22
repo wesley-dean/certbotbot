@@ -197,7 +197,7 @@ certbotbot_archive_validate() {
   fi
   temp="$(umask 077; mktemp -d)" || return 65
   decoded="$temp/data.tar"
-  if ! (set -o pipefail; gzip -cd -- "$archive" 2>/dev/null |
+  if ! (umask 077; set -o pipefail; gzip -cd -- "$archive" 2>/dev/null |
     head -c 33554433 >"$decoded"); then
     rm -rf -- "$temp"
     printf '%s\n' 'certbotbot: invalid or oversized archive' >&2
