@@ -158,14 +158,9 @@ certbotbot_provider_issue() {
       return 74
     fi
   done
-  common=(
-    --config-dir "$config"
-    --work-dir "$work"
-    --logs-dir "$logs"
+  common=(--config-dir "$config" --work-dir "$work" --logs-dir "$logs"
     --server https://acme-v02.api.letsencrypt.org/directory
-    --non-interactive
-    --no-directory-hooks
-  )
+    --non-interactive --no-directory-hooks)
 
   listing="$(umask 077; mktemp "$logs/plugins.XXXXXXXX")" || {
     printf '%s\n' 'certbotbot: private Certbot staging unavailable' >&2
