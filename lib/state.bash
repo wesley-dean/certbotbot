@@ -237,6 +237,8 @@ certbotbot_state_preflight() {
     printf '%s\n' 'certbotbot: restored account or lineage is unsuitable' >&2
     return 65
   fi
+  # The selected state is consumed by the later lifecycle module.
+  # shellcheck disable=SC2034
   CERTBOTBOT_LINEAGE_STATE="$REPLY"
   return 0
 }
