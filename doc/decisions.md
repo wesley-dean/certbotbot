@@ -253,3 +253,17 @@ fallback is implied by a successful S3 read. Format validation and mapping
 require separate implementation evidence before the public lifecycle is enabled.
 
 See [ADR-022](adr/ADR-022-portable-certbot-state-archives.md).
+
+
+### ADR-023: Fail-Closed Preflight of Restored ACME State
+
+Restoring an archive cannot itself establish a registered or suitable ACME
+account. The MVP therefore requires one unambiguous Let's Encrypt production
+account with mandatory files and either no issued certificate lineage or
+exactly the complete selected lineage. Unexpected accounts, conflicting
+lineages, incomplete PEM links, and archived renewal hooks fail closed without
+Certbot or S3 mutations. A successful local preflight is not remote account
+verification and cannot enable issuance until the separate Certbot and renewal
+path-mapping gates have passed.
+
+See [ADR-023](adr/ADR-023-fail-closed-restored-acme-preflight.md).
