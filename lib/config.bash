@@ -34,7 +34,7 @@ certbotbot_error() {
 ## @retval 0 All entries were parsed.
 ## @retval 64 Input was invalid.
 certbotbot_read_env_file() {
-  local file="$1" line key value raw
+  local file="$1" line key value
   local -A seen=()
   [[ -f "$file" && -r "$file" ]] || { certbotbot_error 'configuration file is missing or unreadable'; return 64; }
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -55,7 +55,6 @@ certbotbot_read_env_file() {
       return 64
     fi
     seen[$key]=1
-    raw="$value"
     if [[ "$value" == \"*\" && "${#value}" -ge 2 ]]; then
       value="${value:1:${#value}-2}"
     elif [[ "$value" == \'*\' && "${#value}" -ge 2 ]]; then
@@ -163,7 +162,6 @@ certbotbot_config_resolve() {
   [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
   [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* && "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
 }
-\r'* ]] || { certbotbot_error 'invalid configuration newline'; return 64; }
     CERTBOTBOT_FILE_VALUES["$key"]="$value"
   done < "$file"
 }
