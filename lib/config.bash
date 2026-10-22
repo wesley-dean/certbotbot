@@ -44,7 +44,7 @@ certbotbot_read_env_file() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "${line//[[:space:]]/}" ]] && continue
     [[ "${line#"${line%%[![:space:]]*}"}" == \#* ]] && continue
-    if [[ ! "$line" =~ ^([A-Z_]+)=(.*)$ ]]; then
+    if [[ ! "$line" =~ ^([A-Z0-9_]+)=(.*)$ ]]; then
       certbotbot_error 'invalid configuration syntax'
       return 64
     fi
