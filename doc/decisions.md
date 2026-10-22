@@ -238,3 +238,18 @@ validation, Certbot execution, or authorization to publish. Writer races
 and snapshot consistency remain explicit operational limitations.
 
 See [ADR-021](adr/ADR-021-fail-closed-seeded-s3-read.md).
+
+
+### ADR-022: Portable Certbot State Archives and Isolated Restoration
+
+The MVP stores the relative contents of Certbot's configuration root in one
+ordinary \`.tar.gz\` object and accepts account-only archives before first
+issuance. Certbot's live certificate symlinks are relative, but renewal metadata
+can reference absolute paths; safe independent-runner operation therefore
+requires a verified, reversible mapping between canonical persisted paths and
+private runner paths. Untrusted tar members and executable hook configurations
+must be rejected before activation, and neither archive validation nor host
+fallback is implied by a successful S3 read. Format validation and mapping
+require separate implementation evidence before the public lifecycle is enabled.
+
+See [ADR-022](adr/ADR-022-portable-certbot-state-archives.md).
