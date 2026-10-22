@@ -142,3 +142,36 @@ safe for arbitrary hostile inputs, that the account is registered, or that
 renewal metadata contains no executable hooks. The public lifecycle must
 continue returning its fail-closed unavailable status until extraction, account
 validation and reversible renewal path mapping have independent evidence.
+
+## Inactive restoration interface (task #34)
+
+The restoration adapter has two responsibilities. First, `certbotbot_workspace_create`
+creates and prints an owned, new, absolute directory with mode 0700. It does
+not automatically delete the directory: the lifecycle orchestrator owns cleanup,
+including error and signal paths.
+
+Second, `certbotbot_archive_restore ARCHIVE WORKSPACE` copies the downloaded
+archive into that private workspace, invokes the bounded format validator
+against the copied bytes, and extracts only into a new inactive staging
+directory. GNU tar runs without inherited owner or permission restoration.
+After successful extraction and independent filesystem checks, the adapter
+renames the inactive staging directory to `WORKSPACE/config`.
+
+The existing workspace must be owned by the current user, mode 0700, and
+canonical; symbolic-link aliases and pre-existing `WORKSPACE/config` are
+rejected. Archive bytes are never extracted into `/etc/letsencrypt`, an
+existing Certbot tree, or the caller's workspace root. Failure removes only
+the adapter-owned temporary inputs and staging directories, not the workspace
+itself or any pre-existing configuration.
+
+A successful return indicates that an isolated local directory has been
+prepared from the supported archive subset. It does not assert a registered
+ACME account, trusted renewal settings, supported Certbot hook behavior,
+or successful canonical-path remapping. None of those later trust gates is
+bypassed, and the public certificate lifecycle remains deliberately inactive.
+Post-extraction checks prohibit special filesystem members, unexpected symlink
+placement and unresolved PEM symlinks.
+
+The caller is responsible for deleting its owned workspace once processing
+finishes, including after error or termination. The adapter never sources
+restored shell material, invokes Certbot, uploads to S3, or reports issuance.
