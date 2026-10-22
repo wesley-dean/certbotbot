@@ -6,7 +6,7 @@ Status: implementation contract for approved milestone #1 tasks (#17, #20, #22, 
 
 `certbotbot [options] DNS_NAME` operates on exactly one selected primary DNS
 identity. `--help` and `--version` do not contact external services.
-Exactly one positional identity is required for ordinary operation.
+Exactly one primary identity is required for ordinary operation, supplied either\nas one positional argument or with `--domain`.
 
 Every setting resolves independently, in descending precedence:
 command-line option, explicitly exported environment variable, optional .env
@@ -57,7 +57,7 @@ With `INCLUDE_SUBDOMAINS=true`, add exactly the complementary name:
 `*.example.com` produces the same pair. With false, use only the selected
 literal name. Deduplicate names, and produce deterministic argument order.
 
-An explicit `CERT_NAME` must be a valid non-wildcard identifier composed
+An explicit `CERT_NAME` must be a valid lowercase non-wildcard identifier composed
 of DNS-like ASCII labels. When omitted, choose the shortest textual SAN
 name; break equal-length ties using ASCII lexical order. The chosen name
 is the Certbot lineage identifier, **not** the S3 object key. An existing
@@ -91,3 +91,13 @@ An S3 upload failure cannot guarantee that remote bytes remained unchanged;
 the operator must externally serialize writers and arrange recovery for
 partial or concurrent remote writes. Live AWS/ACME verification belongs
 to milestone #4.
+
+## Integration boundary
+
+This configuration-and-identity PR deliberately stops after validating and
+selecting the requested identity. Successful preflight reaches an explicit
+nonzero (69) lifecycle-unavailable result. The later archive/lifecycle PR must
+integrate the selected values with restored Certbot state, detect established
+lineage conflicts, preserve the intended certificate name across SAN changes,
+and supply mocked end-to-end evidence before any certificate-operation success
+can be reported. A preflight-only test is not evidence that S3 or Certbot works.
