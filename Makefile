@@ -90,6 +90,7 @@ $(DIST_SCRIPT): $(DIST_DEV_SCRIPT)
 $(DIST_MIN_SCRIPT): $(DIST_SCRIPT)
 	@test -f "$(BASH_MINIFIER)" || { printf '%s\n' 'Missing build dependency vendor/bash-minifier.bash; run make deps or make all' >&2; exit 1; }
 	bash "$(BASH_MINIFIER)" -F <"$(DIST_SCRIPT)" >"$@.tmp"
+	@bash -n "$@.tmp" || { printf "%s\n" "Minifier produced invalid Bash" >&2; exit 1; }
 	chmod 0755 "$@.tmp"
 	mv "$@.tmp" "$@"
 
