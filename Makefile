@@ -3,7 +3,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
-PROJECT_NAME ?= template-bash
+PROJECT_NAME ?= certbotbot
 ifneq ($(words $(PROJECT_NAME)),1)
 $(error PROJECT_NAME must be one non-empty whitespace-free word)
 endif
@@ -14,8 +14,8 @@ DIST_MIN_SCRIPT := $(DIST_DIR)/$(PROJECT_NAME).min.bash
 DIST_SCRIPTS := $(DIST_DEV_SCRIPT) $(DIST_SCRIPT) $(DIST_MIN_SCRIPT)
 DIST_CHECKSUMS := $(addsuffix .sha256,$(DIST_SCRIPTS))
 LEGACY_CHECKSUMS := $(addsuffix .256,$(DIST_SCRIPTS))
-CORE_SOURCE_FILES := lib/plugin-registry.bash
-PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash))
+CORE_SOURCE_FILES := lib/config.bash lib/identity.bash
+PLUGIN_SOURCE_FILES :=
 ENTRYPOINT_SOURCE := src/main.bash
 SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(ENTRYPOINT_SOURCE)
 TEST_SCRIPTS := $(sort $(wildcard tests/*.bats))
@@ -90,6 +90,7 @@ $(DIST_SCRIPT): $(DIST_DEV_SCRIPT)
 $(DIST_MIN_SCRIPT): $(DIST_SCRIPT)
 	@test -f "$(BASH_MINIFIER)" || { printf '%s\n' 'Missing build dependency vendor/bash-minifier.bash; run make deps or make all' >&2; exit 1; }
 	bash "$(BASH_MINIFIER)" -F <"$(DIST_SCRIPT)" >"$@.tmp"
+	@bash -n "$@.tmp" || { printf "%s\n" "Minifier produced invalid Bash" >&2; exit 1; }
 	chmod 0755 "$@.tmp"
 	mv "$@.tmp" "$@"
 

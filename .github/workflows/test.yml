@@ -137,7 +137,11 @@ jobs:
           rm -rf vendor
           for artifact in dist/*.bash; do
             "${artifact}" --help >/dev/null
-            "${artifact}" run noop
+            "${artifact}" --version >/dev/null
+            if "${artifact}" --s3-bucket fixture-bucket example.com >/dev/null 2>&1; then
+              printf '%s\n' 'Incomplete MVP lifecycle unexpectedly succeeded' >&2
+              exit 1
+            fi
           done
 
       - name: Fail if Bats failed
