@@ -267,3 +267,18 @@ verification and cannot enable issuance until the separate Certbot and renewal
 path-mapping gates have passed.
 
 See [ADR-023](adr/ADR-023-fail-closed-restored-acme-preflight.md).
+
+
+### ADR-024: Selected-Only Certbot and Route53 Execution Boundary
+
+The first-party provider invokes an operator-installed Certbot and Route53
+authenticator only within private configuration, work, and log directories.
+For a missing selected certificate, it verifies that the installed Certbot
+recognizes the one restored production account before requesting exactly
+the approved SANs with an explicit stable lineage name. No account
+registration, arbitrary archived hook execution, implicit global renewal,
+or host-state fallback is authorized. The provider remains separate from
+public orchestration, post-issuance assertions, and archive publication,
+which each require their own verification gates.
+
+See [ADR-024](adr/ADR-024-selected-only-certbot-route53-provider.md).
