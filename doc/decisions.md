@@ -226,3 +226,15 @@ unchanged operation, and external writer serialization remains the operator's
 responsibility.
 
 See [ADR-020](adr/ADR-020-one-selected-certificate-and-one-durable-archive.md).
+
+### ADR-021: Fail-Closed Read of the Seeded S3 Archive
+
+The S3 adapter reads only the configured existing bucket/key into a private
+workspace, using an installed AWS CLI v2 and the operator's existing IAM
+credentials. A HeadObject 404 must be corroborated with a successful
+HeadBucket check before reporting a missing seeded object; all ambiguous
+errors fail closed. Successful download is a staging result, not archive
+validation, Certbot execution, or authorization to publish. Writer races
+and snapshot consistency remain explicit operational limitations.
+
+See [ADR-021](adr/ADR-021-fail-closed-seeded-s3-read.md).
