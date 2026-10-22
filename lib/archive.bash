@@ -68,8 +68,7 @@ certbotbot_archive_validate() {
     printf '%s\n' 'certbotbot: invalid archive boundaries' >&2
     return 65
   fi
-  if ! (set -o pipefail; LC_ALL=C od -An -v -tu1 -w512 -- "$decoded" |
-    LC_ALL=C awk -f /dev/fd/3 3<<'CERTBOTBOT_ARCHIVE_AWK'
+  cat >"$temp/validator.awk" <<'CERTBOTBOT_ARCHIVE_AWK'
     function reject() { invalid=1; exit 1 }
     function field(start,width,  i,x,s,ended) {
       s=""; ended=0
@@ -176,7 +175,8 @@ certbotbot_archive_validate() {
       }
     }
 CERTBOTBOT_ARCHIVE_AWK
-  ); then
+  if ! (set -o pipefail; LC_ALL=C od -An -v -tu1 -w512 -- "$decoded" |
+    LC_ALL=C awk -f "$temp/validator.awk"); then
     rm -rf -- "$temp"
     printf '%s\n' 'certbotbot: unsafe or unsupported archive contents' >&2
     return 65
