@@ -215,3 +215,14 @@ security, accepted ADRs, dependency checks, or PR review gates. Scope
 changes require removal of `approved` and renewed authorization.
 
 See [ADR-019](adr/ADR-019-authoritative-approval-labels.md).
+
+### ADR-020: One Selected Certificate and One Durable Archive
+
+The MVP selects one DNS identity, resolves an explicit or deterministic certificate
+lineage name, and restores a required seeded account from one existing S3 archive.
+Configuration files are literal data and never executed. Durable changes cause
+validated publication; an explicit upload override may republish a successful
+unchanged operation, and external writer serialization remains the operator's
+responsibility.
+
+See [ADR-020](adr/ADR-020-one-selected-certificate-and-one-durable-archive.md).
