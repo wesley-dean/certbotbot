@@ -17,7 +17,7 @@ teardown() {
     cd "$1"
     S3_BUCKET=from-environment
     export S3_BUCKET
-    certbotbot_config_resolve --config "$2" --s3-bucket from-cli --domain cli.example
+    certbotbot_config_resolve --config "$2" --s3-bucket from-cli --domain cli.example || exit $?
     printf "%s|%s|%s" "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_DOMAIN" "$CERTBOTBOT_S3_KEY"
   ' _ "$TEST_CONFIG_DIR" "$TEST_CONFIG_DIR/chosen"
   if [ "$status" -ne 0 ] || [ "$output" != 'from-cli|cli.example|latest.tar.gz' ]; then
@@ -32,8 +32,8 @@ teardown() {
     source lib/config.bash
     source lib/identity.bash
     cd "$1"
-    certbotbot_config_resolve --include-subdomains false
-    certbotbot_identity_resolve
+    certbotbot_config_resolve --include-subdomains false || exit $?
+    certbotbot_identity_resolve || exit $?
     printf "%s|%s|%s|%s" "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_INCLUDE_SUBDOMAINS" "$CERTBOTBOT_CERT_NAME" "${CERTBOTBOT_SANS[*]}"
   ' _ "$TEST_CONFIG_DIR"
   if [ "$status" -ne 0 ] || [ "$output" != 'bucket with spaces|false|example.com|example.com' ]; then
