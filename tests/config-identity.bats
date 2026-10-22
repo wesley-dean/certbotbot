@@ -20,8 +20,10 @@ teardown() {
     certbotbot_config_resolve --config "$2" --s3-bucket from-cli --domain cli.example
     printf "%s|%s|%s" "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_DOMAIN" "$CERTBOTBOT_S3_KEY"
   ' _ "$TEST_CONFIG_DIR" "$TEST_CONFIG_DIR/chosen"
-  [ "$status" -eq 0 ]
-  [ "$output" = 'from-cli|cli.example|latest.tar.gz' ]
+  if [ "$status" -ne 0 ] || [ "$output" != 'from-cli|cli.example|latest.tar.gz' ]; then
+    printf 'precedence: status=%s output=%s\n' "$status" "$output" >&3
+    return 1
+  fi
 }
 
 @test "literal .env values and explicit false survive resolution" {
@@ -34,8 +36,10 @@ teardown() {
     certbotbot_identity_resolve
     printf "%s|%s|%s|%s" "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_INCLUDE_SUBDOMAINS" "$CERTBOTBOT_CERT_NAME" "${CERTBOTBOT_SANS[*]}"
   ' _ "$TEST_CONFIG_DIR"
-  [ "$status" -eq 0 ]
-  [ "$output" = 'bucket with spaces|false|example.com|example.com' ]
+  if [ "$status" -ne 0 ] || [ "$output" != 'bucket with spaces|false|example.com|example.com' ]; then
+    printf 'literal file: status=%s output=%s\n' "$status" "$output" >&3
+    return 1
+  fi
 }
 
 @test "wildcard and apex inputs select the same shortest lineage name" {
