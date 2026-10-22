@@ -200,3 +200,30 @@ issue() {
   run "$BASH_STARTER_ARTIFACT" --s3-bucket seeded-bucket example.com
   [ "$status" -eq 69 ]
 }
+
+
+@test "explicit stable cert name is independent of the requested DNS SAN" {
+  issue custom.example.com example.com
+  [ "$status" -eq 0 ]
+  grep -Fq '<--cert-name> <custom.example.com>' "$CERTBOT_PROVIDER_MOCK_LOG"
+  grep -Fq '<-d> <example.com>' "$CERTBOT_PROVIDER_MOCK_LOG"
+  ! grep -Fq '<-d> <custom.example.com>' "$CERTBOT_PROVIDER_MOCK_LOG"
+}
+
+@test "existing complete selected lineage is refused before provider execution" {
+  local part
+  mkdir -p "$WORKSPACE/config/live/example.com"
+  mkdir -p "$WORKSPACE/config/archive/example.com"
+  mkdir -p "$WORKSPACE/config/renewal"
+  for part in cert chain fullchain privkey; do
+    printf 'fixture-%s\n' "$part" >"$WORKSPACE/config/archive/example.com/${part}1.pem"
+    ln -s "../../archive/example.com/${part}1.pem" \
+      "$WORKSPACE/config/live/example.com/$part.pem"
+  done
+  printf 'archive_dir = /etc/letsencrypt/archive/example.com\n' \
+    >"$WORKSPACE/config/renewal/example.com.conf"
+  chmod 600 "$WORKSPACE/config/renewal/example.com.conf"
+  issue example.com example.com
+  [ "$status" -eq 65 ]
+  [ ! -e "$CERTBOT_PROVIDER_MOCK_LOG" ]
+}
