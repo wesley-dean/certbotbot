@@ -90,7 +90,7 @@ certbotbot_provider_sans() {
 ## @endcode
 certbotbot_provider_issue() {
   local workspace selected config physical work logs directory account=''
-  local entry listing status
+  local entry listing
   local -a common=() domains=()
   if (( $# < 3 )); then
     printf '%s\n' 'certbotbot: invalid selected issuance arguments' >&2
