@@ -67,7 +67,7 @@ certbotbot_read_env_file() {
       certbotbot_error 'invalid configuration value syntax'
       return 64
     fi
-    [[ "$raw" != *
+    CERTBOTBOT_FILE_VALUES["$key"]="$value"
   done < "$file"
 }
 
@@ -161,94 +161,4 @@ certbotbot_config_resolve() {
   [[ -n "$CERTBOTBOT_DOMAIN" ]] || { certbotbot_error 'DNS identity is required'; return 64; }
   [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
   [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* && "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
-}
-    CERTBOTBOT_FILE_VALUES["$key"]="$value"
-  done < "$file"
-}
-
-## @fn certbotbot_config_resolve()
-## @brief Resolves each supported key using CLI, environment, file and defaults.
-## @param ... Command-line arguments including one DNS identity.
-## @par STDIN
-## Nothing is read from STDIN.
-## @par STDOUT
-## Nothing is written to STDOUT.
-## @par STDERR
-## Static validation diagnostics.
-## @retval 0 Effective settings were resolved.
-## @retval 64 Invalid settings or arguments.
-certbotbot_config_resolve() {
-  local name key value arg config_file='' explicit_config=false
-  local -a args=("$@")
-  local -A cli=()
-  CERTBOTBOT_FILE_VALUES=()
-  local -i i=0
-  while (( i < ${#args[@]} )); do
-    arg="${args[i]}"
-    case "$arg" in
-      --config|--domain|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--upload-no-renewal)
-        (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
-        value="${args[i+1]}"
-        (( i+=2 ))
-        ;;
-      --config=*|--domain=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--upload-no-renewal=*)
-        value="${arg#*=}"
-        arg="${arg%%=*}"
-        (( i+=1 ))
-        ;;
-      --)
-        (( i+=1 ))
-        while (( i < ${#args[@]} )); do
-          [[ -z "${cli[DOMAIN]+x}" ]] || { certbotbot_error 'multiple identities'; return 64; }
-          cli[DOMAIN]="${args[i]}"
-          (( i+=1 ))
-        done
-        break
-        ;;
-      -*)
-        certbotbot_error 'unknown option'
-        return 64
-        ;;
-      *)
-        [[ -z "${cli[DOMAIN]+x}" ]] || { certbotbot_error 'multiple identities'; return 64; }
-        cli[DOMAIN]="$arg"
-        (( i+=1 ))
-        continue
-        ;;
-    esac
-    case "$arg" in
-      --config) config_file="$value"; explicit_config=true ;;
-      --domain) key=DOMAIN ;;
-      --include-subdomains) key=INCLUDE_SUBDOMAINS ;;
-      --cert-name) key=CERT_NAME ;;
-      --s3-bucket) key=S3_BUCKET ;;
-      --s3-key) key=S3_KEY ;;
-      --upload-no-renewal) key=UPLOAD_NO_RENEWAL ;;
-    esac
-    if [[ "$arg" != --config ]]; then
-      [[ -z "${cli[$key]+x}" ]] || { certbotbot_error 'duplicate option'; return 64; }
-      cli[$key]="$value"
-    fi
-  done
-  if [[ "$explicit_config" == false && -f .env ]]; then config_file=.env; fi
-  if [[ -n "$config_file" ]]; then
-    certbotbot_read_env_file "$config_file" || return 64
-  elif [[ "$explicit_config" == true ]]; then
-    certbotbot_error 'configuration file is missing'
-    return 64
-  fi
-  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [S3_KEY]=latest.tar.gz [UPLOAD_NO_RENEWAL]=false)
-  for name in DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET S3_KEY UPLOAD_NO_RENEWAL; do
-    value="${defaults[$name]}"
-    if [[ -n "${CERTBOTBOT_FILE_VALUES[$name]+x}" ]]; then value="${CERTBOTBOT_FILE_VALUES[$name]}"; fi
-    if [[ -n "${!name+x}" ]]; then value="${!name}"; fi
-    if [[ -n "${cli[$name]+x}" ]]; then value="${cli[$name]}"; fi
-    printf -v "CERTBOTBOT_$name" '%s' "$value"
-  done
-  for name in INCLUDE_SUBDOMAINS UPLOAD_NO_RENEWAL; do
-    key="CERTBOTBOT_$name"
-    case "${!key}" in true|false) ;; *) certbotbot_error 'invalid boolean setting'; return 64 ;; esac
-  done
-  [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
-  [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
 }
