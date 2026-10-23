@@ -11,7 +11,12 @@
 ##
 ## Before PutObject it requires private canonical state and invokes the
 ## existing candidate archive builder itself. No arbitrary provided file
-## may bypass validation. AWS CLI v2 is inherited from the operator's
+## may bypass validation. Certificate renewal and durable-state changes are
+## distinct: changed=true requires publication even if Certbot issued no new
+## leaf. When changed=false, a successful unchanged no-op publishes only if
+## the explicit override is true.
+## The normative product truth table is in
+## doc/mvp-upload-no-renewal-policy.md. AWS CLI v2 is inherited from the operator's
 ## environment; command output is suppressed. Failed PutObject leaves remote
 ## state unknown, not necessarily unchanged. The caller owns cleanup and
 ## externally serialized S3 writers. Mocked before/after remote digest and
