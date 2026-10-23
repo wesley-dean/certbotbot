@@ -92,25 +92,13 @@ the operator must externally serialize writers and arrange recovery for
 partial or concurrent remote writes. Live AWS/ACME verification belongs
 to milestone #4.
 
-## Integration boundary
+## Public lifecycle integration
 
-This configuration-and-identity PR deliberately stops after validating and
-selecting the requested identity. Successful preflight reaches an explicit
-nonzero (69) lifecycle-unavailable result. The later archive/lifecycle PR must
-integrate the selected values with restored Certbot state, detect established
-lineage conflicts, preserve the intended certificate name across SAN changes,
-and supply mocked end-to-end evidence before any certificate-operation success
-can be reported. A preflight-only test is not evidence that S3 or Certbot works.
-
-
-## Publisher implementation boundary
-
-The independently testable `certbotbot_s3_publish` adapter defined
-under ADR-028 applies the truth table above to the already selected
-bucket/key and complete private account/lineage state. Its caller
-must still establish successful Certbot processing and independent
-certificate/key usability before calling it, and task #27 must
-prove that public retrieval and publication resolve to the exact
-same key. A provider or packaging failure cannot authorize a
-PutObject. The public entrypoint remains fail-closed until this
-integration and mocked cross-runner evidence are in place.
+The command's configuration preflight now delegates to the five-step
+selected-certificate lifecycle in [mvp-public-lifecycle.md](mvp-public-lifecycle.md)
+and ADR-029. A valid ordinary invocation can contact installed Certbot,
+Route53/Let's Encrypt and Amazon S3. It never creates a missing account,
+archive, bucket or second certificate lineage. Failed stages return
+nonzero; only locally verified certificate material can reach the
+single-key publisher. Default no-op and UPLOAD_NO_RENEWAL behavior use
+the table above. The tests use mock external services, not real accounts.
