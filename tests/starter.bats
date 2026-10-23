@@ -2,6 +2,15 @@
 
 setup() {
   : "${BASH_STARTER_ARTIFACT:?Artifact path required}"
+  STUB_AWS_DIR="$(mktemp -d)"
+  printf '#!/usr/bin/env bash\nexit 99\n' >"$STUB_AWS_DIR/aws"
+  chmod 755 "$STUB_AWS_DIR/aws"
+  PATH="$STUB_AWS_DIR:$PATH"
+  export PATH
+}
+
+teardown() {
+  rm -rf -- "$STUB_AWS_DIR"
 }
 
 @test "help documents the public certificate interface" {
@@ -32,10 +41,10 @@ setup() {
   [ "$status" -eq 64 ]
 }
 
-@test "a valid identity fails closed until lifecycle exists" {
+@test "a valid identity fails when seeded S3 cannot be inspected" {
   run "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket example.com
   [ "$status" -eq 69 ]
-  [[ "$output" == *"lifecycle implementation not yet available"* ]]
+  [[ "$output" == *"S3 object cannot be inspected safely"* ]]
 }
 
 @test "explicit false is accepted without a cloud operation" {
