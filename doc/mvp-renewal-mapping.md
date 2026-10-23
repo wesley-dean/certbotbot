@@ -9,7 +9,7 @@ archive must remain directly installable under conventional
 
 ## Interface and sequence
 
-`certbotbot_renewal_map CONFIG_DIR CERT_NAME prepare|finalize` operates on
+`certbotbot_renewal_map CONFIG_DIR CERT_NAME prepare|finalize|verify` operates on
 the selected `CONFIG_DIR/renewal/CERT_NAME.conf` only.  The caller has
 already restored and locally validated one selected lineage with
 `certbotbot_state_preflight`; an account-only archive with an absent
@@ -73,3 +73,12 @@ and no remote or host side effects.  No live ACME accounts are contacted.
 
 Certbot's documentation discourages manual renewal-configuration changes:
 https://eff-certbot.readthedocs.io/en/stable/using.html
+
+## Read-only canonical check
+
+`certbotbot_renewal_map CONFIG_DIR CERT_NAME verify` reuses the same strict
+renewal configuration parser and requires its five canonical
+`/etc/letsencrypt` values. It performs no file replacement, returns
+zero only for the supported metadata dialect, and is required by the
+candidate archive builder before packaging. See ADR-027. `prepare` and
+`finalize` retain their existing mapping semantics.
