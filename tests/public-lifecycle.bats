@@ -37,11 +37,43 @@ printf 'aws:%s:%s:%s\n' "$action" "$bucket" "$key" >>"$LIFECYCLE_CALLS"
 [[ "$action" == head-bucket || "$key" == "$LIFECYCLE_EXPECTED_KEY" ]] || exit 99
 case "$action" in
   head-object)
-    [[ "$LIFECYCLE_MODE" == head-failure ]] && exit 9
+    case "$LIFECYCLE_MODE" in
+      head-failure) exit 9 ;;
+      head-denied)
+        printf '%s\n' 'An error occurred (403), private-token-DO-NOT-LOG' >&2
+        exit 9
+        ;;
+      head-service)
+        printf '%s\n' 'An error occurred (500)' >&2
+        exit 9
+        ;;
+      head-transport)
+        printf '%s\n' 'Connect timeout on endpoint URL' >&2
+        exit 9
+        ;;
+      head-ambiguous-missing)
+        printf '%s\n' 'An error occurred (404)' >&2
+        exit 9
+        ;;
+    esac
     [[ -f "$LIFECYCLE_REMOTE" ]] || { printf '(404)\n' >&2; exit 1; }
     ;;
   get-object)
-    [[ "$LIFECYCLE_MODE" == get-failure ]] && exit 9
+    case "$LIFECYCLE_MODE" in
+      get-failure) exit 9 ;;
+      get-partial)
+        printf '%s\n' 'incomplete local download' >"$target"
+        exit 9
+        ;;
+      get-empty)
+        : >"$target"
+        exit 0
+        ;;
+      get-corrupt)
+        printf '%s\n' 'corrupt gzip data, not an archive' >"$target"
+        exit 0
+        ;;
+    esac
     cp "$LIFECYCLE_REMOTE" "$target" || exit 9
     ;;
   put-object)
@@ -51,7 +83,10 @@ case "$action" in
     [[ "$LIFECYCLE_MODE" == put-after-write-failure ]] && exit 9
     exit 0
     ;;
-  head-bucket) : ;;
+  head-bucket)
+    [[ "$LIFECYCLE_MODE" == head-ambiguous-missing ]] && exit 9
+    exit 0
+    ;;
   *) exit 99 ;;
 esac
 MOCK
@@ -143,6 +178,13 @@ execute() {
   local runner="${LIFECYCLE_RUNNER_TMPDIR:-$ROOT/runner-temp}"
   run env TMPDIR="$runner" "$BASH_STARTER_ARTIFACT" \
     --s3-bucket fixture-bucket "$@" example.com
+}
+
+execute_domain() {
+  local domain="$1" runner="${LIFECYCLE_RUNNER_TMPDIR:-$ROOT/runner-temp}"
+  shift
+  run env TMPDIR="$runner" "$BASH_STARTER_ARTIFACT" \
+    --s3-bucket fixture-bucket "$@" "$domain"
 }
 
 @test "seeded first issuance publishes one same-key archive" {
@@ -430,4 +472,133 @@ MOCK
   ! grep -Fq "$ROOT/runner-b" "$ROOT/inspected/renewal/example.com.conf"
   ! grep -Fq "$ROOT/runner-c" "$ROOT/inspected/renewal/example.com.conf"
   ! cmp -s "$ROOT/first-published.tar.gz" "$LIFECYCLE_REMOTE"
+}
+
+# Local checks intentionally inspect the mock's authoritative object and calls.
+# They do not infer safety solely from a nonzero process exit.
+assert_failed_fetch_is_nondestructive() {
+  [ -f "$LIFECYCLE_CALLS" ]
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/remote-before.tar.gz"
+  [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+  [[ "$output" != *"published=true"* ]]
+}
+
+@test "missing S3 key is fatal for both apex and wildcard selections" {
+  rm -f "$LIFECYCLE_REMOTE"
+  for domain in example.com '*.example.com'; do
+    : >"$LIFECYCLE_CALLS"
+    execute_domain "$domain"
+    [ "$status" -eq 66 ]
+    [[ "$output" == *"existing S3 archive was not found"* ]]
+    [ "$(grep -c '^aws:head-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+    [ "$(grep -c '^aws:head-bucket:' "$LIFECYCLE_CALLS")" -eq 1 ]
+    ! grep -q '^aws:get-object:' "$LIFECYCLE_CALLS"
+    ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+    ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+    [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+  done
+}
+
+@test "ambiguous HeadObject 404 plus failing HeadBucket is never missing state" {
+  cp "$LIFECYCLE_REMOTE" "$ROOT/remote-before.tar.gz"
+  export LIFECYCLE_MODE=head-ambiguous-missing
+  execute
+  [ "$status" -eq 69 ]
+  [[ "$output" == *"S3 object cannot be inspected safely"* ]]
+  [ "$(grep -c '^aws:head-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:head-bucket:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^aws:get-object:' "$LIFECYCLE_CALLS"
+  assert_failed_fetch_is_nondestructive
+}
+
+@test "S3 permission denial, service error and transport failure do not bootstrap" {
+  local scenario
+  cp "$LIFECYCLE_REMOTE" "$ROOT/remote-before.tar.gz"
+  for scenario in head-denied head-service head-transport; do
+    : >"$LIFECYCLE_CALLS"
+    export LIFECYCLE_MODE="$scenario"
+    execute
+    [ "$status" -eq 69 ]
+    [[ "$output" == *"S3 object cannot be inspected safely"* ]]
+    [[ "$output" != *"private-token-DO-NOT-LOG"* ]]
+    [[ "$output" != *"Connect timeout on endpoint URL"* ]]
+    [ "$(grep -c '^aws:head-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+    ! grep -q '^aws:head-bucket:' "$LIFECYCLE_CALLS"
+    ! grep -q '^aws:get-object:' "$LIFECYCLE_CALLS"
+    assert_failed_fetch_is_nondestructive
+  done
+}
+
+@test "partial and zero-byte GetObject downloads never activate staged state" {
+  local scenario
+  cp "$LIFECYCLE_REMOTE" "$ROOT/remote-before.tar.gz"
+  for scenario in get-partial get-empty; do
+    : >"$LIFECYCLE_CALLS"
+    export LIFECYCLE_MODE="$scenario"
+    execute
+    [ "$status" -eq 74 ]
+    [[ "$output" == *"S3 archive"* ]]
+    [ "$(grep -c '^aws:head-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+    [ "$(grep -c '^aws:get-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+    assert_failed_fetch_is_nondestructive
+  done
+}
+
+@test "successful GetObject returning corrupted gzip is rejected before Certbot" {
+  cp "$LIFECYCLE_REMOTE" "$ROOT/remote-before.tar.gz"
+  export LIFECYCLE_MODE=get-corrupt
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^aws:get-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_failed_fetch_is_nondestructive
+}
+
+@test "missing seeded ACME account key cannot trigger new registration or issuance" {
+  rm -f "$ROOT/seed/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/seed" .
+  cp "$LIFECYCLE_REMOTE" "$ROOT/remote-before.tar.gz"
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^aws:get-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_failed_fetch_is_nondestructive
+}
+
+@test "archive with incompatible staging account fails without selecting local identity" {
+  mv "$ROOT/seed/accounts/acme-v02.api.letsencrypt.org" \
+    "$ROOT/seed/accounts/acme-staging-v02.api.letsencrypt.org"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/seed" .
+  cp "$LIFECYCLE_REMOTE" "$ROOT/remote-before.tar.gz"
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^aws:get-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_failed_fetch_is_nondestructive
+}
+
+@test "foreign renewal lineage in existing archive fails before invoking Certbot" {
+  execute
+  [ "$status" -eq 0 ]
+  : >"$LIFECYCLE_CALLS"
+  mkdir -m 700 "$ROOT/altered-state"
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/altered-state"
+  mv "$ROOT/altered-state/renewal/example.com.conf" \
+    "$ROOT/altered-state/renewal/foreign.example.com.conf"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/altered-state" .
+  cp "$LIFECYCLE_REMOTE" "$ROOT/remote-before.tar.gz"
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^aws:get-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_failed_fetch_is_nondestructive
+}
+
+@test "valid seeded archive allows wildcard input without creating another lineage" {
+  execute_domain '*.example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fq './renewal/example.com.conf'
+  ! tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fq './renewal/*.example.com.conf'
 }
