@@ -37,7 +37,10 @@ certbotbot_renew_sans_match() {
   command -v openssl >/dev/null 2>&1 || return 1
   output="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null)" ||
     return 1
-  [[ "$output" == *
+  [[ "$output" == *$'\n'* ]] || return 1
+  line="${output%%$'\n'*}"
+  [[ "$line" =~ ^X509v3[[:space:]]Subject[[:space:]]Alternative[[:space:]]Name:[[:blank:]]*$ ]] || return 1
+  line="${output#*$'\n'}"
   [[ "$line" != *$'\n'* ]] || return 1
   IFS=, read -r -a parts <<< "$line"
   (( ${#parts[@]} >= 1 && ${#parts[@]} <= 2 )) || return 1
