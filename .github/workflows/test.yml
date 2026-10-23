@@ -121,6 +121,12 @@ jobs:
         continue-on-error: true
         run: make test-report
 
+      - name: Diagnose mocked public lifecycle on Bats failure
+        if: steps.bats.outcome == 'failure'
+        run: |
+          BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
+            bats --formatter tap tests/public-lifecycle.bats
+
       - name: Publish Bats test results
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
         if: always()
