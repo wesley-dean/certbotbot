@@ -40,14 +40,13 @@ captured privately and not repeated to the operator. Failure never
 attempts a remote upload or local host-account fallback. The adapter
 does not claim a remote atomic snapshot between HEAD and GET.
 
-## Integration gate
+## Public lifecycle integration
 
-This PR provides the read boundary and isolated component tests. The
-public executable continues to fail explicitly at its unimplemented
-lifecycle boundary (status 69). Task #29 will bind this adapter to a
-private Certbot workspace and safe archive extraction. Nothing in this
-PR makes ordinary `certbotbot example.com` perform live cloud operations.
-
+The public command now uses this read adapter before any Certbot
+operation and aborts on confirmed missing or unsafe seeded state.
+The full mocked workflow, including publication to the identical
+bucket/key, is specified in
+[mvp-public-lifecycle.md](mvp-public-lifecycle.md).
 
 ## Matching publication boundary
 
