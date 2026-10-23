@@ -136,10 +136,12 @@ certbotbot_verify_material() {
 ## @fn certbotbot_lifecycle_execute()
 ## @brief Runs exactly one seeded-archive selected-certificate lifecycle.
 ## @details
-## Runs in a subshell to keep private state, trap handlers and module result
-## variables from escaping into callers.  Input identity and S3 parameters
-## have already been validated.  The workspace is newly allocated and removed
-## by EXIT trap on every success and failure, including handled signals.
+## Runs as a conventional Bash function so the pinned release minifier can
+## serialize it safely.  The public executable invokes it only after resolving
+## identity and S3 parameters, then exits.  Its process-level EXIT trap owns
+## cleanup of the freshly allocated workspace on every exit or failure,
+## including handled termination signals.  This function is not a sourced
+## library API: callers must not rely on preserving their EXIT trap.
 ##
 ## Missing or unsafe S3 state never triggers account registration or host
 ## fallback.  An absent selected lineage is issued using the restored account;
@@ -162,7 +164,7 @@ certbotbot_verify_material() {
 ## @retval 69 Required external provider or S3 service is unavailable.
 ## @retval 74 Local staging, Certbot or S3 transfer failed.
 ## @note The exact nonzero stage status is propagated unchanged.
-certbotbot_lifecycle_execute() (
+certbotbot_lifecycle_execute() {
   local workspace='' config account_dir account_before='' entry
   local changed='' outcome=''
   workspace="$(certbotbot_workspace_create)" || return $?
@@ -223,7 +225,7 @@ certbotbot_lifecycle_execute() (
 
   printf 'certbotbot: %s %s; s3://%s/%s; published=%s\n'     "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET"     "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED"
   return 0
-)
+}
 
 ## @fn certbotbot_main()
 ## @brief Validates the public invocation and dispatches the MVP lifecycle.
