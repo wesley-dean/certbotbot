@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file lib/reconcile.bash
-## @brief Reconciles the selected Certbot lineage's apex/wildcard SAN policy.
+## @brief Reconciles an existing selected lineage's validated DNS SAN set.
 ## @details
-## Implements ADR-026 without activating public S3 publication. The
-## existing-lineage dispatcher uses ordinary renewal when the desired
-## SAN set already matches. A controlled different same-apex set uses
-## certonly --cert-name --renew-with-new-domains. All work remains in the
+## Implements ADR-029's expansion of ADR-026 without public S3 publication.
+## The dispatcher uses ordinary renewal when desired SANs already match.
+## Valid but different SAN sets, including unrelated DNS zones, use selected
+## certonly --cert-name --renew-with-new-domains. Malformed existing SANs
+## must fail before launching Certbot. All work remains in the
 ## caller's disposable private workspace, using the previously restored
 ## account; failures must never authorize a remote archive write.
 
@@ -15,12 +16,12 @@
 ## @details
 ## An unchanged exact leaf DNS SAN set follows certbotbot_provider_renew
 ## and retains Certbot's ordinary renewal/no-op behavior. Any mismatch
-## follows certbotbot_provider_reconcile, which separately checks whether
-## the original and desired SANs share the same apex/wildcard policy.
+## follows certbotbot_provider_reconcile only after the restored leaf's
+## existing SAN extension is strictly parsed; invalid state is not SAN drift.
 ## The public executable remains unavailable until full lifecycle gating.
 ## @param workspace Private restored mode-0700 workspace path.
 ## @param selected Explicit stable non-wildcard Certbot certificate name.
-## @param ... One or two exact desired literal DNS SANs.
+## @param ... One to 100 distinct canonical desired DNS SANs.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT
@@ -64,6 +65,12 @@ certbotbot_provider_existing() {
     printf '%s\n' 'certbotbot: selected lineage is unsuitable' >&2
     return 65
   fi
+  # A malformed, duplicate or non-DNS restored SAN set is never ordinary
+  # reconciliation drift. Prove it is structurally supported before routing.
+  if ! certbotbot_renew_sans_read "$workspace/config/live/$selected/cert.pem"; then
+    printf '%s\n' 'certbotbot: selected certificate SAN extension is unsafe' >&2
+    return 65
+  fi
   if certbotbot_renew_sans_match "$workspace/config/live/$selected/cert.pem" "$@"; then
     certbotbot_provider_renew "$workspace" "$selected" "$@"
     return $?
@@ -75,10 +82,9 @@ certbotbot_provider_existing() {
 ## @brief Updates only the existing selected lineage's supported SAN policy.
 ## @details
 ## This adapter requires a complete selected lineage and one existing ACME
-## account, and refuses unknown SANs before any provider invocation.
-## Both existing and desired sets must be among apex-only, wildcard-only,
-## and apex-plus-wildcard for the same apex. A matching set is a regular
-## renewal, not an explicit reissue; callers use provider_existing.
+## account. Both existing and desired sets must contain validated, distinct,
+## DNS-only identities (one to 100 names); these may cross unrelated zones.
+## A matching set uses ordinary renewal rather than explicit reissuance.
 ##
 ## The installed Certbot and DNS-Route53 authenticator are probed before
 ## any certificate mutation. The selected renewal file is mapped into the
@@ -93,7 +99,7 @@ certbotbot_provider_existing() {
 ## affected private workspace. No uploaded state is changed in this module.
 ## @param workspace Canonical absolute owned 0700 invocation workspace.
 ## @param selected Explicit selected non-wildcard certificate lineage name.
-## @param ... One or two exact desired DNS SANs.
+## @param ... One to 100 distinct canonical desired DNS SANs.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT
@@ -112,10 +118,9 @@ certbotbot_provider_existing() {
 ## # Full lifecycle validation is still required before S3 publication.
 ## @endcode
 certbotbot_provider_reconcile() {
-  local workspace selected config physical cert apex wildcard account=''
+  local workspace selected config physical cert account=''
   local work logs entry directory account_dir listing before_cert after_cert
   local before_link after_link before_state after_state
-  local prior_known=false
   local -a common=() domains=()
   CERTBOTBOT_RENEWAL_OCCURRED=''
   CERTBOTBOT_DURABLE_CHANGED=''
@@ -161,18 +166,12 @@ certbotbot_provider_reconcile() {
     return 65
   fi
   cert="$config/live/$selected/cert.pem"
-  apex="${1#\*.}"
-  wildcard="*.$apex"
-
-  # Only the same apex's 1-name or 2-name combinations may be modified.
-  if certbotbot_renew_sans_match "$cert" "$apex" ||
-    certbotbot_renew_sans_match "$cert" "$wildcard" ||
-    certbotbot_renew_sans_match "$cert" "$apex" "$wildcard"; then
-    prior_known=true
+  if ! certbotbot_renew_sans_read "$cert"; then
+    printf '%s\n' 'certbotbot: unsupported existing certificate SANs' >&2
+    return 65
   fi
-  if [[ "$prior_known" != true ]] ||
-    certbotbot_renew_sans_match "$cert" "$@"; then
-    printf '%s\n' 'certbotbot: unsupported or unchanged certificate SAN policy' >&2
+  if certbotbot_renew_sans_match "$cert" "$@"; then
+    printf '%s\n' 'certbotbot: unchanged certificate SAN set' >&2
     return 65
   fi
 
