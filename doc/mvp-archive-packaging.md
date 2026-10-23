@@ -51,7 +51,8 @@ No shell evaluation of restored metadata, S3 calls, hook invocation,
 host Certbot state access or remote mutation occurs. A successful
 archive is not a substitute for later certificate/key cryptographic
 assertions, a cross-runner mocked lifecycle, or proof of remote
-publication. Concurrent mutation of `config/` by another process
+publication. The public lifecycle (ADR-029) adds those local
+certificate/key assertions before calling the publisher. Concurrent mutation of `config/` by another process
 is unsupported; writers must be serialized by the orchestrator.
 
 ## Evidence
