@@ -2,6 +2,20 @@
 
 setup() {
   : "${BASH_STARTER_ARTIFACT:?Artifact path required}"
+  ROOT="$(mktemp -d)"
+  mkdir -m 700 "$ROOT/bin"
+  cat >"$ROOT/bin/aws" <<'MOCK'
+#!/usr/bin/env bash
+# Refuse all network calls during entrypoint argument tests.
+exit 90
+MOCK
+  chmod 755 "$ROOT/bin/aws"
+  PATH="$ROOT/bin:$PATH"
+  export PATH
+}
+
+teardown() {
+  rm -rf -- "$ROOT"
 }
 
 @test "help documents the public certificate interface" {
@@ -32,10 +46,10 @@ setup() {
   [ "$status" -eq 64 ]
 }
 
-@test "a valid identity without AWS access fails closed before Certbot" {
+@test "a valid identity fails closed before Certbot when S3 is unavailable" {
   run "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket example.com
   [ "$status" -eq 69 ]
-  [[ "$output" == *"AWS CLI v2 is required"* ]]
+  [[ "$output" == *"S3 object cannot be inspected safely"* ]]
 }
 
 @test "explicit false is accepted without a cloud operation" {
