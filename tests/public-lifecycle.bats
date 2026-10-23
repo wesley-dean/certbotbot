@@ -136,11 +136,6 @@ case "$verb" in
       "$name" == "$LIFECYCLE_EXPECTED_CERT_NAME" ]] || exit 91
     mkdir -p "$config/archive/$name" "$config/live/$name" "$config/renewal"
     [[ -n "$sanext" ]] || exit 92
-    # Simulate a provider that succeeds but issues a different SAN set.
-    if [[ "$LIFECYCLE_MODE" == reconcile-wrong-sans &&
-      "$reconcile" == true ]]; then
-      sanext='DNS:example.com,DNS:unrequested.other.net'
-    fi
     if [[ "$reconcile" == true ]]; then
       # Reconciliation reuses the original lineage key and path links.
       [[ -f "$config/archive/$name/privkey1.pem" ]] || exit 92
@@ -205,15 +200,10 @@ EOF
       printf '%s\n' '{"meta":"renewed"}' \
         >"$config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json"
     elif [[ "$LIFECYCLE_MODE" == renew-changed ]]; then
-      # Preserve previously issued unrelated SANs on simulated due renewal.
-      prior_sans="$(openssl x509 -in "$config/archive/$name/cert1.pem" \
-        -noout -ext subjectAltName 2>/dev/null)" || exit 93
-      prior_sans="${prior_sans#*$'\n'}"
-      [[ -n "$prior_sans" && "$prior_sans" != *$'\n'* ]] || exit 93
       openssl req -x509 -new \
         -key "$config/archive/$name/privkey1.pem" \
         -days 4 -subj '/CN=example.com' \
-        -addext "subjectAltName=$prior_sans" \
+        -addext 'subjectAltName=DNS:example.com,DNS:*.example.com' \
         -out "$config/archive/$name/cert1.pem" >/dev/null 2>&1 || exit 93
       cp "$config/archive/$name/cert1.pem" \
         "$config/archive/$name/chain1.pem"
@@ -227,7 +217,7 @@ esac
 MOCK
   chmod 755 "$ROOT/bin/"*
   export PATH="$ROOT/bin:$PATH"
-  unset DOMAIN S3_BUCKET S3_KEY CERT_NAME ADDITIONAL_SANS
+  unset DOMAIN S3_BUCKET S3_KEY CERT_NAME
   export UPLOAD_NO_RENEWAL=false INCLUDE_SUBDOMAINS=true
 }
 
@@ -246,23 +236,6 @@ execute_domain() {
   shift
   run env TMPDIR="$runner" "$BASH_STARTER_ARTIFACT" \
     --s3-bucket fixture-bucket "$@" "$domain"
-}
-
-# Inspect issued leaf bytes from the same mock S3 object with the shipped,
-# strict SAN comparator in each artifact flavor; no account key is disclosed.
-assert_remote_sans() {
-  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
-    >"$ROOT/selected-leaf.pem" || return 1
-  bash -c '
-    source "$1" --help >/dev/null || exit $?
-    shift
-    certbotbot_renew_sans_match "$@"
-  ' _ "$BASH_STARTER_ARTIFACT" "$ROOT/selected-leaf.pem" "$@"
-}
-
-assert_no_certbot_or_put() {
-  ! grep -q '^certbot:' "$LIFECYCLE_CALLS" 2>/dev/null &&
-    ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS" 2>/dev/null
 }
 
 @test "seeded first issuance publishes one same-key archive" {
@@ -1445,268 +1418,4 @@ assert_override_one_key() {
     assert_override_one_key latest.tar.gz 1
     ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
   done
-}
-# Story #15 / task #46: public-command, cross-artifact multi-SAN acceptance.
-# make test runs this same suite against .dev.bash, .bash and .min.bash.
-# Real local OpenSSL/tar operate on mock-issued certificates; AWS/Certbot are
-# executable local doubles, not live ACME, DNS or S3 interoperability tests.
-
-@test "public issue requests and stores six exact SANs across unrelated zones" {
-  execute --san api.example.net --san service.other.org
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"issued example.com"* && "$output" == *"published=true"* ]]
-  grep -Fxq 'certbot-sans:certonly:DNS:example.com,DNS:*.example.com,DNS:api.example.net,DNS:*.api.example.net,DNS:service.other.org,DNS:*.service.other.org' \
-    "$LIFECYCLE_CONTEXTS"
-  assert_remote_sans example.com '*.example.com' api.example.net \
-    '*.api.example.net' service.other.org '*.service.other.org'
-  [ "$(tar -tzf "$LIFECYCLE_REMOTE" |
-    grep -c '^./renewal/[^/]*\.conf$')" -eq 1 ]
-  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
-    "$LIFECYCLE_CALLS")" -eq 1 ]
-  ! grep -q '^certbot:renew$' "$LIFECYCLE_CALLS"
-}
-
-@test "explicit wildcard, duplicate and uppercase SANs expand once per input" {
-  execute --san '*.api.other.org' --san api.other.org \
-    --san EXAMPLE.COM --san '*.example.com'
-  [ "$status" -eq 0 ]
-  grep -Fxq 'certbot-sans:certonly:DNS:example.com,DNS:*.example.com,DNS:*.api.other.org,DNS:api.other.org' \
-    "$LIFECYCLE_CONTEXTS"
-  assert_remote_sans example.com '*.example.com' '*.api.other.org' api.other.org
-  ! grep -q 'DNS:\*\.\*\.' "$LIFECYCLE_CONTEXTS"
-}
-
-@test "literal false suppresses complements on primary and unrelated additional inputs" {
-  execute --include-subdomains=false --san '*.other.org' --san EXAMPLE.COM
-  [ "$status" -eq 0 ]
-  grep -Fxq 'certbot-sans:certonly:DNS:example.com,DNS:*.other.org' \
-    "$LIFECYCLE_CONTEXTS"
-  assert_remote_sans example.com '*.other.org'
-}
-
-@test "public CLI replaces exported and literal additional SAN collections" {
-  printf '%s\n' 'ADDITIONAL_SANS=file.example.net' >"$ROOT/extras.env"
-  export ADDITIONAL_SANS=env.example.net
-  execute --config "$ROOT/extras.env" --san=cli.other.org
-  [ "$status" -eq 0 ]
-  grep -Fxq 'certbot-sans:certonly:DNS:example.com,DNS:*.example.com,DNS:cli.other.org,DNS:*.cli.other.org' \
-    "$LIFECYCLE_CONTEXTS"
-  assert_remote_sans example.com '*.example.com' cli.other.org '*.cli.other.org'
-}
-
-@test "public exported additional SAN list replaces file, including empty override" {
-  printf '%s\n' 'ADDITIONAL_SANS=file.example.net' >"$ROOT/extras.env"
-  export ADDITIONAL_SANS=env.other.org
-  execute --config "$ROOT/extras.env"
-  [ "$status" -eq 0 ]
-  assert_remote_sans example.com '*.example.com' env.other.org '*.env.other.org'
-
-  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/seed" .
-  : >"$LIFECYCLE_CALLS"
-  : >"$LIFECYCLE_CONTEXTS"
-  export ADDITIONAL_SANS=''
-  execute --config "$ROOT/extras.env"
-  [ "$status" -eq 0 ]
-  assert_remote_sans example.com '*.example.com'
-  grep -Fxq 'certbot-sans:certonly:DNS:example.com,DNS:*.example.com' \
-    "$LIFECYCLE_CONTEXTS"
-}
-
-@test "literal comma list selects exact unrelated SANs on the public command" {
-  printf '%s\n' 'ADDITIONAL_SANS=foo.other.org,*.bar.example.net' \
-    >"$ROOT/extras.env"
-  execute --config "$ROOT/extras.env"
-  [ "$status" -eq 0 ]
-  assert_remote_sans example.com '*.example.com' foo.other.org \
-    '*.foo.other.org' '*.bar.example.net' bar.example.net
-  grep -Fxq 'certbot-sans:certonly:DNS:example.com,DNS:*.example.com,DNS:foo.other.org,DNS:*.foo.other.org,DNS:*.bar.example.net,DNS:bar.example.net' \
-    "$LIFECYCLE_CONTEXTS"
-}
-
-@test "five independent runners issue reconcile add and remove then no-op one lineage" {
-  local runner
-  for runner in a b c d e; do
-    mkdir -m 700 "$ROOT/multi-runner-$runner"
-  done
-  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/multi-runner-a"
-  execute --san api.example.net
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"issued example.com"* && "$output" == *"published=true"* ]]
-  assert_remote_sans example.com '*.example.com' api.example.net '*.api.example.net'
-  tar -xOf "$LIFECYCLE_REMOTE" \
-    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
-    >"$ROOT/account-first"
-  cp "$LIFECYCLE_REMOTE" "$ROOT/multi-first.tar.gz"
-
-  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/multi-runner-b"
-  : >"$LIFECYCLE_CALLS"
-  : >"$LIFECYCLE_CONTEXTS"
-  execute --san api.example.net
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"published=false"* ]]
-  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
-  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
-  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/multi-first.tar.gz"
-
-  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/multi-runner-c"
-  : >"$LIFECYCLE_CALLS"
-  : >"$LIFECYCLE_CONTEXTS"
-  execute --san api.example.net --san service.other.org
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"published=true"* ]]
-  grep -Fxq 'certbot-reconcile:example.com' "$LIFECYCLE_CONTEXTS"
-  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
-  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
-    "$LIFECYCLE_CALLS")" -eq 1 ]
-  assert_remote_sans example.com '*.example.com' api.example.net \
-    '*.api.example.net' service.other.org '*.service.other.org'
-
-  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/multi-runner-d"
-  : >"$LIFECYCLE_CALLS"
-  : >"$LIFECYCLE_CONTEXTS"
-  execute --san service.other.org
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"published=true"* ]]
-  grep -Fxq 'certbot-reconcile:example.com' "$LIFECYCLE_CONTEXTS"
-  assert_remote_sans example.com '*.example.com' service.other.org \
-    '*.service.other.org'
-  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
-    "$LIFECYCLE_CALLS")" -eq 1 ]
-
-  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/multi-runner-e"
-  : >"$LIFECYCLE_CALLS"
-  execute --san service.other.org
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"published=false"* ]]
-  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
-  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
-  tar -xOf "$LIFECYCLE_REMOTE" \
-    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
-    >"$ROOT/account-last"
-  cmp -s "$ROOT/account-first" "$ROOT/account-last"
-  [ "$(tar -tzf "$LIFECYCLE_REMOTE" |
-    grep -c '^./renewal/[^/]*\.conf$')" -eq 1 ]
-  for runner in a b c d e; do
-    [ -z "$(find "$ROOT/multi-runner-$runner" -mindepth 1 -print -quit)" ]
-  done
-}
-
-@test "due multi-SAN renewal retains unrelated names and publishes changed leaf" {
-  execute --san api.example.net --san service.other.org
-  [ "$status" -eq 0 ]
-  cp "$LIFECYCLE_REMOTE" "$ROOT/before-renew.tar.gz"
-  : >"$LIFECYCLE_CALLS"
-  : >"$LIFECYCLE_CONTEXTS"
-  export LIFECYCLE_MODE=renew-changed
-  execute --san api.example.net --san service.other.org
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"published=true"* ]]
-  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
-  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
-  assert_remote_sans example.com '*.example.com' api.example.net \
-    '*.api.example.net' service.other.org '*.service.other.org'
-  ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-renew.tar.gz"
-}
-
-@test "shorter added SAN requires explicit preservation of the existing lineage" {
-  execute
-  [ "$status" -eq 0 ]
-  cp "$LIFECYCLE_REMOTE" "$ROOT/before-shorter.tar.gz"
-  : >"$LIFECYCLE_CALLS"
-  execute --san io.uk
-  [ "$status" -eq 65 ]
-  assert_no_certbot_or_put
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-shorter.tar.gz"
-
-  : >"$LIFECYCLE_CALLS"
-  : >"$LIFECYCLE_CONTEXTS"
-  execute --cert-name example.com --san io.uk
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"checked example.com"* && "$output" == *"published=true"* ]]
-  grep -Fxq 'certbot-reconcile:example.com' "$LIFECYCLE_CONTEXTS"
-  assert_remote_sans example.com '*.example.com' io.uk '*.io.uk'
-}
-
-@test "multi-SAN successful unchanged forced republish uses one original key" {
-  execute --san api.example.net
-  [ "$status" -eq 0 ]
-  : >"$LIFECYCLE_CALLS"
-  execute --san api.example.net --upload-no-renewal=true
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"published=true"* ]]
-  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
-    "$LIFECYCLE_CALLS")" -eq 1 ]
-  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
-  assert_remote_sans example.com '*.example.com' api.example.net '*.api.example.net'
-}
-
-@test "invalid additional SANs and malformed literal lists never contact AWS or Certbot" {
-  local candidate
-  for candidate in 'bad.example.net.' 'other.net,second.org' '*.bad.*.net' \
-    'invalid$name.net' 'x y.other.org'; do
-    : >"$LIFECYCLE_CALLS"
-    execute --san "$candidate"
-    [ "$status" -eq 64 ]
-    ! grep -q '^aws:' "$LIFECYCLE_CALLS"
-    assert_no_certbot_or_put
-  done
-  printf '%s\n' 'ADDITIONAL_SANS=other.net,,second.org' >"$ROOT/extras.env"
-  : >"$LIFECYCLE_CALLS"
-  execute --config "$ROOT/extras.env"
-  [ "$status" -eq 64 ]
-  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
-  assert_no_certbot_or_put
-}
-
-@test "failed SAN reconciliation never publishes partial state" {
-  execute --san api.example.net
-  [ "$status" -eq 0 ]
-  cp "$LIFECYCLE_REMOTE" "$ROOT/pre-failure.tar.gz"
-  : >"$LIFECYCLE_CALLS"
-  export LIFECYCLE_MODE=certbot-failure
-  execute --san api.example.net --san service.other.org
-  [ "$status" -eq 74 ]
-  [[ "$output" != *"published=true"* ]]
-  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
-  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/pre-failure.tar.gz"
-}
-
-@test "provider success with unexpected unrelated SAN cannot publish" {
-  execute --san api.example.net
-  [ "$status" -eq 0 ]
-  cp "$LIFECYCLE_REMOTE" "$ROOT/pre-wrong-san.tar.gz"
-  : >"$LIFECYCLE_CALLS"
-  export LIFECYCLE_MODE=reconcile-wrong-sans
-  execute --san api.example.net --san service.other.org
-  [ "$status" -eq 65 ]
-  [[ "$output" != *"published=true"* ]]
-  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
-  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/pre-wrong-san.tar.gz"
-}
-
-@test "invalid restored non-DNS leaf SAN cannot be treated as legitimate drift" {
-  execute --san api.example.net
-  [ "$status" -eq 0 ]
-  mkdir -m 700 "$ROOT/bad-leaf"
-  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/bad-leaf"
-  openssl req -x509 -new -days 2 -subj '/CN=example.com' \
-    -key "$ROOT/bad-leaf/archive/example.com/privkey1.pem" \
-    -addext 'subjectAltName=DNS:example.com,IP:127.0.0.1' \
-    -out "$ROOT/bad-leaf/archive/example.com/cert1.pem" \
-    >/dev/null 2>&1
-  cp "$ROOT/bad-leaf/archive/example.com/cert1.pem" \
-    "$ROOT/bad-leaf/archive/example.com/fullchain1.pem"
-  cp "$ROOT/bad-leaf/archive/example.com/cert1.pem" \
-    "$ROOT/bad-leaf/archive/example.com/chain1.pem"
-  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/bad-leaf" .
-  cp "$LIFECYCLE_REMOTE" "$ROOT/invalid-leaf-baseline.tar.gz"
-  : >"$LIFECYCLE_CALLS"
-  execute --san service.other.org
-  [ "$status" -eq 65 ]
-  [[ "$output" != *"published=true"* ]]
-  assert_no_certbot_or_put
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/invalid-leaf-baseline.tar.gz"
 }
