@@ -52,6 +52,8 @@ staging evidence.
 
 The non-destructive prepublication and uncertain remote-write evidence is
 recorded in [MVP Failure Preservation and Remote-Write Evidence](mvp-failure-preservation.md).
+The successful no-op and forced republish truth table is governed by the
+[UPLOAD_NO_RENEWAL publication policy](mvp-upload-no-renewal-policy.md).
 
 ## Verification
 
