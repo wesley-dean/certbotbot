@@ -61,3 +61,7 @@ in [MVP S3 Roundtrip and Publication Fault Evidence](mvp-s3-roundtrip-validation
 
 The independently isolated three-runner account/lineage continuity test for
 task #32 is described in [MVP Fresh-Runner State Continuity Evidence](mvp-fresh-runner-continuity.md).
+
+The HeadObject/HeadBucket/GetObject error classification and pre-Certbot
+restoration-rejection matrix for task #30 is recorded in
+[MVP S3 Retrieval Failure Matrix](mvp-s3-retrieval-failure-matrix.md).
