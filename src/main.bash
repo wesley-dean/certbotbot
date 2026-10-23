@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file src/main.bash
-## @brief Public MVP command entrypoint and preflight identity selection.
+## @brief Public MVP selected-certificate command entrypoint.
 ## @details
-## Configuration and name validation precede the still-unimplemented
-## Certbot/S3 lifecycle. Incomplete execution returns a failure, never success.
+## Configuration and identity preflight precede the selected S3, Certbot,
+## certificate-verification and publication lifecycle. One invocation
+## owns a disposable private workspace; failures remain nonzero without
+## publishing incomplete local state.
 
 ## @fn certbotbot_usage()
 ## @brief Prints the current selected-certificate command syntax.
@@ -43,7 +45,7 @@ certbotbot_version() {
 }
 
 ## @fn certbotbot_main()
-## @brief Validates invocation; fails explicitly until lifecycle is integrated.
+## @brief Validates invocation and runs the bounded selected MVP lifecycle.
 ## @param ... Public command arguments.
 ## @par STDIN
 ## Nothing is read from STDIN.
@@ -53,7 +55,10 @@ certbotbot_version() {
 ## Non-sensitive diagnostics for unsupported/incomplete operations.
 ## @retval 0 Help or version was requested.
 ## @retval 64 Invalid invocation.
-## @retval 69 Lifecycle is not yet implemented.
+## @retval 65 Unsafe restored certificate/account, cryptography or candidate.
+## @retval 66 Seeded S3 archive positively missing.
+## @retval 69 Required external tool or account unavailable.
+## @retval 74 Certbot, packaging or S3 transfer failed.
 certbotbot_main() {
   case "${1:-}" in
     --help|-h|help) certbotbot_usage; return 0 ;;
@@ -61,8 +66,9 @@ certbotbot_main() {
   esac
   certbotbot_config_resolve "$@" || return 64
   certbotbot_identity_resolve || return 64
-  printf '%s\n' 'certbotbot: lifecycle implementation not yet available' >&2
-  return 69
+  certbotbot_lifecycle_execute "$CERTBOTBOT_CERT_NAME" \
+    "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" \
+    "$CERTBOTBOT_UPLOAD_NO_RENEWAL" "${CERTBOTBOT_SANS[@]}"
 }
 
 certbotbot_main "$@"
