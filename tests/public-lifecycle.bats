@@ -1477,11 +1477,23 @@ assert_override_one_key() {
 }
 
 @test "literal false suppresses complements on primary and unrelated additional inputs" {
-  execute --include-subdomains=false --san '*.other.org' --san EXAMPLE.COM
+  # These two SANs tie in length; select the established non-wildcard lineage
+  # explicitly rather than allowing the ASCII tie-break to choose a wildcard.
+  execute --include-subdomains=false --cert-name example.com \
+    --san '*.other.org' --san EXAMPLE.COM
   [ "$status" -eq 0 ]
   grep -Fxq 'certbot-sans:certonly:DNS:example.com,DNS:*.other.org' \
     "$LIFECYCLE_CONTEXTS"
   assert_remote_sans example.com '*.other.org'
+}
+
+@test "implicit wildcard lineage from equal-length SAN tie fails before cloud access" {
+  # Without an explicit lineage name, ASCII ordering picks '*.other.org'
+  # before 'example.com'. A wildcard cannot be a Certbot lineage identifier.
+  execute --include-subdomains=false --san '*.other.org' --san EXAMPLE.COM
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  assert_no_certbot_or_put
 }
 
 @test "public CLI replaces exported and literal additional SAN collections" {
