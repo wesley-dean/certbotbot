@@ -57,6 +57,8 @@ or transaction and assumes one externally serialized writer.
 For before/after SHA-256 preservation checks on a known-good mocked S3
 object, post-renewal validation failures and ambiguous PutObject results,
 see [MVP Failure Preservation and Remote-Write Evidence](mvp-failure-preservation.md).
+The end-to-end [UPLOAD_NO_RENEWAL regression matrix](mvp-upload-no-renewal-test-matrix.md)
+also verifies the complete precedence and changed-state truth tables.
 
 ## Verification
 
