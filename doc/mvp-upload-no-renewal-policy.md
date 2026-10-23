@@ -122,14 +122,14 @@ key continuity. Its focused behavioral evidence and clean-runner case
 are documented in [the public forced-republish integration](mvp-upload-no-renewal-integration.md).
 It introduces no new interface or remote S3 object.
 
-Task #103 must add mocked public-executable evidence for the complete
-table: default, CLI/environment/.env precedence (including explicit
-`false`), changed/no-change, actual renewal, metadata-only update,
-failure gating, PutObject errors, non-secret output, and equivalent
-behavior in the development, ordinary and minified artifacts. Use
-the existing fake AWS/Certbot and real local OpenSSL/tar/gzip harness.
-Compare observed PutObject counts, key values and archive bytes, not
-only process status.
+Task #103 verifies the complete public-executable table: default,
+CLI/environment/.env precedence (including explicit `false`),
+changed/no-change, actual renewal, metadata-only update, failure gates,
+PutObject errors, non-secret output, and equivalent behavior across all
+three artifacts. The [public regression matrix](mvp-upload-no-renewal-test-matrix.md)
+records the concrete expected outcomes and scope limitations. The Bats
+harness uses fake AWS/Certbot and real local OpenSSL/tar/gzip, and checks
+PutObject counts, exact key values, archive bytes, and exit status.
 
 Existing supporting suites include `tests/config-identity.bats`,
 `tests/s3-publish.bats`, `tests/public-lifecycle.bats`, and
