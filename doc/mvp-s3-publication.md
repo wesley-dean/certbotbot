@@ -1,8 +1,9 @@
 # MVP Single-Key S3 Publication Adapter
 
 This component implements the local-to-remote publication boundary
-approved in task #39, governed by ADR-028. It does not enable the
-public certificate lifecycle by itself.
+approved in task #39, governed by ADR-028. The public lifecycle in
+ADR-029 now invokes it only after successful selected-certificate
+processing and independent certificate/key consistency checks.
 
 ## Interface
 
