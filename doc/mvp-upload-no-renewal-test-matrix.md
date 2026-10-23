@@ -18,7 +18,7 @@ and local OpenSSL construct and inspect certificate state.
 
 Each public invocation is executed through the normal
 `BASH_STARTER_ARTIFACT` entrypoint. The Make test workflow runs the
-whole Bats suite against **documented, ordinary, and minified** consumer
+whole Bats suite against **development, ordinary, and minified** consumer
 scripts and verifies the adjacent SHA-256 checksum companions. These
 tests establish observational equivalence of the behavior on all three
 artifacts. They do not invoke real AWS, Route53, or Let's Encrypt.
