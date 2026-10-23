@@ -83,7 +83,7 @@ MOCK
 #!/usr/bin/env bash
 [[ "$1" == x509 ]] || exit 98
 [[ "$RENEW_MOCK_SCENARIO" == bad_cert ]] && exit 15
-printf 'X509v3 Subject Alternative Name:\n    %s\n' "$RENEW_MOCK_SANS"
+printf 'X509v3 Subject Alternative Name: \n    %s\n' "$RENEW_MOCK_SANS"
 MOCK
   chmod 755 "$ROOT/bin/certbot" "$ROOT/bin/openssl"
   PATH="$ROOT/bin:$PATH"
