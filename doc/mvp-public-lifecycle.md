@@ -50,6 +50,9 @@ local mocks and use actual local OpenSSL and tar/gzip; they do not establish
 real ACME/Route53/S3 interoperability. Milestone #4 governs authorized live
 staging evidence.
 
+The non-destructive prepublication and uncertain remote-write evidence is
+recorded in [MVP Failure Preservation and Remote-Write Evidence](mvp-failure-preservation.md).
+
 ## Verification
 
 `tests/public-lifecycle.bats` exercises the public executable for seeded
