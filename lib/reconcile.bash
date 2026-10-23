@@ -113,7 +113,7 @@ certbotbot_provider_existing() {
 ## @endcode
 certbotbot_provider_reconcile() {
   local workspace selected config physical cert apex wildcard account=''
-  local work logs entry directory listing before_cert after_cert
+  local work logs entry directory account_dir listing before_cert after_cert
   local before_link after_link before_state after_state
   local prior_known=false
   local -a common=() domains=()
@@ -184,8 +184,8 @@ certbotbot_provider_reconcile() {
     printf '%s\n' 'certbotbot: certificate comparison tool unavailable' >&2
     return 69
   fi
-  directory="$config/accounts/acme-v02.api.letsencrypt.org/directory"
-  for entry in "$directory/"*; do
+  account_dir="$config/accounts/acme-v02.api.letsencrypt.org/directory"
+  for entry in "$account_dir/"*; do
     [[ -d "$entry" && ! -L "$entry" ]] || continue
     account="${entry##*/}"
     break
@@ -251,7 +251,7 @@ certbotbot_provider_reconcile() {
     printf '%s\n' 'certbotbot: reconciled lineage failed local validation' >&2
     return 65
   fi
-  if [[ ! -d "$directory/$account" ]]; then
+  if [[ ! -d "$account_dir/$account" ]]; then
     printf '%s\n' 'certbotbot: restored ACME account identity changed' >&2
     return 65
   fi
