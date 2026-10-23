@@ -29,7 +29,9 @@ while (( $# )); do
   esac
 done
 printf 'aws:%s:%s:%s\n' "$action" "$bucket" "$key" >>"$LIFECYCLE_CALLS"
-[[ "$bucket" == fixture-bucket && "$key" == latest.tar.gz ]] || exit 99
+[[ "$bucket" == fixture-bucket ]] || exit 99
+# HeadBucket is bucket-scoped and must not carry an object key.
+[[ "$action" == head-bucket || "$key" == latest.tar.gz ]] || exit 99
 case "$action" in
   head-object)
     [[ "$LIFECYCLE_MODE" == head-failure ]] && exit 9
@@ -110,7 +112,6 @@ teardown() {
 
 execute() {
   run "$BASH_STARTER_ARTIFACT" --s3-bucket fixture-bucket example.com
-  printf 'mock lifecycle status=%s result=%s\n' "$status" "$output" >&3
 }
 
 @test "seeded first issuance publishes one same-key archive" {
