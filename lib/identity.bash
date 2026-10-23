@@ -94,6 +94,7 @@ certbotbot_identity_shortest() {
 ## @retval 64 Identity or certificate name is invalid.
 certbotbot_identity_resolve() {
   local name candidate complement known name_seen
+  local LC_ALL=C
   local -a explicit=("$CERTBOTBOT_DOMAIN" "${CERTBOTBOT_ADDITIONAL_SANS[@]}")
   (( ${#explicit[@]} >= 1 && ${#explicit[@]} <= 100 )) || {
     certbotbot_error 'too many DNS identities'
