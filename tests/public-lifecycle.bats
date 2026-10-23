@@ -81,10 +81,16 @@ case "$action" in
     # Permit a successful local Certbot operation with an independent remote
     # failure, including acceptance followed by a lost response.
     put_mode="${LIFECYCLE_PUT_MODE:-$LIFECYCLE_MODE}"
-    [[ "$put_mode" == put-failure ]] && exit 9
+    if [[ "$put_mode" == put-failure ]]; then
+      printf '%s\n' 'AWS failure mock-private-PUT-TOKEN' >&2
+      exit 9
+    fi
     cp "$body" "$LIFECYCLE_REMOTE" || exit 9
     # A lost response cannot prove whether S3 accepted the put.
-    [[ "$put_mode" == put-after-write-failure ]] && exit 9
+    if [[ "$put_mode" == put-after-write-failure ]]; then
+      printf '%s\n' 'AWS lost-response mock-private-PUT-TOKEN' >&2
+      exit 9
+    fi
     exit 0
     ;;
   head-bucket)
