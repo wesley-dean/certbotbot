@@ -53,8 +53,9 @@ integrity; 69 means missing provider tools or unsuitable Certbot account;
 74 means Certbot failed or local private staging failed.
 
 These variables report **local state only** and never imply remote upload.
-The later publication task combines durable changes with the approved
-UPLOAD_NO_RENEWAL policy.
+The public lifecycle now combines verified durable changes with the
+approved UPLOAD_NO_RENEWAL policy (ADR-029); this provider remains
+independent and does not call S3 directly.
 
 ## Safety and acceptance evidence
 
