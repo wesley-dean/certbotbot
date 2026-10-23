@@ -50,6 +50,10 @@ or was the exact one read earlier; public orchestration must call
 the read adapter first. The operation is not a distributed lock
 or transaction and assumes one externally serialized writer.
 
+For before/after SHA-256 preservation checks on a known-good mocked S3
+object, post-renewal validation failures and ambiguous PutObject results,
+see [MVP Failure Preservation and Remote-Write Evidence](mvp-failure-preservation.md).
+
 ## Verification
 
 `tests/s3-publish.bats` uses a mock AWS CLI that records
