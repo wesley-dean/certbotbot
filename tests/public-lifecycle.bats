@@ -48,6 +48,7 @@ case "$action" in
     cp "$body" "$LIFECYCLE_REMOTE" || exit 9
     # A lost response cannot prove whether S3 accepted the put.
     [[ "$LIFECYCLE_MODE" == put-after-write-failure ]] && exit 9
+    exit 0
     ;;
   head-bucket) : ;;
   *) exit 99 ;;
