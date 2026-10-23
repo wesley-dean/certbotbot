@@ -188,7 +188,7 @@ certbotbot_config_resolve() {
     if [[ -n "${ADDITIONAL_SANS+x}" ]]; then value="$ADDITIONAL_SANS"; fi
     if [[ -n "$value" ]]; then
       if [[ "$value" == ,* || "$value" == *, || "$value" == *,,* ||
-        "$value" == *
+        "$value" == *[[:cntrl:]]* ]]; then
         certbotbot_error 'invalid additional DNS identity list'
         return 64
       fi
