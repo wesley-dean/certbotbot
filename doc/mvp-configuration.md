@@ -88,6 +88,10 @@ renew-all operation is implied.
 | Certbot no-op | No | Skip upload | Upload |
 | Any failed stage | Any | Never intentionally upload | Never intentionally upload |
 
+The [UPLOAD_NO_RENEWAL publication policy](mvp-upload-no-renewal-policy.md)
+defines the distinction between certificate renewal and any durable-state
+change, literal-Boolean precedence, and prepublication failure rules.
+
 Candidate archives must pass local validation before publication. The
 remote archive is protected against failures before the upload begins.
 An S3 upload failure cannot guarantee that remote bytes remained unchanged;
