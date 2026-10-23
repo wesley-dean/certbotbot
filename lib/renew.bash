@@ -6,8 +6,8 @@
 ## ADR-025 permits normal due-renewal only for an already selected and fully
 ## restored lineage with exactly matching current and desired DNS SANs.
 ## Path mapping is reversible, and returned result variables reflect only
-## verified local state, never remote S3 publication. Unknown SAN drift must
-## fail closed until its separately approved reconciliation is implemented.
+## verified local state, never remote S3 publication. ADR-029 broadens valid
+## same-lineage SAN drift while malformed leaf SAN extensions fail closed.
 ## The installed Certbot and Route53 plugin retain ACME/DNS authority.
 
 ## @var CERTBOTBOT_EXISTING_SANS
