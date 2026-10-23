@@ -2,7 +2,9 @@
 
 Status: proposed implementation and verification contract for approved tasks
 #31, #33, #34, #36, and #37; governed by ADR-020, ADR-021, and ADR-022.
-Implementation of the validator and runtime adapter remains outstanding.
+The shared format validator and private restoration adapter are now
+implemented. Candidate packaging is specified separately in
+[mvp-archive-packaging.md](mvp-archive-packaging.md).
 
 ## Archive layout
 
@@ -175,3 +177,14 @@ placement and unresolved PEM symlinks.
 The caller is responsible for deleting its owned workspace once processing
 finishes, including after error or termination. The adapter never sources
 restored shell material, invokes Certbot, uploads to S3, or reports issuance.
+
+## Locally verified producer candidate
+
+ADR-027 defines the `certbotbot_archive_package WORKSPACE CERT_NAME`
+contract and one private `WORKSPACE/candidate.tar.gz` output. The builder
+checks a complete selected lineage, registered-account file structure,
+canonical renewal metadata and private-key permissions, then serializes
+all supported `config/` contents using ustar/gzip and runs the same
+bounded validator used during restore. The public CLI and remote publisher
+remain disabled until complete candidate assertions and safe S3
+publication are integrated. See [packaging contract](mvp-archive-packaging.md).
