@@ -94,7 +94,7 @@ case "$(cat "$3")" in
   new-unexpected) names='DNS:example.com, DNS:bad.example.net' ;;
   *) exit 99 ;;
 esac
-printf 'X509v3 Subject Alternative Name:\n    %s\n' "$names"
+printf 'X509v3 Subject Alternative Name: \n    %s\n' "$names"
 MOCK
   chmod 755 "$ROOT/bin/certbot" "$ROOT/bin/openssl"
   PATH="$ROOT/bin:$PATH"
