@@ -298,3 +298,9 @@ local state before reporting success; public orchestration and
 publication remain separate gates.
 
 See [ADR-025](adr/ADR-025-selected-renewal-noop-contract.md).
+
+### ADR-026: Controlled SAN Reconciliation on an Existing Certbot Lineage
+
+A restored selected lineage is updated in place only when the existing and requested DNS SAN sets use the same apex identity and fit the MVP apex/wildcard policy. Matching names continue through ordinary selected renewal without forced issuance; a supported change invokes named `certonly --renew-with-new-domains` with the existing account and private paths. Post-issuance identity, exact SAN, and canonical-path checks must pass before local success can be reported; failures discard the candidate without S3 publication. ADR-026 supersedes only ADR-025's temporary ban on changing SAN sets, preserving the other no-op and safety requirements.
+
+See [ADR-026](adr/ADR-026-controlled-existing-lineage-san-reconciliation.md).

@@ -8,6 +8,9 @@ Accepted
 
 ## Decision
 
+**Compatibility note (ADR-026):** The interim prohibition on SAN drift below is superseded only for explicitly selected, same-apex/wildcard reconciliation by ADR-026. All other ordinary renewal and no-op rules remain in force.
+
+
 The existing-lineage provider may invoke Certbot **only for the explicitly
 selected existing certificate name** and its verified original ACME account.
 For this increment, renewal is permitted only when the requested SAN set
