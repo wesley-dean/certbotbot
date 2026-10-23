@@ -88,12 +88,7 @@ certbotbot_renew_fingerprint() {
   local config="$1"
   command -v tar >/dev/null 2>&1 || return 1
   command -v sha256sum >/dev/null 2>&1 || return 1
-  (
-    set -o pipefail
-    tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-      --format=gnu -cf - -C "$config" . 2>/dev/null |
-      sha256sum | cut -d' ' -f1
-  )
+  (set -o pipefail; tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --format=gnu -cf - -C "$config" . 2>/dev/null | sha256sum | cut -d' ' -f1)
 }
 
 ## @fn certbotbot_provider_renew()
