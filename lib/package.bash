@@ -59,7 +59,6 @@
 ## @endcode
 certbotbot_archive_package() {
   local workspace selected config physical candidate staged='' unsafe
-  local path
   if (( $# != 2 )); then
     printf '%s\n' 'certbotbot: invalid archive packaging arguments' >&2
     return 64
