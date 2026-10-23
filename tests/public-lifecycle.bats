@@ -858,3 +858,192 @@ MOCK
   cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-conflict.tar.gz"
   [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
 }
+
+# Reset to the same operator-seeded, existing account-only remote object.
+# Each subsequent public call must choose a lineage without host state.
+reset_seeded_remote() {
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/seed" .
+  : >"$LIFECYCLE_CALLS"
+  : >"$LIFECYCLE_CONTEXTS"
+}
+
+@test "apex and wildcard public inputs choose the same shortest lineage" {
+  local primary
+  for primary in example.com '*.example.com'; do
+    reset_seeded_remote
+    execute_domain "$primary"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"issued example.com"* ]]
+    [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+    [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+      "$LIFECYCLE_CALLS")" -eq 1 ]
+    tar -tzf "$LIFECYCLE_REMOTE" |
+      grep -Fxq './renewal/example.com.conf'
+    ! tar -tzf "$LIFECYCLE_REMOTE" |
+      grep -Fq './renewal/*.example.com.conf'
+    [ "$(grep -c '^certbot-sans:certonly:' \
+      "$LIFECYCLE_CONTEXTS")" -eq 1 ]
+  done
+}
+
+@test "CLI overrides exported and literal env-file CERT_NAME on public issue" {
+  printf '%s\n' 'CERT_NAME=file.example.com' >"$ROOT/names.env"
+  export CERT_NAME=env.example.com
+  export LIFECYCLE_EXPECTED_CERT_NAME=cli.example.com
+  execute --config "$ROOT/names.env" --cert-name=cli.example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued cli.example.com"* ]]
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fxq './renewal/cli.example.com.conf'
+  grep -Fq ':cli.example.com:account-id' "$LIFECYCLE_CONTEXTS"
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+}
+
+@test "exported CERT_NAME overrides literal env-file name on public issue" {
+  printf '%s\n' 'CERT_NAME=file.example.com' >"$ROOT/names.env"
+  export CERT_NAME=env.example.com
+  export LIFECYCLE_EXPECTED_CERT_NAME=env.example.com
+  execute --config "$ROOT/names.env"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued env.example.com"* ]]
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fxq './renewal/env.example.com.conf'
+  grep -Fq ':env.example.com:account-id' "$LIFECYCLE_CONTEXTS"
+}
+
+@test "literal env-file name overrides shortest-SAN default on public issue" {
+  printf '%s\n' 'CERT_NAME=file.example.com' >"$ROOT/names.env"
+  export LIFECYCLE_EXPECTED_CERT_NAME=file.example.com
+  execute --config "$ROOT/names.env"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued file.example.com"* ]]
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fxq './renewal/file.example.com.conf'
+  grep -Fq ':file.example.com:account-id' "$LIFECYCLE_CONTEXTS"
+}
+
+@test "invalid explicit and derived names fail before any cloud access" {
+  local name
+  for name in '*.example.com' 'UPPER.example.com' \
+    '.example.com' 'example.com.' '../unsafe' 'x y.example.com'; do
+    : >"$LIFECYCLE_CALLS"
+    execute --cert-name "$name"
+    [ "$status" -eq 64 ]
+    [[ "$output" != *"published=true"* ]]
+    ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+    ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  done
+  : >"$LIFECYCLE_CALLS"
+  execute_domain '*.example.com' --include-subdomains=false
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+}
+
+@test "explicit safe name permits a wildcard-only SAN without renaming archive" {
+  export LIFECYCLE_EXPECTED_CERT_NAME=issued.example.com
+  execute_domain '*.example.com' --include-subdomains=false \
+    --cert-name issued.example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued issued.example.com"* ]]
+  grep -Fxq 'certbot-sans:certonly:DNS:*.example.com' \
+    "$LIFECYCLE_CONTEXTS"
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fxq './renewal/issued.example.com.conf'
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+}
+
+@test "same lineage survives both public SAN-policy transitions" {
+  execute --include-subdomains=false --cert-name example.com
+  [ "$status" -eq 0 ]
+  grep -Fxq 'certbot-sans:certonly:DNS:example.com' \
+    "$LIFECYCLE_CONTEXTS"
+  tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
+    >"$ROOT/first-account"
+  : >"$LIFECYCLE_CALLS"
+  : >"$LIFECYCLE_CONTEXTS"
+
+  execute --include-subdomains=true --cert-name example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  grep -Fxq 'certbot-reconcile:example.com' "$LIFECYCLE_CONTEXTS"
+  grep -Fxq 'certbot-sans:certonly:DNS:example.com,DNS:*.example.com' \
+    "$LIFECYCLE_CONTEXTS"
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fxq './renewal/example.com.conf'
+  : >"$LIFECYCLE_CALLS"
+  : >"$LIFECYCLE_CONTEXTS"
+
+  execute --include-subdomains=false --cert-name example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  grep -Fxq 'certbot-reconcile:example.com' "$LIFECYCLE_CONTEXTS"
+  grep -Fxq 'certbot-sans:certonly:DNS:example.com' \
+    "$LIFECYCLE_CONTEXTS"
+  : >"$LIFECYCLE_CALLS"
+  execute --include-subdomains=false --cert-name example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
+    >"$ROOT/final-account"
+  cmp -s "$ROOT/first-account" "$ROOT/final-account"
+  [ "$(tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -c '^./renewal/[^/]*\.conf$')" -eq 1 ]
+}
+
+@test "independent runners keep selected explicit name and account with no writes" {
+  mkdir -m 700 "$ROOT/name-runner-a" "$ROOT/name-runner-b"
+  export LIFECYCLE_EXPECTED_CERT_NAME=stable.example.com
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/name-runner-a"
+  execute --cert-name stable.example.com
+  [ "$status" -eq 0 ]
+  cp "$LIFECYCLE_REMOTE" "$ROOT/first-archive"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/name-runner-b"
+  execute --cert-name stable.example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checked stable.example.com"* ]]
+  [[ "$output" == *"published=false"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/first-archive"
+  [ -z "$(find "$ROOT/name-runner-a" -mindepth 1 -print -quit)" ]
+  [ -z "$(find "$ROOT/name-runner-b" -mindepth 1 -print -quit)" ]
+}
+
+@test "an extra archived lineage cannot cause numbering or another S3 object" {
+  export LIFECYCLE_EXPECTED_CERT_NAME=issued.example.com
+  execute --cert-name issued.example.com
+  [ "$status" -eq 0 ]
+  mkdir -m 700 "$ROOT/extra-lineage"
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/extra-lineage"
+  cp "$ROOT/extra-lineage/renewal/issued.example.com.conf" \
+    "$ROOT/extra-lineage/renewal/issued.example.com-0001.conf"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/extra-lineage" .
+  cp "$LIFECYCLE_REMOTE" "$ROOT/before-extra"
+  : >"$LIFECYCLE_CALLS"
+  execute --cert-name issued.example.com
+  [ "$status" -ne 0 ]
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-extra"
+}
+
+@test "equal-length ASCII tie is invariant to candidate order in each artifact" {
+  run bash -c '
+    source "$1" --help >/dev/null || exit $?
+    certbotbot_identity_shortest beta.example.com alfa.example.com || exit $?
+    first="$REPLY"
+    certbotbot_identity_shortest alfa.example.com beta.example.com || exit $?
+    printf "%s|%s" "$first" "$REPLY"
+  ' _ "$BASH_STARTER_ARTIFACT"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'alfa.example.com|alfa.example.com' ]
+}
