@@ -112,6 +112,7 @@ teardown() {
 
 execute() {
   run "$BASH_STARTER_ARTIFACT" --s3-bucket fixture-bucket example.com
+  printf 'mock lifecycle status=%s output=%s\n' "$status" "$output" >&3
 }
 
 @test "seeded first issuance publishes one same-key archive" {
