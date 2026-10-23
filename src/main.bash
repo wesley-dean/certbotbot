@@ -61,7 +61,8 @@ certbotbot_version() {
 ## @details
 ## Requires a restored and completed selected lineage, owned by the current
 ## isolated workspace.  Preflight and canonical renewal mapping must succeed
-## before this helper runs.  OpenSSL parses the certificate, chain and fullchain,
+## before this helper runs.  OpenSSL parses the certificate and chain,
+## including the fullchain,
 ## requires that the leaf has not expired, matches exact requested DNS SANs,
 ## and confirms the leaf/public-key correspondence to the private key.
 ## The first certificate in fullchain must have the same DER bytes as the leaf.
@@ -94,14 +95,17 @@ certbotbot_verify_material() {
     printf '%s\n' 'certbotbot: certificate verification tooling unavailable' >&2
     return 69
   fi
-  if ! certbotbot_state_preflight "$workspace/config" "$selected"     >/dev/null 2>&1 ||
+  if ! certbotbot_state_preflight "$workspace/config" "$selected" \
+    >/dev/null 2>&1 ||
     [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]] ||
-    ! certbotbot_renewal_map "$workspace/config" "$selected" verify     >/dev/null 2>&1; then
+    ! certbotbot_renewal_map "$workspace/config" "$selected" verify \
+      >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected certificate state is unsuitable' >&2
     return 65
   fi
   if ! certbotbot_renew_sans_match "$root/cert.pem" "$@" ||
-    ! openssl x509 -in "$root/cert.pem" -checkend 0 -noout       >/dev/null 2>&1 ||
+    ! openssl x509 -in "$root/cert.pem" -checkend 0 -noout \
+      >/dev/null 2>&1 ||
     ! openssl x509 -in "$root/chain.pem" -noout >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected certificate or chain is unusable' >&2
     return 65
@@ -128,7 +132,8 @@ certbotbot_verify_material() {
   fi
   rm -f -- "$pub_cert" "$pub_key" "$leaf_der" "$full_der"
   if (( status != 0 )); then
-    printf '%s\n' 'certbotbot: certificate and private key verification failed' >&2
+    printf '%s\n' \
+      'certbotbot: certificate and private key verification failed' >&2
   fi
   return "$status"
 }
@@ -173,7 +178,8 @@ certbotbot_lifecycle_execute() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
-  certbotbot_s3_fetch "$workspace" "$CERTBOTBOT_S3_BUCKET"     "$CERTBOTBOT_S3_KEY" || return $?
+  certbotbot_s3_fetch "$workspace" "$CERTBOTBOT_S3_BUCKET" \
+    "$CERTBOTBOT_S3_KEY" || return $?
   certbotbot_archive_restore "$workspace/downloaded.tar.gz" "$workspace" ||
     return $?
   config="$workspace/config"
@@ -193,7 +199,8 @@ certbotbot_lifecycle_execute() {
 
   case "$CERTBOTBOT_LINEAGE_STATE" in
     absent)
-      certbotbot_provider_issue "$workspace" "$CERTBOTBOT_CERT_NAME"         "${CERTBOTBOT_SANS[@]}" || return $?
+      certbotbot_provider_issue "$workspace" "$CERTBOTBOT_CERT_NAME" \
+        "${CERTBOTBOT_SANS[@]}" || return $?
       certbotbot_state_preflight "$config" "$CERTBOTBOT_CERT_NAME" ||
         return $?
       [[ "$CERTBOTBOT_LINEAGE_STATE" == present ]] || {
@@ -206,7 +213,8 @@ certbotbot_lifecycle_execute() {
       outcome=issued
       ;;
     present)
-      certbotbot_provider_existing "$workspace" "$CERTBOTBOT_CERT_NAME"         "${CERTBOTBOT_SANS[@]}" || return $?
+      certbotbot_provider_existing "$workspace" "$CERTBOTBOT_CERT_NAME" \
+        "${CERTBOTBOT_SANS[@]}" || return $?
       changed="$CERTBOTBOT_DURABLE_CHANGED"
       outcome=checked
       ;;
@@ -216,14 +224,20 @@ certbotbot_lifecycle_execute() {
       ;;
   esac
 
-  if [[ ! -d "$account_dir/$account_before" || -L "$account_dir/$account_before" ]]; then
+  if [[ ! -d "$account_dir/$account_before" ||
+    -L "$account_dir/$account_before" ]]; then
     printf '%s\n' 'certbotbot: restored ACME account identity changed' >&2
     return 65
   fi
-  certbotbot_verify_material "$workspace" "$CERTBOTBOT_CERT_NAME"     "${CERTBOTBOT_SANS[@]}" || return $?
-  certbotbot_s3_publish "$workspace" "$CERTBOTBOT_CERT_NAME"     "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY"     "$changed" "$CERTBOTBOT_UPLOAD_NO_RENEWAL" || return $?
+  certbotbot_verify_material "$workspace" "$CERTBOTBOT_CERT_NAME" \
+    "${CERTBOTBOT_SANS[@]}" || return $?
+  certbotbot_s3_publish "$workspace" "$CERTBOTBOT_CERT_NAME" \
+    "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" \
+    "$changed" "$CERTBOTBOT_UPLOAD_NO_RENEWAL" || return $?
 
-  printf 'certbotbot: %s %s; s3://%s/%s; published=%s\n'     "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET"     "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED"
+  printf 'certbotbot: %s %s; s3://%s/%s; published=%s\n' \
+    "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
+    "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED"
   return 0
 }
 
