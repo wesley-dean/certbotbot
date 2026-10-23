@@ -55,9 +55,9 @@ must prevent the lifecycle from publishing the workspace.
 Neither this adapter nor the earlier renewal provider checks the
 cryptographic relationship between issued private key and certificate,
 validity period, or trust chain. These remain for the candidate
-assertion and archival publication gates. This adapter performs no
-S3 call and leaves public CLI dispatch fail-closed until the complete
-five-step lifecycle is approved.
+assertion and archival publication gates. This adapter itself performs no S3 call. The public lifecycle
+uses the separate X.509/key consistency verifier from ADR-029
+before a changed candidate can reach the S3 publisher.
 
 A prior Certbot failure can mutate local restored state or have remote
 issuance effects. The caller must discard that private workspace, never
