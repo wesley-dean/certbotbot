@@ -73,7 +73,7 @@ certbotbot_certificate_verify() {
   if [[ ! -f "$cert" || ! -r "$cert" || ! -f "$key" || ! -r "$key" ||
     ! -f "$chain" || ! -r "$chain" ||
     ! -f "$fullchain" || ! -r "$fullchain" ]] ||
-    [[ -n "$(find "$key" -perm /077 -print -quit 2>/dev/null)" ]]; then
+    [[ -n "$(find -L "$key" -perm /077 -print -quit 2>/dev/null)" ]]; then
     printf '%s\n' 'certbotbot: certificate material is unsuitable' >&2
     return 65
   fi
