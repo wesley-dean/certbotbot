@@ -55,6 +55,7 @@ case "$verb" in
     ;;
   show_account)
     [[ "$SAN_MOCK_SCENARIO" == account_failed ]] && exit 3
+    printf '%s\n' 'known account'
     ;;
   certonly)
     grep -Fxq "archive_dir = $SAN_MOCK_CONFIG/archive/example.com" \
