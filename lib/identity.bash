@@ -71,6 +71,7 @@ certbotbot_identity_shortest() {
   REPLY="$selected"
   return 0
 }
+
 ## @fn certbotbot_identity_resolve()
 ## @brief Computes requested SANs and stable Certbot lineage identifier.
 ## @par STDIN
