@@ -22,6 +22,9 @@ must survive local archive serialization and a later independent restore.
 All three standalone release artifacts are exercised by the existing
 `make test` and `make test-report` loops.
 
+For credential boundaries, remote-write uncertainty, and other residual
+risks, see the [MVP Certificate-State Threat Model](mvp-certificate-state-threat-model.md).
+
 ## Failure and publication matrix
 
 | Condition | Expected public result | Expected remote outcome |
