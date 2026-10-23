@@ -13,8 +13,8 @@
 ## existing candidate archive builder itself. No arbitrary provided file
 ## may bypass validation. Certificate renewal and durable-state changes are
 ## distinct: changed=true requires publication even if Certbot issued no new
-## leaf; unchanged=true is never a meaningful CHANGED value. A successful
-## unchanged no-op publishes only when the explicit override is true.
+## leaf. When changed=false, a successful unchanged no-op publishes only if
+## the explicit override is true.
 ## The normative product truth table is in
 ## doc/mvp-upload-no-renewal-policy.md. AWS CLI v2 is inherited from the operator's
 ## environment; command output is suppressed. Failed PutObject leaves remote
