@@ -37,11 +37,43 @@ printf 'aws:%s:%s:%s\n' "$action" "$bucket" "$key" >>"$LIFECYCLE_CALLS"
 [[ "$action" == head-bucket || "$key" == "$LIFECYCLE_EXPECTED_KEY" ]] || exit 99
 case "$action" in
   head-object)
-    [[ "$LIFECYCLE_MODE" == head-failure ]] && exit 9
+    case "$LIFECYCLE_MODE" in
+      head-failure) exit 9 ;;
+      head-denied)
+        printf '%s\n' 'An error occurred (403), private-token-DO-NOT-LOG' >&2
+        exit 9
+        ;;
+      head-service)
+        printf '%s\n' 'An error occurred (500)' >&2
+        exit 9
+        ;;
+      head-transport)
+        printf '%s\n' 'Connect timeout on endpoint URL' >&2
+        exit 9
+        ;;
+      head-ambiguous-missing)
+        printf '%s\n' 'An error occurred (404)' >&2
+        exit 9
+        ;;
+    esac
     [[ -f "$LIFECYCLE_REMOTE" ]] || { printf '(404)\n' >&2; exit 1; }
     ;;
   get-object)
-    [[ "$LIFECYCLE_MODE" == get-failure ]] && exit 9
+    case "$LIFECYCLE_MODE" in
+      get-failure) exit 9 ;;
+      get-partial)
+        printf '%s\n' 'incomplete local download' >"$target"
+        exit 9
+        ;;
+      get-empty)
+        : >"$target"
+        exit 0
+        ;;
+      get-corrupt)
+        printf '%s\n' 'corrupt gzip data, not an archive' >"$target"
+        exit 0
+        ;;
+    esac
     cp "$LIFECYCLE_REMOTE" "$target" || exit 9
     ;;
   put-object)
@@ -51,7 +83,10 @@ case "$action" in
     [[ "$LIFECYCLE_MODE" == put-after-write-failure ]] && exit 9
     exit 0
     ;;
-  head-bucket) : ;;
+  head-bucket)
+    [[ "$LIFECYCLE_MODE" == head-ambiguous-missing ]] && exit 9
+    exit 0
+    ;;
   *) exit 99 ;;
 esac
 MOCK
@@ -143,6 +178,13 @@ execute() {
   local runner="${LIFECYCLE_RUNNER_TMPDIR:-$ROOT/runner-temp}"
   run env TMPDIR="$runner" "$BASH_STARTER_ARTIFACT" \
     --s3-bucket fixture-bucket "$@" example.com
+}
+
+execute_domain() {
+  local domain="$1" runner="${LIFECYCLE_RUNNER_TMPDIR:-$ROOT/runner-temp}"
+  shift
+  run env TMPDIR="$runner" "$BASH_STARTER_ARTIFACT" \
+    --s3-bucket fixture-bucket "$@" "$domain"
 }
 
 @test "seeded first issuance publishes one same-key archive" {
