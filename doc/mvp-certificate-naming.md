@@ -100,6 +100,15 @@ be invoked. This contract does not promise distributed locking or recovery
 from a failed/in-flight PutObject; remote state can be uncertain once a write
 has started.
 
+**Identified integration checks for task #93:** The current identity
+resolver directly adopts the first SAN as a fallback name and does not
+revalidate that *derived* name as a non-wildcard lineage identifier. Thus
+the wildcard-only/no-override case must be corrected or explicitly rejected
+before cloud access; the table states the required outcome, not an already
+proven current behavior. Additionally, Bash's `[[ a < b ]]` ordering may
+follow the ambient collation locale, so task #93 should ensure canonical
+ASCII lexical tie behavior without exposing a second public SAN interface.
+
 Current supporting evidence includes `tests/config-identity.bats` for
 literal configuration precedence, explicit override, apex/wildcard default
 and malformed identifiers, and `tests/public-lifecycle.bats` for
