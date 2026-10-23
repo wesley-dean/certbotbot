@@ -12,6 +12,7 @@ setup() {
   tar -czf "$ROOT/remote.tar.gz" -C "$ROOT/seed" .
   export LIFECYCLE_REMOTE="$ROOT/remote.tar.gz"
   export LIFECYCLE_CALLS="$ROOT/calls"
+  export LIFECYCLE_CONTEXTS="$ROOT/certbot-contexts"
   export LIFECYCLE_MODE=ok
   export LIFECYCLE_EXPECTED_KEY=latest.tar.gz
   mkdir -m 700 "$ROOT/runner-temp"
@@ -59,15 +60,20 @@ MOCK
 verb="$1"
 shift
 printf 'certbot:%s\n' "$verb" >>"$LIFECYCLE_CALLS"
-config='' name='' account='' 
+config='' work='' logs='' name='' account=''
 while (( $# )); do
   case "$1" in
     --config-dir) config="$2"; shift 2 ;;
+    --work-dir) work="$2"; shift 2 ;;
+    --logs-dir) logs="$2"; shift 2 ;;
     --cert-name) name="$2"; shift 2 ;;
     --account) account="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
+printf 'certbot-context:%s:%s:%s:%s:%s:%s\n' \
+  "$verb" "$config" "$work" "$logs" "$name" "$account" \
+  >>"$LIFECYCLE_CONTEXTS"
 case "$verb" in
   plugins) printf '* dns-route53\n' ;;
   show_account) [[ "$account" == account-id ]] || exit 91 ;;
@@ -134,7 +140,8 @@ teardown() {
 }
 
 execute() {
-  run env TMPDIR="$ROOT/runner-temp" "$BASH_STARTER_ARTIFACT" \
+  local runner="${LIFECYCLE_RUNNER_TMPDIR:-$ROOT/runner-temp}"
+  run env TMPDIR="$runner" "$BASH_STARTER_ARTIFACT" \
     --s3-bucket fixture-bucket "$@" example.com
 }
 
@@ -337,4 +344,90 @@ MOCK
   [ "$status" -ne 0 ]
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
   [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+}
+
+@test "three separate runners preserve original account and selected lineage" {
+  mkdir -m 700 "$ROOT/runner-a" "$ROOT/runner-b" "$ROOT/runner-c"
+
+  # Runner A starts only from the seeded existing account-only S3 archive.
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/runner-a"
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  first="$(grep '^certbot-context:certonly:' "$LIFECYCLE_CONTEXTS")"
+  IFS=: read -r marker verb first_config first_work first_logs \
+    first_name first_account <<< "$first"
+  [ "$marker" = certbot-context ]
+  [ "$verb" = certonly ]
+  [ "$first_name" = example.com ]
+  [ "$first_account" = account-id ]
+  [[ "$first_config" == "$ROOT/runner-a/"* ]]
+  [[ "$first_work" == "$ROOT/runner-a/"* ]]
+  [[ "$first_logs" == "$ROOT/runner-a/"* ]]
+  [ -z "$(find "$ROOT/runner-a" -mindepth 1 -print -quit)" ]
+
+  # Runner B has a distinct temporary root and no state from runner A.
+  cp "$LIFECYCLE_REMOTE" "$ROOT/first-published.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/runner-b"
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$ROOT/first-published.tar.gz" "$LIFECYCLE_REMOTE"
+  second="$(grep '^certbot-context:renew:' "$LIFECYCLE_CONTEXTS")"
+  IFS=: read -r marker verb second_config second_work second_logs \
+    second_name second_account <<< "$second"
+  [ "$second_name" = "$first_name" ]
+  [ "$second_account" = "$first_account" ]
+  [[ "$second_config" == "$ROOT/runner-b/"* ]]
+  [[ "$second_work" == "$ROOT/runner-b/"* ]]
+  [[ "$second_logs" == "$ROOT/runner-b/"* ]]
+  [ "$second_config" != "$first_config" ]
+  [ "$second_work" != "$first_work" ]
+  [ "$second_logs" != "$first_logs" ]
+  [ -z "$(find "$ROOT/runner-b" -mindepth 1 -print -quit)" ]
+
+  # Runner C renews only the restored selected lineage and persists it.
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/runner-c"
+  export LIFECYCLE_MODE=renew-changed
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  third="$(grep '^certbot-context:renew:' "$LIFECYCLE_CONTEXTS" | tail -n 1)"
+  IFS=: read -r marker verb third_config third_work third_logs \
+    third_name third_account <<< "$third"
+  [ "$third_name" = "$first_name" ]
+  [ "$third_account" = "$first_account" ]
+  [[ "$third_config" == "$ROOT/runner-c/"* ]]
+  [[ "$third_work" == "$ROOT/runner-c/"* ]]
+  [[ "$third_logs" == "$ROOT/runner-c/"* ]]
+  [ "$third_config" != "$second_config" ]
+  [ "$third_work" != "$second_work" ]
+  [ "$third_logs" != "$second_logs" ]
+  [ -z "$(find "$ROOT/runner-c" -mindepth 1 -print -quit)" ]
+
+  # Persisted state remains canonical and retains the original account.
+  mkdir -m 700 "$ROOT/inspected"
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/inspected"
+  cmp -s "$ROOT/seed/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json" \
+    "$ROOT/inspected/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json"
+  [ "$(readlink "$ROOT/inspected/live/example.com/cert.pem")" = \
+    "../../archive/example.com/cert1.pem" ]
+  grep -Fq 'archive_dir = /etc/letsencrypt/archive/example.com' \
+    "$ROOT/inspected/renewal/example.com.conf"
+  grep -Fq 'account = account-id' \
+    "$ROOT/inspected/renewal/example.com.conf"
+  ! grep -Fq "$ROOT/runner-a" "$ROOT/inspected/renewal/example.com.conf"
+  ! grep -Fq "$ROOT/runner-b" "$ROOT/inspected/renewal/example.com.conf"
+  ! grep -Fq "$ROOT/runner-c" "$ROOT/inspected/renewal/example.com.conf"
+  ! cmp -s "$ROOT/first-published.tar.gz" "$LIFECYCLE_REMOTE"
 }
