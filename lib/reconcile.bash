@@ -45,9 +45,24 @@ certbotbot_provider_existing() {
   workspace="$1"
   selected="$2"
   shift 2
-  if ! certbotbot_provider_sans "$@"; then
-    printf '%s\n' 'certbotbot: invalid selected certificate SANs' >&2
+  if [[ "$workspace" != /* || "$workspace" == / ||
+    ! "$workspace" =~ ^/[A-Za-z0-9._/-]+$ ||
+    "$workspace" == */ || ! -d "$workspace" || -L "$workspace" ||
+    ! -O "$workspace" || "$selected" == *'*'* ]] ||
+    ! certbotbot_dns_valid "$selected" ||
+    ! certbotbot_provider_sans "$@"; then
+    printf '%s\n' 'certbotbot: invalid selected certificate input' >&2
     return 64
+  fi
+  if [[ "$(cd -P -- "$workspace" && pwd -P)" != "$workspace" ||
+    "$(stat -c %a -- "$workspace" 2>/dev/null)" != 700 ]]; then
+    printf '%s\n' 'certbotbot: unsafe selected certificate workspace' >&2
+    return 64
+  fi
+  if ! certbotbot_state_preflight "$workspace/config" "$selected" >/dev/null 2>&1 ||
+    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]]; then
+    printf '%s\n' 'certbotbot: selected lineage is unsuitable' >&2
+    return 65
   fi
   if certbotbot_renew_sans_match "$workspace/config/live/$selected/cert.pem" "$@"; then
     certbotbot_provider_renew "$workspace" "$selected" "$@"
