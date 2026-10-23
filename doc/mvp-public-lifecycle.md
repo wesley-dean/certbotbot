@@ -58,3 +58,6 @@ OpenSSL for locally generated fixtures; no external credentials are used.
 The full cross-runner renewal, metadata-only publication, corrupt-state,
 failed-serialization and uncertain-PutObject matrix for task #40 is recorded
 in [MVP S3 Roundtrip and Publication Fault Evidence](mvp-s3-roundtrip-validation.md).
+
+The independently isolated three-runner account/lineage continuity test for
+task #32 is described in [MVP Fresh-Runner State Continuity Evidence](mvp-fresh-runner-continuity.md).
