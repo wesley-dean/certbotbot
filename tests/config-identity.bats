@@ -163,7 +163,7 @@ teardown() {
   run bash -c '
     source lib/config.bash
     source lib/identity.bash
-    certbotbot_config_resolve --s3-bucket bucket --san api.example.net \\
+    certbotbot_config_resolve --s3-bucket bucket --san api.example.net \
       --san service.other.org example.com || exit $?
     certbotbot_identity_resolve || exit $?
     printf "%s|%s" "$CERTBOTBOT_CERT_NAME" "${CERTBOTBOT_SANS[*]}"
@@ -176,7 +176,7 @@ teardown() {
   run bash -c '
     source lib/config.bash
     source lib/identity.bash
-    certbotbot_config_resolve --s3-bucket bucket --san "*.api.other.org" \\
+    certbotbot_config_resolve --s3-bucket bucket --san "*.api.other.org" \
       --san api.other.org --san EXAMPLE.COM --domain example.com || exit $?
     certbotbot_identity_resolve || exit $?
     printf "%s" "${CERTBOTBOT_SANS[*]}"
@@ -189,7 +189,7 @@ teardown() {
   run bash -c '
     source lib/config.bash
     source lib/identity.bash
-    certbotbot_config_resolve --s3-bucket bucket --include-subdomains=false \\
+    certbotbot_config_resolve --s3-bucket bucket --include-subdomains=false \
       --san "*.api.other.org" --san example.com example.com || exit $?
     certbotbot_identity_resolve || exit $?
     printf "%s" "${CERTBOTBOT_SANS[*]}"
