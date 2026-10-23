@@ -100,23 +100,23 @@ be invoked. This contract does not promise distributed locking or recovery
 from a failed/in-flight PutObject; remote state can be uncertain once a write
 has started.
 
-**Identified integration checks for task #93:** The current identity
-resolver directly adopts the first SAN as a fallback name and does not
-revalidate that *derived* name as a non-wildcard lineage identifier. Thus
-the wildcard-only/no-override case must be corrected or explicitly rejected
-before cloud access; the table states the required outcome, not an already
-proven current behavior. Additionally, Bash's `[[ a < b ]]` ordering may
-follow the ambient collation locale, so task #93 should ensure canonical
-ASCII lexical tie behavior without exposing a second public SAN interface.
+**Implementation integration for task #93:** The identity resolver now validates
+a derived certificate lineage separately from the requested SANs. An
+unoverridden wildcard-only request with complementary SAN disabled returns
+status 64 before any S3 request; an explicit safe name can still select a
+wildcard-only certificate SAN. A small internal shortest-SAN selector applies
+the approved full-text-length and ASCII-lexical tie rule with `LC_ALL=C`,
+regardless of the process's inherited locale. The extra-selector arguments
+remain internal; the MVP public command still accepts one primary DNS name.
 
-Current supporting evidence includes `tests/config-identity.bats` for
-literal configuration precedence, explicit override, apex/wildcard default
-and malformed identifiers, and `tests/public-lifecycle.bats` for
-restored-lineage and independent-runner continuity. Task #93 will review
-the actual public integration against this entire contract. Task #94 owns
-additional black-box matrices for conflicts, stable explicit overrides,
-SAN transitions, and all three release artifacts. Only the supported
-one-primary-name case is claimed as implemented in milestone #1.
+The public lifecycle already passes the resolved name to selected-only Certbot
+issuance and renewal; restored account/lineage preflight rejects a differently
+named archive before Certbot can create or rename state. Focused tests in
+`tests/config-identity.bats` and `tests/public-lifecycle.bats` cover
+derived-name rejection, valid explicit name, lexical selection, restored
+same-name continuity, and an unrelated-name conflict. Task #94 remains
+responsible for the expanded public black-box name, precedence, SAN transition,
+and three-artifact equivalence matrix.
 
 No new accepted ADR is required for this task because ADR-020, ADR-023,
 ADR-025 and ADR-026 already govern the relevant choices. If task #93

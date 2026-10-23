@@ -110,3 +110,51 @@ teardown() {
   [ "$status" -eq 64 ]
 }
 
+
+@test "derived wildcard-only lineage is refused before external tooling" {
+  run "${BASH_STARTER_ARTIFACT}" --s3-bucket bucket \
+    --include-subdomains=false '*.example.com'
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"invalid derived certificate name"* ]]
+}
+
+@test "explicit safe lineage allows wildcard-only SAN without changing SAN input" {
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    certbotbot_config_resolve --s3-bucket bucket \
+      --include-subdomains=false --cert-name issued.example.com \
+      "*.example.com" || exit $?
+    certbotbot_identity_resolve || exit $?
+    printf "%s|%s|%s" "$CERTBOTBOT_CERT_NAME" \
+      "${CERTBOTBOT_SANS[*]}" "$CERTBOTBOT_S3_KEY"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = 'issued.example.com|*.example.com|latest.tar.gz' ]
+}
+
+@test "shortest SAN selector uses ASCII lexical ordering independent of order" {
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    certbotbot_identity_shortest beta.example.com alfa.example.com || exit $?
+    first="$REPLY"
+    certbotbot_identity_shortest alfa.example.com beta.example.com || exit $?
+    printf "%s|%s" "$first" "$REPLY"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = 'alfa.example.com|alfa.example.com' ]
+}
+
+@test "shortest SAN selector rejects a derived wildcard name and unsafe input" {
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    certbotbot_identity_shortest "*.example.com" && exit 90
+    certbotbot_identity_shortest /tmp/traversal.example && exit 91
+    certbotbot_identity_shortest example.com "*.example.com" || exit $?
+    printf "%s" "$REPLY"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = example.com ]
+}

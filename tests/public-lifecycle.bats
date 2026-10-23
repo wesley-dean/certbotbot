@@ -15,6 +15,7 @@ setup() {
   export LIFECYCLE_CONTEXTS="$ROOT/certbot-contexts"
   export LIFECYCLE_MODE=ok
   export LIFECYCLE_EXPECTED_KEY=latest.tar.gz
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
   mkdir -m 700 "$ROOT/runner-temp"
   cat >"$ROOT/bin/aws" <<'MOCK'
 #!/usr/bin/env bash
@@ -117,7 +118,8 @@ case "$verb" in
   show_account) [[ "$account" == account-id ]] || exit 91 ;;
   certonly)
     [[ "$LIFECYCLE_MODE" == certbot-failure ]] && exit 9
-    [[ "$account" == account-id && "$name" == example.com ]] || exit 91
+    [[ "$account" == account-id &&
+      "$name" == "$LIFECYCLE_EXPECTED_CERT_NAME" ]] || exit 91
     mkdir -p "$config/archive/$name" "$config/live/$name" "$config/renewal"
     openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=example.com' \
       -addext 'subjectAltName=DNS:example.com,DNS:*.example.com' \
@@ -798,4 +800,41 @@ MOCK
   [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
     "$LIFECYCLE_CALLS")" -eq 1 ]
   assert_remote_sha256_changed
+}
+
+@test "explicit lineage name survives selected issuance and a restored renewal" {
+  export LIFECYCLE_EXPECTED_CERT_NAME=issued.example.com
+  execute --cert-name issued.example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued issued.example.com"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fq \
+    "./renewal/issued.example.com.conf"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/issued.example.com.conf |
+    grep -Fq "archive_dir = /etc/letsencrypt/archive/issued.example.com"
+  ! tar -tzf "$LIFECYCLE_REMOTE" | grep -Fq "./renewal/example.com.conf"
+  : >"$LIFECYCLE_CALLS"
+  execute --cert-name issued.example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checked issued.example.com"* ]]
+  [[ "$output" == *"published=false"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "conflicting stored explicit lineage refuses silent reissue or rename" {
+  export LIFECYCLE_EXPECTED_CERT_NAME=issued.example.com
+  execute --cert-name issued.example.com
+  [ "$status" -eq 0 ]
+  cp "$LIFECYCLE_REMOTE" "$ROOT/before-conflict.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  execute --cert-name different.example.com
+  [ "$status" -eq 65 ]
+  [[ "$output" != *"published=true"* ]]
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-conflict.tar.gz"
+  [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
 }
