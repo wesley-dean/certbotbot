@@ -32,10 +32,10 @@ setup() {
   [ "$status" -eq 64 ]
 }
 
-@test "a valid identity fails closed until lifecycle exists" {
+@test "a valid identity without AWS access fails closed before Certbot" {
   run "${BASH_STARTER_ARTIFACT}" --s3-bucket test-bucket example.com
   [ "$status" -eq 69 ]
-  [[ "$output" == *"lifecycle implementation not yet available"* ]]
+  [[ "$output" == *"AWS CLI v2 is required"* ]]
 }
 
 @test "explicit false is accepted without a cloud operation" {
