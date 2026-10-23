@@ -1,4 +1,55 @@
-# Bash Starter Repository
+# Certbotbot
+
+Certbotbot manages **one selected Let's Encrypt certificate** using
+Certbot's Route53 DNS-01 authenticator and one pre-existing Amazon S3
+archive object. The archive stores complete portable Certbot account and
+certificate state, so a later invocation can run on a different host.
+
+## MVP runtime contract
+
+**Prerequisites:** install AWS CLI v2, Certbot with `dns-route53`,
+OpenSSL, GNU tar/gzip and Bash 4.3+. Configure AWS credentials with
+S3 ListBucket/GetObject/PutObject access and Route53 permissions.
+The configured bucket and selected object key must **already exist**
+and contain a supported `.tar.gz` archive with a previously registered
+Let's Encrypt production account. The MVP neither creates an account
+nor initializes the missing S3 object.
+
+```bash
+certbotbot --s3-bucket my-existing-bucket example.com
+certbotbot --s3-bucket my-existing-bucket --cert-name example.com \
+  --include-subdomains false example.com
+certbotbot --s3-bucket my-existing-bucket \
+  --upload-no-renewal true example.com
+```
+
+The default object key is `latest.tar.gz`, and
+`INCLUDE_SUBDOMAINS=true` requests both `example.com` and
+`*.example.com`. Settings resolve as CLI > environment > literal
+`.env` file > defaults. The command retrieves the existing archive,
+restores it privately, issues or renews the selected certificate,
+validates the certificate/key and canonical state, and publishes a
+validated archive to **that same key** when needed. Successful
+unchanged no-ops skip publication unless the Boolean override is true.
+
+**Operational warning:** A valid invocation can make **live**
+AWS/Route53 and ACME requests using existing credentials. It never
+invokes global renew-all, registers an account, silently renames a
+lineage or generates backup archive objects. The operator must
+serialize concurrent writers. An interrupted PutObject may have
+modified remote state even when the CLI reports an error; there is no
+transactional rollback. Current MVP testing uses **mock** external
+services and real local cryptographic/archive tools; actual
+AWS/Let's Encrypt/Route53 compatibility remains for a later
+end-to-end milestone. The strict renewal metadata dialect may
+reject some installed Certbot versions. See
+[public lifecycle contract](doc/mvp-public-lifecycle.md) and
+[ADR-029](doc/adr/ADR-029-public-selected-certificate-lifecycle.md).
+
+## Maintainer build and engineering guidance
+
+The following build and governance conventions were inherited from
+`template-bash` and continue to govern the release artifacts.
 
 This repository is a starter for maintainable, documented, tested, and
 releasable Bash projects.  It consolidates engineering patterns proven across
