@@ -3,6 +3,11 @@
 setup() {
   : "${BASH_STARTER_ARTIFACT:?Artifact under test is required}"
   TEST_CONFIG_DIR="$(mktemp -d)"
+  mkdir "$TEST_CONFIG_DIR/bin"
+  printf '#!/usr/bin/env bash\nexit 99\n' >"$TEST_CONFIG_DIR/bin/aws"
+  chmod 755 "$TEST_CONFIG_DIR/bin/aws"
+  PATH="$TEST_CONFIG_DIR/bin:$PATH"
+  export PATH
 }
 
 teardown() {
@@ -110,8 +115,8 @@ teardown() {
   [ "$status" -eq 64 ]
 }
 
-@test "valid ordinary input reaches explicit unfinished lifecycle boundary" {
+@test "valid ordinary input reaches seeded S3 read rather than a placeholder" {
   run "${BASH_STARTER_ARTIFACT}" --s3-bucket bucket --upload-no-renewal=false example.com
   [ "$status" -eq 69 ]
-  [[ "$output" == *"lifecycle implementation not yet available"* ]]
+  [[ "$output" == *"S3 object cannot be inspected safely"* ]]
 }
