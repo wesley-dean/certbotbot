@@ -132,7 +132,7 @@ only process status.
 
 Existing supporting suites include `tests/config-identity.bats`,
 `tests/s3-publish.bats`, `tests/public-lifecycle.bats`, and
-`tests/archive-packaging.bats`. This task specifies the policy and
+`tests/archive-package.bats`. This task specifies the policy and
 does **not** claim that the later expanded verification is complete.
 
 ## Related governance
