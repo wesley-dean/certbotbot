@@ -100,7 +100,7 @@ esac
 MOCK
   chmod 755 "$ROOT/bin/"*
   export PATH="$ROOT/bin:$PATH"
-  export DOMAIN='' S3_BUCKET='' S3_KEY='' CERT_NAME=''
+  unset DOMAIN S3_BUCKET S3_KEY CERT_NAME
   export UPLOAD_NO_RENEWAL=false INCLUDE_SUBDOMAINS=true
 }
 
