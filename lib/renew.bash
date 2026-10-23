@@ -39,7 +39,7 @@ certbotbot_renew_sans_match() {
     return 1
   [[ "$output" == *$'\n'* ]] || return 1
   line="${output%%$'\n'*}"
-  [[ "$line" =~ ^X509v3[[:space:]]Subject[[:space:]]Alternative[[:space:]]Name:[[:blank:]]*$ ]] || return 1
+  [[ "$line" == 'X509v3 Subject Alternative Name:' || "$line" == 'X509v3 Subject Alternative Name: ' ]] || return 1
   line="${output#*$'\n'}"
   [[ "$line" != *$'\n'* ]] || return 1
   IFS=, read -r -a parts <<< "$line"
