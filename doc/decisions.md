@@ -336,3 +336,19 @@ retrieval, successful Certbot, selected name and exact same bucket/key
 remains mandatory before public dispatch may be enabled.
 
 See [ADR-028](adr/ADR-028-single-key-s3-publication.md).
+
+### ADR-029: Arbitrary DNS SAN Sets on One Stable Certificate Lineage
+
+One selected certificate may contain multiple validated DNS SANs from
+unrelated zones; the complementary apex/wildcard rule applies exactly once
+to each explicitly supplied name when enabled. A repeatable CLI `--san`
+setting or one source-selected `ADDITIONAL_SANS` list adds names without
+changing stable selected lineage identity, its registered account, or the
+single authoritative S3 object. Matching sets retain normal renewal/no-op
+behavior, while valid drift uses verified same-lineage reconciliation;
+malformed existing SANs must fail before Certbot. This decision broadens
+only ADR-020's MVP input cardinality and ADR-026's same-apex restriction;
+multi-lineage archives require the separate approved story #56.
+
+See [ADR-029](adr/ADR-029-arbitrary-multi-san-selected-lineage.md).
+
