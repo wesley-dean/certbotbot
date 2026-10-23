@@ -193,7 +193,7 @@ issue() {
   [ ! -e "$CERTBOT_PROVIDER_MOCK_LOG" ]
 }
 
-@test "provider success is not public lifecycle or publication success" {
+@test "provider component success does not bypass public seeded storage requirement" {
   issue example.com example.com
   [ "$status" -eq 0 ]
   [ ! -e "$WORKSPACE/config/live" ]
