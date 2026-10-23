@@ -21,6 +21,10 @@ This function may be invoked **only after successful Certbot
 processing and independent certificate/key verification**. It
 checks local preconditions, but cannot prove upstream success.
 
+The product-level [forced no-renewal publication policy](mvp-upload-no-renewal-policy.md)
+defines when a successful operation's durable state requires publication and
+when the optional override permits a verified republish.
+
 ## Results
 
 - `CHANGED=false`, `OVERRIDE=false`: no AWS call, no candidate
