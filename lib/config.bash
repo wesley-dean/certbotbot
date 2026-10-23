@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file lib/config.bash
-## @brief Parses literal configuration and resolves MVP settings.
+## @brief Parses literal configuration and resolves selected-lineage settings.
 ## @details
 ## Configuration is never sourced or evaluated. Values are captured by literal
 ## assignment and overlaid according to the public MVP configuration contract.
 ## Invalid configuration fails before any cloud operation is attempted.
+## Additional SAN input follows ADR-029: repeated --san values select the
+## entire CLI collection; exported ADDITIONAL_SANS replaces the literal
+## file list, and file/default values are consulted only when higher sources
+## are absent. Individual names are validated by certbotbot_identity_resolve.
 
 ## @var CERTBOTBOT_FILE_VALUES
 ## @brief Associative literal values parsed from the selected configuration.
@@ -51,7 +55,7 @@ certbotbot_read_env_file() {
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
     case "$key" in
-      DOMAIN|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|UPLOAD_NO_RENEWAL) ;;
+      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|UPLOAD_NO_RENEWAL) ;;
       *) certbotbot_error 'unknown configuration key'; return 64 ;;
     esac
     if [[ -n "${seen[$key]+x}" ]]; then
@@ -77,6 +81,13 @@ certbotbot_read_env_file() {
 
 ## @fn certbotbot_config_resolve()
 ## @brief Resolves each supported key using CLI, environment, file and defaults.
+## @details
+## A repeated --san NAME or --san=NAME is a collection-valued CLI setting.
+## With no CLI --san, ADDITIONAL_SANS is a literal comma-delimited environment
+## or .env list; an exported empty value deliberately masks the file list.
+## The result is CERTBOTBOT_ADDITIONAL_SANS, an indexed Bash array. No list
+## data is evaluated, interpolated or treated as shell code. The input cap is
+## 99 extras, reserving the 100th name for the required primary identity.
 ## @param ... Command-line arguments including one DNS identity.
 ## @par STDIN
 ## Nothing is read from STDIN.
@@ -88,19 +99,19 @@ certbotbot_read_env_file() {
 ## @retval 64 Invalid settings or arguments.
 certbotbot_config_resolve() {
   local name key value arg config_file='' explicit_config=false
-  local -a args=("$@")
+  local -a args=("$@") san_cli=()
   local -A cli=()
   CERTBOTBOT_FILE_VALUES=()
   local -i i=0
   while (( i < ${#args[@]} )); do
     arg="${args[i]}"
     case "$arg" in
-      --config|--domain|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--upload-no-renewal)
+      --config|--domain|--san|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--upload-no-renewal)
         (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --config=*|--domain=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--upload-no-renewal=*)
+      --config=*|--domain=*|--san=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--upload-no-renewal=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -125,6 +136,12 @@ certbotbot_config_resolve() {
         continue
         ;;
     esac
+    if [[ "$arg" == --san ]]; then
+      [[ -n "$value" ]] || { certbotbot_error 'invalid additional DNS identity'; return 64; }
+      san_cli+=("$value")
+      (( ${#san_cli[@]} <= 99 )) || { certbotbot_error 'too many additional DNS identities'; return 64; }
+      continue
+    fi
     case "$arg" in
       --config)
         [[ "$explicit_config" == false ]] || { certbotbot_error 'duplicate option'; return 64; }
@@ -158,6 +175,29 @@ certbotbot_config_resolve() {
     if [[ -n "${cli[$name]+x}" ]]; then value="${cli[$name]}"; fi
     printf -v "CERTBOTBOT_$name" '%s' "$value"
   done
+  # The SAN list has collection-level, not element-level, precedence.
+  # Reject empty comma fields before read -a, which otherwise drops some.
+  CERTBOTBOT_ADDITIONAL_SANS=()
+  if (( ${#san_cli[@]} > 0 )); then
+    CERTBOTBOT_ADDITIONAL_SANS=("${san_cli[@]}")
+  else
+    value=''
+    if [[ -n "${CERTBOTBOT_FILE_VALUES[ADDITIONAL_SANS]+x}" ]]; then
+      value="${CERTBOTBOT_FILE_VALUES[ADDITIONAL_SANS]}"
+    fi
+    if [[ -n "${ADDITIONAL_SANS+x}" ]]; then value="$ADDITIONAL_SANS"; fi
+    if [[ -n "$value" ]]; then
+      if [[ "$value" == ,* || "$value" == *, || "$value" == *,,* ]]; then
+        certbotbot_error 'invalid additional DNS identity list'
+        return 64
+      fi
+      IFS=, read -r -a CERTBOTBOT_ADDITIONAL_SANS <<< "$value"
+    fi
+  fi
+  if (( ${#CERTBOTBOT_ADDITIONAL_SANS[@]} > 99 )); then
+    certbotbot_error 'too many additional DNS identities'
+    return 64
+  fi
   for name in INCLUDE_SUBDOMAINS UPLOAD_NO_RENEWAL; do
     key="CERTBOTBOT_$name"
     case "${!key}" in true|false) ;; *) certbotbot_error 'invalid boolean setting'; return 64 ;; esac
