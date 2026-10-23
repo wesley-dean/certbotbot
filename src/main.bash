@@ -145,8 +145,11 @@ certbotbot_verify_material() {
 ## serialize it safely.  The public executable invokes it only after resolving
 ## identity and S3 parameters, then exits.  Its process-level EXIT trap owns
 ## cleanup of the freshly allocated workspace on every exit or failure,
-## including handled termination signals.  This function is not a sourced
-## library API: callers must not rely on preserving their EXIT trap.
+## including handled termination signals.  Because the EXIT trap runs after
+## the function returns, the owned workspace pathname is also kept in the
+## script-scope CERTBOTBOT_ACTIVE_WORKSPACE variable; a function-local value
+## would have expired before cleanup.  This function is not a sourced library
+## API: callers must not rely on preserving their EXIT trap.
 ##
 ## Missing or unsafe S3 state never triggers account registration or host
 ## fallback.  An absent selected lineage is issued using the restored account;
@@ -173,7 +176,10 @@ certbotbot_lifecycle_execute() {
   local workspace='' config account_dir account_before='' entry
   local changed='' outcome=''
   workspace="$(certbotbot_workspace_create)" || return $?
-  trap 'rm -rf -- "$workspace"' EXIT
+  # An EXIT trap runs after a returned function loses its local variables.
+  # Hold only the freshly allocated, validated workspace path at script scope.
+  CERTBOTBOT_ACTIVE_WORKSPACE="$workspace"
+  trap 'rm -rf -- "$CERTBOTBOT_ACTIVE_WORKSPACE"' EXIT
   trap 'exit 129' HUP
   trap 'exit 130' INT
   trap 'exit 143' TERM
