@@ -10,6 +10,8 @@
 ## All remote write authority is conditioned on successful local verification.
 ## Each invocation owns and destroys only its freshly allocated workspace.
 ##
+## The fail-closed trust model is recorded in
+## doc/mvp-certificate-state-threat-model.md.
 ## The underlying adapters follow ADR-020 through ADR-028.  External Certbot,
 ## Route53, AWS CLI, OpenSSL and the private runner are trusted operational
 ## dependencies; this orchestration is not a sandbox or distributed transaction.

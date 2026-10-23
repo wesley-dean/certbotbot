@@ -602,3 +602,35 @@ assert_failed_fetch_is_nondestructive() {
   ! tar -tzf "$LIFECYCLE_REMOTE" |
     grep -Fq './renewal/*.example.com.conf'
 }
+
+@test "public success and failure diagnostics never echo ACME or AWS secret fixtures" {
+  local marker='fixture-acme-private-CANNOT-LOG'
+  printf '{"seed":"%s"}\n' "$marker" \
+    >"$ROOT/seed/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/seed" .
+
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [[ "$output" != *"$marker"* ]]
+  [[ "$output" != *'-----BEGIN PRIVATE KEY-----'* ]]
+
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_MODE=head-denied
+  execute
+  [ "$status" -eq 69 ]
+  [[ "$output" != *"$marker"* ]]
+  [[ "$output" != *'private-token-DO-NOT-LOG'* ]]
+  [[ "$output" != *'-----BEGIN PRIVATE KEY-----'* ]]
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_MODE=certbot-failure
+  execute
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"$marker"* ]]
+  [[ "$output" != *'-----BEGIN PRIVATE KEY-----'* ]]
+  [[ "$output" != *'published=true'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}

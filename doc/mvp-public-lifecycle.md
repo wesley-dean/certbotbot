@@ -4,6 +4,9 @@ Task #27 connects the previously reviewed component interfaces into one public
 command and follows ADR-020 through ADR-028. This document covers the
 orchestration boundary, not the subsequent real-service staging acceptance.
 
+The current risk analysis and fail-closed stage boundaries are documented in
+[MVP Certificate-State Threat Model](mvp-certificate-state-threat-model.md).
+
 ## Execution
 
 `certbotbot --s3-bucket BUCKET [--s3-key KEY] DNS_NAME` resolves the existing
