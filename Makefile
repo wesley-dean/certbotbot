@@ -120,7 +120,7 @@ test: build
 ## Run every artifact flavor and emit one JUnit report per flavor.
 test-report: build
 	@mkdir -p "$(TEST_RESULTS_DIR)"
-	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; if ! BASH_STARTER_ARTIFACT="${PWD}/$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-${label}.xml"; then grep -n -A 5 -B 2 "<failure" "$(TEST_RESULTS_DIR)/bats-${label}.xml" >&2 || true; exit 1; fi; done
+	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
 
 FORCE:
 
