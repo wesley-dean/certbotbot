@@ -265,7 +265,7 @@ verify_renewal() {
   [[ "$output" != *'REMOTE TOOL CALLED'* ]]
 }
 
-@test "public CLI remains unimplemented until validated S3 publication" {
+@test "public CLI cannot issue without working seeded storage" {
   package_candidate
   [ "$status" -eq 0 ]
   run "$BASH_STARTER_ARTIFACT" --s3-bucket seeded-bucket example.com
