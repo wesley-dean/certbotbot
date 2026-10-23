@@ -657,3 +657,145 @@ assert_failed_fetch_is_nondestructive() {
   [[ "$output" != *'published=true'* ]]
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
 }
+
+# The mock remote SHA-256 proves local failure preservation, not AWS atomicity.
+snapshot_remote_sha256() {
+  REMOTE_BASELINE="$(sha256sum -- "$LIFECYCLE_REMOTE" | cut -d ' ' -f1)"
+  [ -n "$REMOTE_BASELINE" ]
+}
+assert_remote_sha256_unchanged() {
+  [ "$(sha256sum -- "$LIFECYCLE_REMOTE" | cut -d ' ' -f1)" = "$REMOTE_BASELINE" ]
+}
+assert_remote_sha256_changed() {
+  [ "$(sha256sum -- "$LIFECYCLE_REMOTE" | cut -d ' ' -f1)" != "$REMOTE_BASELINE" ]
+}
+prepare_known_good_remote() {
+  execute
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"published=true"* ]] || return 1
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fq './renewal/example.com.conf' || return 1
+  snapshot_remote_sha256
+  : >"$LIFECYCLE_CALLS"
+}
+assert_no_publication_after_failure() {
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"published=true"* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  assert_remote_sha256_unchanged
+  [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+}
+
+@test "partial failing renewal cannot replace the last known-good S3 archive" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=renew-partial-failure
+  execute
+  [ "$status" -eq 74 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "successful Certbot with mismatched private key cannot publish" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=renew-bad-leaf
+  execute
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"certificate and private key verification failed"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "successful Certbot with invalid fullchain cannot publish" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=renew-bad-chain
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "unsafe metadata written during renewal cannot be published" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=renew-unsafe-metadata
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "failed candidate compression after renewal preserves known-good S3" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=metadata-changed
+  cat >"$ROOT/bin/tar" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "$1" == --format=ustar ]]; then exit 27; fi
+exec /usr/bin/tar "$@"
+MOCK
+  chmod 755 "$ROOT/bin/tar"
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "invalid candidate from successful tar command is never published" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=metadata-changed
+  cat >"$ROOT/bin/tar" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "$1" == --format=ustar ]]; then
+  printf 'not a tar archive'
+  exit 0
+fi
+exec /usr/bin/tar "$@"
+MOCK
+  chmod 755 "$ROOT/bin/tar"
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "verified no-op does not write or change the remote object digest" {
+  prepare_known_good_remote
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  assert_remote_sha256_unchanged
+}
+
+@test "rejected forced PutObject preserves old digest but reports uncertainty" {
+  prepare_known_good_remote
+  export UPLOAD_NO_RENEWAL=true
+  export LIFECYCLE_PUT_MODE=put-failure
+  execute
+  [ "$status" -eq 74 ]
+  [[ "$output" == *"remote state is uncertain"* ]]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_remote_sha256_unchanged
+}
+
+@test "lost successful PutObject reply cannot promise remote preservation" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=metadata-changed
+  export LIFECYCLE_PUT_MODE=put-after-write-failure
+  execute
+  [ "$status" -eq 74 ]
+  [[ "$output" == *"remote state is uncertain"* ]]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_remote_sha256_changed
+}
+
+@test "successful metadata publication changes the one selected S3 digest" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=metadata-changed
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_remote_sha256_changed
+}
