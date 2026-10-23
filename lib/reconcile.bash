@@ -247,10 +247,16 @@ certbotbot_provider_reconcile() {
     return 74
   fi
   if ! certbotbot_state_preflight "$config" "$selected" >/dev/null 2>&1 ||
-    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]] ||
-    [[ ! -d "$directory/$account" ]] ||
-    ! certbotbot_renew_sans_match "$cert" "$@"; then
-    printf '%s\n' 'certbotbot: reconciled certificate state is unsuitable' >&2
+    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]]; then
+    printf '%s\n' 'certbotbot: reconciled lineage failed local validation' >&2
+    return 65
+  fi
+  if [[ ! -d "$directory/$account" ]]; then
+    printf '%s\n' 'certbotbot: restored ACME account identity changed' >&2
+    return 65
+  fi
+  if ! certbotbot_renew_sans_match "$cert" "$@"; then
+    printf '%s\n' 'certbotbot: reconciled certificate SANs do not match' >&2
     return 65
   fi
   if ! certbotbot_renewal_map "$config" "$selected" finalize >/dev/null 2>&1; then
