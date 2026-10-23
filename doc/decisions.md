@@ -336,3 +336,19 @@ retrieval, successful Certbot, selected name and exact same bucket/key
 remains mandatory before public dispatch may be enabled.
 
 See [ADR-028](adr/ADR-028-single-key-s3-publication.md).
+
+
+### ADR-029: Public Selected-Certificate Lifecycle and Prepublication Assertions
+
+The public command now connects one resolved identity and one existing S3
+archive through isolated restoration, existing-account Certbot issuance or
+selected-only renewal, post-Certbot X.509/key and canonical metadata checks,
+and the verified one-object publisher. An owned temporary workspace is
+removed on success, failure and handled signals; no host Certbot state or
+second archive key is used. Every publication requires a complete locally
+usable certificate, and a valid no-op skips upload by default while honoring
+UPLOAD_NO_RENEWAL. Upstream account and DNS/ACME authorization remain trusted
+to the installed Certbot provider, and real-service interoperability belongs
+to a later milestone.
+
+See [ADR-029](adr/ADR-029-public-selected-certificate-lifecycle.md).
