@@ -39,12 +39,12 @@ certbotbot_renew_sans_match() {
   command -v openssl >/dev/null 2>&1 || return 1
   output="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null)" ||
     return 1
-  # OpenSSL may insert horizontal whitespace after the extension label.
-  # Reject every other header variant and retain strict DNS entry parsing.
-  [[ "$output" == *$'\n'* ]] || return 1
-  line="${output%%$'\n'*}"
-  local header_pattern='^X509v3 Subject Alternative Name:[[:blank:]]*$'
-  [[ "$line" =~ $header_pattern ]] || return 1
+  # OpenSSL may emit one space after the otherwise exact extension label.
+  # Both supported presentation variants retain the strict DNS entry parser.
+  if [[ "$output" != $'X509v3 Subject Alternative Name:\n'* &&
+    "$output" != $'X509v3 Subject Alternative Name: \n'* ]]; then
+    return 1
+  fi
   line="${output#*$'\n'}"
   [[ "$line" != *$'\n'* ]] || return 1
   IFS=, read -r -a parts <<< "$line"
