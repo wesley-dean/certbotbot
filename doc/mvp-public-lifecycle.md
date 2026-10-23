@@ -28,7 +28,9 @@ literal .env/environment/CLI settings, selects the one lineage, then:
    override performs no PutObject. Changed state must be published successfully
    or the command fails.
 7. Emits a non-secret final selected-lineage/key and `published=true|false`
-   message and removes the owned workspace.
+   message and removes the owned workspace. The EXIT handler retains the
+   invocation-owned workspace path at script scope so that cleanup still runs
+   after the lifecycle function's local variables have gone out of scope.
 
 All external Certbot, AWS and OpenSSL output is suppressed or handled by
 bounded adapters. A failed stage returns a nonzero status without intentionally
@@ -52,3 +54,7 @@ first issuance, a separate restored no-op run, forced republish, missing or
 unreadable S3 object, failed Certbot, and failed publication. Every generated
 artifact flavor must run the full suite under `make test`. Tests require
 OpenSSL for locally generated fixtures; no external credentials are used.
+
+The full cross-runner renewal, metadata-only publication, corrupt-state,
+failed-serialization and uncertain-PutObject matrix for task #40 is recorded
+in [MVP S3 Roundtrip and Publication Fault Evidence](mvp-s3-roundtrip-validation.md).

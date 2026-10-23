@@ -13,6 +13,8 @@ setup() {
   export LIFECYCLE_REMOTE="$ROOT/remote.tar.gz"
   export LIFECYCLE_CALLS="$ROOT/calls"
   export LIFECYCLE_MODE=ok
+  export LIFECYCLE_EXPECTED_KEY=latest.tar.gz
+  mkdir -m 700 "$ROOT/runner-temp"
   cat >"$ROOT/bin/aws" <<'MOCK'
 #!/usr/bin/env bash
 [[ "$1" == --no-cli-pager && "$2" == s3api ]] || exit 99
@@ -31,7 +33,7 @@ done
 printf 'aws:%s:%s:%s\n' "$action" "$bucket" "$key" >>"$LIFECYCLE_CALLS"
 [[ "$bucket" == fixture-bucket ]] || exit 99
 # HeadBucket is bucket-scoped and must not carry an object key.
-[[ "$action" == head-bucket || "$key" == latest.tar.gz ]] || exit 99
+[[ "$action" == head-bucket || "$key" == "$LIFECYCLE_EXPECTED_KEY" ]] || exit 99
 case "$action" in
   head-object)
     [[ "$LIFECYCLE_MODE" == head-failure ]] && exit 9
@@ -44,6 +46,9 @@ case "$action" in
   put-object)
     [[ "$LIFECYCLE_MODE" == put-failure ]] && exit 9
     cp "$body" "$LIFECYCLE_REMOTE" || exit 9
+    # A lost response cannot prove whether S3 accepted the put.
+    [[ "$LIFECYCLE_MODE" == put-after-write-failure ]] && exit 9
+    exit 0
     ;;
   head-bucket) : ;;
   *) exit 99 ;;
@@ -77,6 +82,9 @@ case "$verb" in
     chmod 600 "$config/archive/$name/privkey1.pem"
     cp "$config/archive/$name/cert1.pem" "$config/archive/$name/chain1.pem"
     cp "$config/archive/$name/cert1.pem" "$config/archive/$name/fullchain1.pem"
+    if [[ "$LIFECYCLE_MODE" == bad-fullchain ]]; then
+      printf '%s\n' 'not a certificate' >"$config/archive/$name/fullchain1.pem"
+    fi
     for part in cert chain fullchain privkey; do
       ln -s "../../archive/$name/${part}1.pem" "$config/live/$name/$part.pem"
     done
@@ -96,6 +104,20 @@ EOF
     ;;
   renew)
     [[ "$LIFECYCLE_MODE" == certbot-failure ]] && exit 9
+    if [[ "$LIFECYCLE_MODE" == metadata-changed ]]; then
+      printf '%s\n' '{"meta":"renewed"}' \
+        >"$config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json"
+    elif [[ "$LIFECYCLE_MODE" == renew-changed ]]; then
+      openssl req -x509 -new \
+        -key "$config/archive/$name/privkey1.pem" \
+        -days 4 -subj '/CN=example.com' \
+        -addext 'subjectAltName=DNS:example.com,DNS:*.example.com' \
+        -out "$config/archive/$name/cert1.pem" >/dev/null 2>&1 || exit 93
+      cp "$config/archive/$name/cert1.pem" \
+        "$config/archive/$name/chain1.pem"
+      cp "$config/archive/$name/cert1.pem" \
+        "$config/archive/$name/fullchain1.pem"
+    fi
     exit 0
     ;;
   *) exit 98 ;;
@@ -112,7 +134,8 @@ teardown() {
 }
 
 execute() {
-  run "$BASH_STARTER_ARTIFACT" --s3-bucket fixture-bucket example.com
+  run env TMPDIR="$ROOT/runner-temp" "$BASH_STARTER_ARTIFACT" \
+    --s3-bucket fixture-bucket "$@" example.com
 }
 
 @test "seeded first issuance publishes one same-key archive" {
@@ -182,4 +205,136 @@ execute() {
   [ "$status" -ne 0 ]
   ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "changed renewal republishes the same lineage and original account" {
+  execute
+  [ "$status" -eq 0 ]
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/old-leaf.pem"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_MODE=renew-changed
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/new-leaf.pem"
+  ! cmp -s "$ROOT/old-leaf.pem" "$ROOT/new-leaf.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
+    >"$ROOT/restored-account.json"
+  cmp -s "$ROOT/restored-account.json" \
+    "$ROOT/seed/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_MODE=ok
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "account-only durable metadata change publishes without reissuing leaf" {
+  execute
+  [ "$status" -eq 0 ]
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/old-leaf.pem"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_MODE=metadata-changed
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/new-leaf.pem"
+  cmp -s "$ROOT/old-leaf.pem" "$ROOT/new-leaf.pem"
+  [ "$(tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json)" = \
+    '{"meta":"renewed"}' ]
+}
+
+@test "explicit archive key is used unchanged for head get and put" {
+  export LIFECYCLE_EXPECTED_KEY=custom-state.tar.gz
+  execute --s3-key custom-state.tar.gz
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"s3://fixture-bucket/custom-state.tar.gz"* ]]
+  [ "$(grep -c '^aws:head-object:fixture-bucket:custom-state.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:get-object:fixture-bucket:custom-state.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:custom-state.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:' "$LIFECYCLE_CALLS")" -eq 3 ]
+}
+
+@test "corrupt downloaded archive is never passed to Certbot or publisher" {
+  printf '%s\n' 'corrupted remote bytes' >"$LIFECYCLE_REMOTE"
+  cp "$LIFECYCLE_REMOTE" "$ROOT/before"
+  execute
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"published=true"* ]]
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before"
+}
+
+@test "bad issued fullchain never replaces the seeded S3 object" {
+  cp "$LIFECYCLE_REMOTE" "$ROOT/before"
+  export LIFECYCLE_MODE=bad-fullchain
+  execute
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"published=true"* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before"
+}
+
+@test "local tar serialization failure prevents any S3 put" {
+  cp "$LIFECYCLE_REMOTE" "$ROOT/before"
+  cat >"$ROOT/bin/tar" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "$1" == --format=ustar ]]; then exit 27; fi
+exec /usr/bin/tar "$@"
+MOCK
+  chmod 755 "$ROOT/bin/tar"
+  execute
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"published=true"* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before"
+}
+
+@test "pre-acceptance PutObject failure preserves old bytes in mock" {
+  cp "$LIFECYCLE_REMOTE" "$ROOT/before"
+  export LIFECYCLE_MODE=put-failure
+  execute
+  [ "$status" -eq 74 ]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before"
+}
+
+@test "a failed PutObject after remote acceptance has uncertain remote status" {
+  cp "$LIFECYCLE_REMOTE" "$ROOT/before"
+  export LIFECYCLE_MODE=put-after-write-failure
+  execute
+  [ "$status" -eq 74 ]
+  [[ "$output" == *"remote state is uncertain"* ]]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before"
+}
+
+@test "invocation workspaces are destroyed after success and local failure" {
+  execute
+  [ "$status" -eq 0 ]
+  [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+  export LIFECYCLE_MODE=certbot-failure
+  : >"$LIFECYCLE_CALLS"
+  execute
+  [ "$status" -ne 0 ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
 }
