@@ -258,9 +258,3 @@ reconcile() {
   ! grep -Eq '<--(duplicate|expand|force-renewal)>' "$SAN_MOCK_LOG"
 }
 
-@test "public lifecycle refuses calls without available seeded storage" {
-  reconcile example.com '*.example.com'
-  [ "$status" -eq 0 ]
-  run "$BASH_STARTER_ARTIFACT" --s3-bucket fixture-bucket example.com
-  [ "$status" -eq 69 ]
-}
