@@ -14,7 +14,8 @@
 ## may bypass validation. AWS CLI v2 is inherited from the operator's
 ## environment; command output is suppressed. Failed PutObject leaves remote
 ## state unknown, not necessarily unchanged. The caller owns cleanup and
-## externally serialized S3 writers.
+## externally serialized S3 writers. Mocked before/after remote digest and
+## lost-response tests are specified in doc/mvp-failure-preservation.md.
 
 ## @fn certbotbot_s3_publish()
 ## @brief Applies the no-op policy and uploads one locally verified candidate.

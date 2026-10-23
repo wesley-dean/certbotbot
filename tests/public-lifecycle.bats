@@ -77,10 +77,13 @@ case "$action" in
     cp "$LIFECYCLE_REMOTE" "$target" || exit 9
     ;;
   put-object)
-    [[ "$LIFECYCLE_MODE" == put-failure ]] && exit 9
+    # Permit a successful local Certbot operation with an independent remote
+    # failure, including acceptance followed by a lost response.
+    put_mode="${LIFECYCLE_PUT_MODE:-$LIFECYCLE_MODE}"
+    [[ "$put_mode" == put-failure ]] && exit 9
     cp "$body" "$LIFECYCLE_REMOTE" || exit 9
     # A lost response cannot prove whether S3 accepted the put.
-    [[ "$LIFECYCLE_MODE" == put-after-write-failure ]] && exit 9
+    [[ "$put_mode" == put-after-write-failure ]] && exit 9
     exit 0
     ;;
   head-bucket)
@@ -145,7 +148,27 @@ EOF
     ;;
   renew)
     [[ "$LIFECYCLE_MODE" == certbot-failure ]] && exit 9
-    if [[ "$LIFECYCLE_MODE" == metadata-changed ]]; then
+    if [[ "$LIFECYCLE_MODE" == renew-partial-failure ]]; then
+      printf '%s\n' '{"meta":"interrupted"}' \
+        >"$config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json"
+      exit 9
+    elif [[ "$LIFECYCLE_MODE" == renew-bad-leaf ]]; then
+      openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
+        -subj '/CN=example.com' \
+        -addext 'subjectAltName=DNS:example.com,DNS:*.example.com' \
+        -keyout "$work/unpublished-key.pem" \
+        -out "$config/archive/$name/cert1.pem" >/dev/null 2>&1 || exit 93
+      cp "$config/archive/$name/cert1.pem" \
+        "$config/archive/$name/fullchain1.pem"
+      cp "$config/archive/$name/cert1.pem" \
+        "$config/archive/$name/chain1.pem"
+    elif [[ "$LIFECYCLE_MODE" == renew-bad-chain ]]; then
+      printf '%s\n' 'invalid PEM chain' \
+        >"$config/archive/$name/chain1.pem"
+    elif [[ "$LIFECYCLE_MODE" == renew-unsafe-metadata ]]; then
+      printf '%s\n' 'renew_hook = /bin/true' \
+        >>"$config/renewal/$name.conf"
+    elif [[ "$LIFECYCLE_MODE" == metadata-changed ]]; then
       printf '%s\n' '{"meta":"renewed"}' \
         >"$config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json"
     elif [[ "$LIFECYCLE_MODE" == renew-changed ]]; then
@@ -633,4 +656,146 @@ assert_failed_fetch_is_nondestructive() {
   [[ "$output" != *'-----BEGIN PRIVATE KEY-----'* ]]
   [[ "$output" != *'published=true'* ]]
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+# The mock remote SHA-256 proves local failure preservation, not AWS atomicity.
+snapshot_remote_sha256() {
+  REMOTE_BASELINE="$(sha256sum -- "$LIFECYCLE_REMOTE" | cut -d ' ' -f1)"
+  [ -n "$REMOTE_BASELINE" ]
+}
+assert_remote_sha256_unchanged() {
+  [ "$(sha256sum -- "$LIFECYCLE_REMOTE" | cut -d ' ' -f1)" = "$REMOTE_BASELINE" ]
+}
+assert_remote_sha256_changed() {
+  [ "$(sha256sum -- "$LIFECYCLE_REMOTE" | cut -d ' ' -f1)" != "$REMOTE_BASELINE" ]
+}
+prepare_known_good_remote() {
+  execute
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"published=true"* ]] || return 1
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fq './renewal/example.com.conf' || return 1
+  snapshot_remote_sha256
+  : >"$LIFECYCLE_CALLS"
+}
+assert_no_publication_after_failure() {
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"published=true"* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  assert_remote_sha256_unchanged
+  [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+}
+
+@test "partial failing renewal cannot replace the last known-good S3 archive" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=renew-partial-failure
+  execute
+  [ "$status" -eq 74 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "successful Certbot with mismatched private key cannot publish" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=renew-bad-leaf
+  execute
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"certificate and private key verification failed"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "successful Certbot with invalid fullchain cannot publish" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=renew-bad-chain
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "unsafe metadata written during renewal cannot be published" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=renew-unsafe-metadata
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "failed candidate compression after renewal preserves known-good S3" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=metadata-changed
+  cat >"$ROOT/bin/tar" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "$1" == --format=ustar ]]; then exit 27; fi
+exec /usr/bin/tar "$@"
+MOCK
+  chmod 755 "$ROOT/bin/tar"
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "invalid candidate from successful tar command is never published" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=metadata-changed
+  cat >"$ROOT/bin/tar" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "$1" == --format=ustar ]]; then
+  printf 'not a tar archive'
+  exit 0
+fi
+exec /usr/bin/tar "$@"
+MOCK
+  chmod 755 "$ROOT/bin/tar"
+  execute
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_no_publication_after_failure
+}
+
+@test "verified no-op does not write or change the remote object digest" {
+  prepare_known_good_remote
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  assert_remote_sha256_unchanged
+}
+
+@test "rejected forced PutObject preserves old digest but reports uncertainty" {
+  prepare_known_good_remote
+  export UPLOAD_NO_RENEWAL=true
+  export LIFECYCLE_PUT_MODE=put-failure
+  execute
+  [ "$status" -eq 74 ]
+  [[ "$output" == *"remote state is uncertain"* ]]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_remote_sha256_unchanged
+}
+
+@test "lost successful PutObject reply cannot promise remote preservation" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=metadata-changed
+  export LIFECYCLE_PUT_MODE=put-after-write-failure
+  execute
+  [ "$status" -eq 74 ]
+  [[ "$output" == *"remote state is uncertain"* ]]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_remote_sha256_changed
+}
+
+@test "successful metadata publication changes the one selected S3 digest" {
+  prepare_known_good_remote
+  export LIFECYCLE_MODE=metadata-changed
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_remote_sha256_changed
 }
