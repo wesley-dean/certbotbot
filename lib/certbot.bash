@@ -15,14 +15,14 @@
 ## a deterministic executable mock instead of live cloud/ACME accounts.
 
 ## @fn certbotbot_provider_sans()
-## @brief Verifies the bounded literal selected SAN set.
+## @brief Verifies one selected certificate's exact canonical DNS SAN list.
 ## @details
-## Accepts one validated primary SAN or exactly an apex and its wildcard
-## complement in either order. This is intentionally narrower than an
-## arbitrary Certbot domain list; complex SAN composition is deferred.
-## No argument is evaluated as shell syntax. Domain strings are forwarded
-## as separate positional values to the external process.
-## @param ... One or two already resolved DNS SAN strings.
+## Accepts 1 to 100 validated, distinct DNS identities, which may belong to
+## unrelated zones. This helper does not infer a shared apex or independently
+## select another certificate. Names are accepted as separate quoted arguments
+## and are never interpreted as shell source. Duplicate or malformed values
+## are invalid; upstream identity resolution owns intentional deduplication.
+## @param ... One to 100 distinct canonical DNS SAN strings.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT
@@ -30,19 +30,19 @@
 ## @par STDERR
 ## Nothing is written to STDERR.
 ## @returns Nothing is written to STDOUT.
-## @retval 0 SAN set matches the first-release contract.
-## @retval 1 SAN count, syntax, case, or pairing is invalid.
+## @retval 0 Every name is valid and unique.
+## @retval 1 Invalid count, syntax, case or repeated identity.
 certbotbot_provider_sans() {
-  local name
-  if (( $# < 1 || $# > 2 )); then return 1; fi
+  local name prior
+  (( $# >= 1 && $# <= 100 )) || return 1
+  local -a seen=()
   for name in "$@"; do
     certbotbot_dns_valid "$name" || return 1
-    [[ "$name" == "${name,,}" ]] || return 1
+    for prior in "${seen[@]}"; do
+      [[ "$name" != "$prior" ]] || return 1
+    done
+    seen+=("$name")
   done
-  if (( $# == 2 )); then
-    [[ "$1" != "$2" ]] || return 1
-    [[ "$1" == "*.$2" || "$2" == "*.$1" ]] || return 1
-  fi
   return 0
 }
 
@@ -50,7 +50,7 @@ certbotbot_provider_sans() {
 ## @brief Issues one absent selected lineage using an existing ACME account.
 ## @details
 ## Verifies one 0700 caller-owned workspace with canonical paths, a valid
-## non-wildcard selected lineage name, a constrained literal SAN set, and
+## non-wildcard selected lineage name, a bounded canonical SAN set, and
 ## account-only restored state. Rejects any existing/partial lineage before
 ## spawning Certbot. The provider refuses archived cli.ini and hook scripts
 ## through the preflight, and sets no implicit fallback account.
@@ -68,7 +68,7 @@ certbotbot_provider_sans() {
 ## publication. The caller owns workspace cleanup and failure rollback.
 ## @param workspace Canonical absolute 0700 runner workspace.
 ## @param selected Stable validated non-wildcard Certbot lineage name.
-## @param ... One or two literal DNS SANs chosen by the identity resolver.
+## @param ... One to 100 validated SANs chosen by the identity resolver.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT

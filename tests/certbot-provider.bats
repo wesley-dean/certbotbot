@@ -95,10 +95,14 @@ issue() {
   grep -Fq '<-d> <*.example.com> <-d> <example.com>' "$CERTBOT_PROVIDER_MOCK_LOG"
 }
 
-@test "unrelated and duplicate SAN pairs fail without provider calls" {
-  issue example.com example.com unrelated.org
-  [ "$status" -eq 64 ]
-  [ ! -e "$CERTBOT_PROVIDER_MOCK_LOG" ]
+@test "one selected certificate accepts unrelated SAN zones with exact -d order" {
+  issue example.com example.com unrelated.org '*.service.other.net'
+  [ "$status" -eq 0 ]
+  grep -Fq '<--cert-name> <example.com>' "$CERTBOT_PROVIDER_MOCK_LOG"
+  grep -Fq '<-d> <example.com> <-d> <unrelated.org> <-d> <*.service.other.net>' "$CERTBOT_PROVIDER_MOCK_LOG"
+}
+
+@test "duplicate provider SANs are refused before invoking Certbot" {
   issue example.com example.com example.com
   [ "$status" -eq 64 ]
   [ ! -e "$CERTBOT_PROVIDER_MOCK_LOG" ]
@@ -112,10 +116,16 @@ issue() {
   [ ! -e "$CERTBOT_PROVIDER_MOCK_LOG" ]
 }
 
-@test "no SAN or too many SANs are rejected" {
+@test "no SAN or more than 100 SANs are rejected" {
   issue example.com
   [ "$status" -eq 64 ]
-  issue example.com example.com '*.example.com' third.example.com
+  run bash -c '
+    source "$1" --help >/dev/null
+    shift
+    sans=()
+    for (( i=1; i<=101; i++ )); do sans+=("dns$i.example.org"); done
+    certbotbot_provider_issue "$2" example.com "${sans[@]}"
+  ' _ "$BASH_STARTER_ARTIFACT" "$WORKSPACE"
   [ "$status" -eq 64 ]
   [ ! -e "$CERTBOT_PROVIDER_MOCK_LOG" ]
 }

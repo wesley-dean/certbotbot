@@ -158,3 +158,112 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$output" = example.com ]
 }
+
+@test "each unrelated additional DNS name receives one complement and no recursion" {
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    certbotbot_config_resolve --s3-bucket bucket --san api.example.net \
+      --san service.other.org example.com || exit $?
+    certbotbot_identity_resolve || exit $?
+    printf "%s|%s" "$CERTBOTBOT_CERT_NAME" "${CERTBOTBOT_SANS[*]}"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = 'example.com|example.com *.example.com api.example.net *.api.example.net service.other.org *.service.other.org' ]
+}
+
+@test "mixed wildcard inputs deduplicate explicit and derived identities" {
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    certbotbot_config_resolve --s3-bucket bucket --san "*.api.other.org" \
+      --san api.other.org --san EXAMPLE.COM --domain example.com || exit $?
+    certbotbot_identity_resolve || exit $?
+    printf "%s" "${CERTBOTBOT_SANS[*]}"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = 'example.com *.example.com *.api.other.org api.other.org' ]
+}
+
+@test "INCLUDE_SUBDOMAINS=false retains only explicit distinct names" {
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    certbotbot_config_resolve --s3-bucket bucket --include-subdomains=false \
+      --san "*.api.other.org" --san example.com example.com || exit $?
+    certbotbot_identity_resolve || exit $?
+    printf "%s" "${CERTBOTBOT_SANS[*]}"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = 'example.com *.api.other.org' ]
+}
+
+@test "CLI additional SANs replace exported and literal file collections" {
+  printf 'DOMAIN=example.com\nS3_BUCKET=bucket\nADDITIONAL_SANS=file.example.net\n' >"$TEST_CONFIG_DIR/extras"
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    ADDITIONAL_SANS=env.example.net; export ADDITIONAL_SANS
+    certbotbot_config_resolve --config "$1" --san cli.example.org || exit $?
+    certbotbot_identity_resolve || exit $?
+    printf "%s" "${CERTBOTBOT_SANS[*]}"
+  ' _ "$TEST_CONFIG_DIR/extras"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'example.com *.example.com cli.example.org *.cli.example.org' ]
+}
+
+@test "exported empty additional list masks file extras" {
+  printf 'DOMAIN=example.com\nS3_BUCKET=bucket\nADDITIONAL_SANS=file.example.net\n' >"$TEST_CONFIG_DIR/extras"
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    ADDITIONAL_SANS=""; export ADDITIONAL_SANS
+    certbotbot_config_resolve --config "$1" || exit $?
+    certbotbot_identity_resolve || exit $?
+    printf "%s" "${CERTBOTBOT_SANS[*]}"
+  ' _ "$TEST_CONFIG_DIR/extras"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'example.com *.example.com' ]
+}
+
+@test "literal additional list parses comma-delimited unrelated zones" {
+  printf 'DOMAIN=example.com\nS3_BUCKET=bucket\nADDITIONAL_SANS=first.net,*.second.org\n' >"$TEST_CONFIG_DIR/extras"
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    certbotbot_config_resolve --config "$1" || exit $?
+    certbotbot_identity_resolve || exit $?
+    printf "%s" "${CERTBOTBOT_SANS[*]}"
+  ' _ "$TEST_CONFIG_DIR/extras"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'example.com *.example.com first.net *.first.net *.second.org second.org' ]
+}
+
+@test "malformed extra SAN list and invalid primary fail before AWS calls" {
+  printf 'DOMAIN=example.com\nS3_BUCKET=bucket\nADDITIONAL_SANS=a.net,,b.org\n' >"$TEST_CONFIG_DIR/extras"
+  run "${BASH_STARTER_ARTIFACT}" --config "$TEST_CONFIG_DIR/extras"
+  [ "$status" -eq 64 ]
+  run "${BASH_STARTER_ARTIFACT}" --s3-bucket bucket --san 'bad,other.net' example.com
+  [ "$status" -eq 64 ]
+  run "${BASH_STARTER_ARTIFACT}" --s3-bucket bucket --san 'evil;true' example.com
+  [ "$status" -eq 64 ]
+}
+
+@test "input cap and expanded set cap reject oversized SAN requests" {
+  run bash -c '
+    source lib/config.bash
+    source lib/identity.bash
+    args=(--s3-bucket bucket --domain example.com)
+    for (( i=1; i<=50; i++ )); do args+=(--san "dns$i.example.org"); done
+    certbotbot_config_resolve "${args[@]}" || exit $?
+    certbotbot_identity_resolve
+  '
+  [ "$status" -eq 64 ]
+  run bash -c '
+    source lib/config.bash
+    args=(--s3-bucket bucket --domain example.com)
+    for (( i=1; i<=100; i++ )); do args+=(--san "dns$i.example.org"); done
+    certbotbot_config_resolve "${args[@]}"
+  '
+  [ "$status" -eq 64 ]
+}

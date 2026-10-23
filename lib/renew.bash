@@ -6,21 +6,81 @@
 ## ADR-025 permits normal due-renewal only for an already selected and fully
 ## restored lineage with exactly matching current and desired DNS SANs.
 ## Path mapping is reversible, and returned result variables reflect only
-## verified local state, never remote S3 publication. Unknown SAN drift must
-## fail closed until its separately approved reconciliation is implemented.
+## verified local state, never remote S3 publication. ADR-029 broadens valid
+## same-lineage SAN drift while malformed leaf SAN extensions fail closed.
 ## The installed Certbot and Route53 plugin retain ACME/DNS authority.
 
-## @fn certbotbot_renew_sans_match()
-## @brief Checks the selected leaf's exact DNS SAN set through OpenSSL.
+## @var CERTBOTBOT_EXISTING_SANS
+## @brief Canonical DNS names read from a validated existing leaf extension.
 ## @details
-## The supported OpenSSL output is one extension label and one comma-separated
-## list of DNS: entries. A single trailing space after the extension header
-## is accepted for real OpenSSL output. Other extensions, multiline values,
-## missing SANs, unknown SAN kinds, invalid names, and duplicates fail closed.
-## Comparison is set-based; order of names is irrelevant. OpenSSL output is
-## kept private.
-## @param cert Absolute readable PEM certificate path from selected live tree.
-## @param ... One or two validated and distinct desired DNS SAN strings.
+## Reset on every read. No private certificate bytes are printed to the caller.
+## This array is an internal transient result, not durable state.
+declare -a CERTBOTBOT_EXISTING_SANS=()
+
+## @fn certbotbot_renew_sans_read()
+## @brief Reads a certificate's strict DNS-only SAN set without changing state.
+## @details
+## A supported OpenSSL extension contains a single label and one comma-separated
+## line of DNS entries. Missing, unsupported, duplicated, malformed, excessive
+## or non-DNS entries are rejected before certificate mutation. The parser does
+## not compare against requested SANs: valid-but-different and invalid-existing
+## state must remain distinguishable during reconciliation.
+## @param cert Absolute readable existing leaf PEM path.
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## Nothing is written to STDOUT.
+## @par STDERR
+## Nothing is written to STDERR.
+## @returns Nothing is written to STDOUT; CERTBOTBOT_EXISTING_SANS is set.
+## @retval 0 Existing SAN list is canonical, DNS-only, nonempty and distinct.
+## @retval 1 No valid supported SAN extension was available.
+certbotbot_renew_sans_read() {
+  local cert="$1" output line item name previous
+  local -a parts=()
+  CERTBOTBOT_EXISTING_SANS=()
+  [[ -f "$cert" && -r "$cert" ]] || return 1
+  command -v openssl >/dev/null 2>&1 || return 1
+  output="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null)" ||
+    return 1
+  [[ "$output" == $'X509v3 Subject Alternative Name:\n'* ]] ||
+    [[ "$output" == $'X509v3 Subject Alternative Name: \n'* ]] || return 1
+  line="${output#*$'\n'}"
+  [[ -n "$line" && "$line" != *$'\n'* &&
+    "$line" != ,* && "$line" != *, && "$line" != *,,* ]] || return 1
+  IFS=, read -r -a parts <<< "$line"
+  (( ${#parts[@]} >= 1 && ${#parts[@]} <= 100 )) || return 1
+  for item in "${parts[@]}"; do
+    if [[ "$item" =~ ^[[:blank:]]*DNS:([^[:blank:],]+)[[:blank:]]*$ ]]; then
+      name="${BASH_REMATCH[1]}"
+    else
+      CERTBOTBOT_EXISTING_SANS=()
+      return 1
+    fi
+    if ! certbotbot_dns_valid "$name"; then
+      CERTBOTBOT_EXISTING_SANS=()
+      return 1
+    fi
+    for previous in "${CERTBOTBOT_EXISTING_SANS[@]}"; do
+      if [[ "$previous" == "$name" ]]; then
+        CERTBOTBOT_EXISTING_SANS=()
+        return 1
+      fi
+    done
+    CERTBOTBOT_EXISTING_SANS+=("$name")
+  done
+  return 0
+}
+
+## @fn certbotbot_renew_sans_match()
+## @brief Compares validated actual DNS SANs with the desired set exactly.
+## @details
+## A strict structural read occurs before set comparison. DNS identities may
+## belong to unrelated apexes, with ordering irrelevant. This predicate is not
+## sufficient to distinguish malformed from merely different old SANs; callers
+## authorizing reconciliation MUST first use certbotbot_renew_sans_read.
+## @param cert Absolute readable existing leaf PEM path.
+## @param ... One to 100 distinct canonical desired DNS SAN strings.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT
@@ -28,42 +88,18 @@
 ## @par STDERR
 ## Nothing is written to STDERR.
 ## @returns Nothing is written to STDOUT.
-## @retval 0 OpenSSL certificate DNS SANs match the desired names exactly.
-## @retval 1 Missing OpenSSL, unsupported output or nonmatching names.
+## @retval 0 Actual and requested DNS SAN sets match.
+## @retval 1 Invalid leaf/desired SANs or differing sets.
 certbotbot_renew_sans_match() {
-  local cert="$1" output line item name found
-  local -a actual=() parts=()
+  local cert="$1" item actual found
   shift
-  [[ -f "$cert" && -r "$cert" ]] || return 1
   certbotbot_provider_sans "$@" || return 1
-  command -v openssl >/dev/null 2>&1 || return 1
-  output="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null)" ||
-    return 1
-  # OpenSSL may print one space after the otherwise exact extension label.
-  [[ "$output" == $'X509v3 Subject Alternative Name:\n'* ]] ||
-    [[ "$output" == $'X509v3 Subject Alternative Name: \n'* ]] || return 1
-  line="${output#*$'\n'}"
-  [[ "$line" != *$'\n'* ]] || return 1
-  IFS=, read -r -a parts <<< "$line"
-  (( ${#parts[@]} >= 1 && ${#parts[@]} <= 2 )) || return 1
-  for item in "${parts[@]}"; do
-    if [[ "$item" =~ ^[[:blank:]]*DNS:([^[:blank:],]+)[[:blank:]]*$ ]]; then
-      name="${BASH_REMATCH[1]}"
-    else
-      return 1
-    fi
-    certbotbot_dns_valid "$name" || return 1
-    [[ "$name" == "${name,,}" ]] || return 1
-    for found in "${actual[@]}"; do
-      [[ "$found" != "$name" ]] || return 1
-    done
-    actual+=("$name")
-  done
-  (( ${#actual[@]} == $# )) || return 1
+  certbotbot_renew_sans_read "$cert" || return 1
+  (( ${#CERTBOTBOT_EXISTING_SANS[@]} == $# )) || return 1
   for item in "$@"; do
     found=false
-    for name in "${actual[@]}"; do
-      if [[ "$item" == "$name" ]]; then found=true; break; fi
+    for actual in "${CERTBOTBOT_EXISTING_SANS[@]}"; do
+      if [[ "$item" == "$actual" ]]; then found=true; break; fi
     done
     [[ "$found" == true ]] || return 1
   done
@@ -117,7 +153,7 @@ certbotbot_renew_fingerprint() {
 ## The caller must still validate a candidate archive prior to remote writes.
 ## @param workspace Owned canonical mode-0700 private runner directory.
 ## @param selected Stable non-wildcard selected Certbot certificate name.
-## @param ... Exact desired literal SANs (one or complementary pair).
+## @param ... Exact desired distinct literal DNS SANs (one to 100).
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT

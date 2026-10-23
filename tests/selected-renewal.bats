@@ -157,9 +157,9 @@ renew() {
   [ ! -e "$RENEW_MOCK_LOG" ]
 }
 
-@test "unrelated and duplicate SAN inputs are refused locally" {
+@test "ordinary renewal refuses valid unrelated SAN drift and duplicate inputs" {
   renew example.com unrelated.org
-  [ "$status" -eq 64 ]
+  [ "$status" -eq 65 ]
   renew example.com example.com
   [ "$status" -eq 64 ]
   [ ! -e "$RENEW_MOCK_LOG" ]

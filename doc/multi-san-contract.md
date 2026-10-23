@@ -1,6 +1,7 @@
 # Multiple SANs: Selected-Lineage Input and Reconciliation Contract
 
-Status: **design specification for approved task #44; not implemented until task #45**.
+Status: **approved design from task #44; implementation in task #45**.
+Extended three-artifact, independent-runner acceptance remains task #46.
 Parent story: #15. Governing decision: [ADR-029](adr/ADR-029-arbitrary-multi-san-selected-lineage.md).
 This extends, but does not erase, [the MVP configuration contract](mvp-configuration.md).
 
@@ -130,7 +131,7 @@ Route53 authority; successful mock tests are not live DNS/ACME proof.
 
 ## Task separation and verification
 
-**Task #44:** Commit only this interface/security specification,
+**Task #44 (merged in PR #132):** Establish this interface/security specification,
 ADR-029, and the matching decision summary. No public parser/provider
 or release artifact is altered; existing MVP suites remain the current
 executable contract.

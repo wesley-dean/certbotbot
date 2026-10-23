@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file lib/identity.bash
-## @brief Validates one primary DNS identity and constructs the selected SANs.
+## @brief Validates a primary and additional DNS identities for one lineage.
 ## @details
-## All input is checked before calling external tools. Derived names and
-## certificate identities are deterministic across independent workspaces.
+## All explicit names are checked before calling external tools. Each primary
+## and additional name gains its complementary apex/wildcard only when enabled;
+## derived names never recurse. Global first-occurrence deduplication produces
+## a bounded, ordered set, including DNS names from unrelated zones. Derived
+## names and certificate identities remain deterministic across runners.
 ## Names from SANs are checked for safe non-wildcard lineage usage before S3
 ## retrieval or issuance; lexical ties are resolved using ASCII ordering.
 
@@ -73,7 +76,14 @@ certbotbot_identity_shortest() {
 }
 
 ## @fn certbotbot_identity_resolve()
-## @brief Computes requested SANs and stable Certbot lineage identifier.
+## @brief Computes the bounded multi-SAN set and stable lineage identifier.
+## @details
+## Accepts one primary and zero or more additional literal DNS identities,
+## normalizes ASCII case, validates each name, and optionally adds each name's
+## single complementary wildcard/apex. The resolved list preserves the first
+## occurrence of each name and contains no more than 100 unique SANs.
+## The explicit CERT_NAME is independent of SAN membership; absent an override,
+## the existing shortest-string and ASCII lexical tie rule still applies.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT
@@ -83,19 +93,45 @@ certbotbot_identity_shortest() {
 ## @retval 0 Selected identity is valid.
 ## @retval 64 Identity or certificate name is invalid.
 certbotbot_identity_resolve() {
-  CERTBOTBOT_DOMAIN="${CERTBOTBOT_DOMAIN,,}"
-  if ! certbotbot_dns_valid "$CERTBOTBOT_DOMAIN"; then
-    certbotbot_error 'invalid primary DNS identity'
+  local name candidate complement known name_seen
+  local LC_ALL=C
+  local -a explicit=("$CERTBOTBOT_DOMAIN" "${CERTBOTBOT_ADDITIONAL_SANS[@]}")
+  (( ${#explicit[@]} >= 1 && ${#explicit[@]} <= 100 )) || {
+    certbotbot_error 'too many DNS identities'
     return 64
-  fi
-  CERTBOTBOT_SANS=("$CERTBOTBOT_DOMAIN")
-  if [[ "$CERTBOTBOT_INCLUDE_SUBDOMAINS" == true ]]; then
-    if [[ "$CERTBOTBOT_DOMAIN" == \*.* ]]; then
-      CERTBOTBOT_SANS+=("${CERTBOTBOT_DOMAIN#\*.}")
-    else
-      CERTBOTBOT_SANS+=("*.$CERTBOTBOT_DOMAIN")
+  }
+  CERTBOTBOT_SANS=()
+  for name in "${explicit[@]}"; do
+    name="${name,,}"
+    if ! certbotbot_dns_valid "$name"; then
+      certbotbot_error 'invalid DNS identity'
+      return 64
     fi
-  fi
+    # Complement each explicit input once, never its derived counterpart.
+    complement=''
+    if [[ "$CERTBOTBOT_INCLUDE_SUBDOMAINS" == true ]]; then
+      if [[ "$name" == \*.* ]]; then
+        complement="${name#\*.}"
+      else
+        complement="*.$name"
+      fi
+    fi
+    for candidate in "$name" "$complement"; do
+      [[ -n "$candidate" ]] || continue
+      known=false
+      for name_seen in "${CERTBOTBOT_SANS[@]}"; do
+        if [[ "$name_seen" == "$candidate" ]]; then known=true; break; fi
+      done
+      if [[ "$known" == false ]]; then
+        CERTBOTBOT_SANS+=("$candidate")
+        (( ${#CERTBOTBOT_SANS[@]} <= 100 )) || {
+          certbotbot_error 'too many requested SANs'
+          return 64
+        }
+      fi
+    done
+  done
+  CERTBOTBOT_DOMAIN="${explicit[0],,}"
   if [[ -n "$CERTBOTBOT_CERT_NAME" ]]; then
     if [[ "$CERTBOTBOT_CERT_NAME" == *\** ]] ||
       ! certbotbot_dns_valid "$CERTBOTBOT_CERT_NAME"; then
