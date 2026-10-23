@@ -164,8 +164,10 @@ run_s3_fetch() {
   [[ "$output" != *'endpoint URL'* ]]
 }
 
-@test "ordinary CLI still refuses to claim lifecycle completion" {
+@test "public CLI refuses to activate an unvalidated seeded S3 archive" {
   run "$BASH_STARTER_ARTIFACT" --s3-bucket sample-bucket example.com
-  [ "$status" -eq 69 ]
-  [ ! -s "$MOCK_CALLS" ]
+  [ "$status" -ne 0 ]
+  grep -q '^head-object ' "$MOCK_CALLS"
+  grep -q '^get-object ' "$MOCK_CALLS"
+  ! grep -q '^put-object ' "$MOCK_CALLS"
 }
