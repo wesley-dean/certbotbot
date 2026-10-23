@@ -282,3 +282,19 @@ public orchestration, post-issuance assertions, and archive publication,
 which each require their own verification gates.
 
 See [ADR-024](adr/ADR-024-selected-only-certbot-route53-provider.md).
+
+
+### ADR-025: Selected-Lineage Renewal and Observable No-Op Results
+
+For an existing restored certificate, the provider invokes Certbot renewal
+only with an explicit selected certificate name and an exact match between
+the current certificate DNS SANs and the requested set. Unsupported SAN
+drift is refused until the separately approved reconciliation work can
+preserve the intended lineage. Ordinary due-renewal behavior and a
+deterministic private before/after state comparison distinguish actual
+certificate replacement from metadata changes and a successful no-op.
+The provider restores canonical renewal paths and validates resulting
+local state before reporting success; public orchestration and
+publication remain separate gates.
+
+See [ADR-025](adr/ADR-025-selected-renewal-noop-contract.md).
