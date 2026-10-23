@@ -30,17 +30,17 @@
 ## @retval 1 Missing OpenSSL, unsupported output or nonmatching names.
 certbotbot_renew_sans_match() {
   local cert="$1" output line item name found
-  local -a actual=() parts=()
+  local -a actual=() parts=() san_lines=()
   shift
   [[ -f "$cert" && -r "$cert" ]] || return 1
   certbotbot_provider_sans "$@" || return 1
   command -v openssl >/dev/null 2>&1 || return 1
   output="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null)" ||
     return 1
-  IFS= read -r line <<< "$output"
-  [[ "$line" == 'X509v3 Subject Alternative Name:' || "$line" == 'X509v3 Subject Alternative Name: ' ]] || return 1
-  line="${output#*$'\n'}"
-  [[ "$line" != *$'\n'* ]] || return 1
+  mapfile -t san_lines <<< "$output"
+  (( ${#san_lines[@]} == 2 )) || return 1
+  [[ "${san_lines[0]}" == 'X509v3 Subject Alternative Name:' || "${san_lines[0]}" == 'X509v3 Subject Alternative Name: ' ]] || return 1
+  line="${san_lines[1]}"
   IFS=, read -r -a parts <<< "$line"
   (( ${#parts[@]} >= 1 && ${#parts[@]} <= 2 )) || return 1
   for item in "${parts[@]}"; do
