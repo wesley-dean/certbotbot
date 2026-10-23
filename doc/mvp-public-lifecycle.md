@@ -52,3 +52,7 @@ first issuance, a separate restored no-op run, forced republish, missing or
 unreadable S3 object, failed Certbot, and failed publication. Every generated
 artifact flavor must run the full suite under `make test`. Tests require
 OpenSSL for locally generated fixtures; no external credentials are used.
+
+The full cross-runner renewal, metadata-only publication, corrupt-state,
+failed-serialization and uncertain-PutObject matrix for task #40 is recorded
+in [MVP S3 Roundtrip and Publication Fault Evidence](mvp-s3-roundtrip-validation.md).
