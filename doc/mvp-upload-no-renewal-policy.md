@@ -116,10 +116,11 @@ policies are evaluated separately under milestone #4.
 
 ## Verification and acceptance ownership
 
-Task #102 must confirm the **public** lifecycle passes the resolved
+Task #102 confirms the **public** lifecycle passes the resolved
 literal Boolean after verified provider success and preserves exact
-key continuity; it may correct bounded integration behavior without
-introducing new interfaces or new S3 state.
+key continuity. Its focused behavioral evidence and clean-runner case
+are documented in [the public forced-republish integration](mvp-upload-no-renewal-integration.md).
+It introduces no new interface or remote S3 object.
 
 Task #103 must add mocked public-executable evidence for the complete
 table: default, CLI/environment/.env precedence (including explicit

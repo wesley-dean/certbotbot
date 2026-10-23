@@ -1047,3 +1047,87 @@ reset_seeded_remote() {
   [ "$status" -eq 0 ]
   [ "$output" = 'alfa.example.com|alfa.example.com' ]
 }
+
+@test "CLI forced unchanged republish uses the same custom key on a new runner" {
+  mkdir -m 700 "$ROOT/force-runner-a" "$ROOT/force-runner-b"
+  export LIFECYCLE_EXPECTED_KEY=custom-state.tar.gz
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/force-runner-a"
+  execute --s3-key custom-state.tar.gz
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
+    >"$ROOT/force-account-before.json"
+  : >"$LIFECYCLE_CALLS"
+
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/force-runner-b"
+  execute --s3-key custom-state.tar.gz --upload-no-renewal=true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checked example.com"* ]]
+  [[ "$output" == *"s3://fixture-bucket/custom-state.tar.gz"* ]]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  [ "$(grep -c '^aws:head-object:fixture-bucket:custom-state.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:get-object:fixture-bucket:custom-state.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:custom-state.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:' "$LIFECYCLE_CALLS")" -eq 3 ]
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fxq './renewal/example.com.conf'
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/example.com.conf |
+    grep -Fq 'archive_dir = /etc/letsencrypt/archive/example.com'
+  tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
+    >"$ROOT/force-account-after.json"
+  cmp -s "$ROOT/force-account-before.json" "$ROOT/force-account-after.json"
+  [ -z "$(find "$ROOT/force-runner-a" -mindepth 1 -print -quit)" ]
+  [ -z "$(find "$ROOT/force-runner-b" -mindepth 1 -print -quit)" ]
+}
+
+@test "metadata-only change uploads despite explicit no-renewal override false" {
+  execute
+  [ "$status" -eq 0 ]
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_MODE=metadata-changed
+  execute --upload-no-renewal=false
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checked example.com"* ]]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json)" = \
+    '{"meta":"renewed"}' ]
+}
+
+@test "forcing publication after failing renewal never overwrites S3 state" {
+  execute
+  [ "$status" -eq 0 ]
+  cp "$LIFECYCLE_REMOTE" "$ROOT/force-before-failure.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_MODE=certbot-failure
+  execute --upload-no-renewal=true
+  [ "$status" -eq 74 ]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/force-before-failure.tar.gz"
+  [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+}
+
+@test "forcing publication cannot bypass invalid first-issue certificate" {
+  cp "$LIFECYCLE_REMOTE" "$ROOT/force-before-invalid.tar.gz"
+  export LIFECYCLE_MODE=bad-fullchain
+  execute --upload-no-renewal=true
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/force-before-invalid.tar.gz"
+  [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+}
