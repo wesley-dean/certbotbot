@@ -11,7 +11,11 @@ setup() {
   ARCHIVE_SOURCE="$ARCHIVE_FIXTURE_ROOT/runner-first"
   ARCHIVE_DEST="$ARCHIVE_FIXTURE_ROOT/unrelated-new-runner"
   ARCHIVE_FILE="$ARCHIVE_FIXTURE_ROOT/existing.tar.gz"
-  mkdir -p "$ARCHIVE_SOURCE" "$ARCHIVE_DEST"
+  mkdir -p "$ARCHIVE_SOURCE" "$ARCHIVE_DEST" "$ARCHIVE_FIXTURE_ROOT/bin"
+  printf '#!/usr/bin/env bash\nexit 99\n' >"$ARCHIVE_FIXTURE_ROOT/bin/aws"
+  chmod 755 "$ARCHIVE_FIXTURE_ROOT/bin/aws"
+  PATH="$ARCHIVE_FIXTURE_ROOT/bin:$PATH"
+  export PATH
 }
 
 teardown() {
@@ -113,10 +117,10 @@ pack_fixture() {
   [[ "$entries" != *"/etc/letsencrypt"* ]]
 }
 
-@test "layout fixture does not enable public certificate lifecycle" {
+@test "layout fixture alone does not permit public issuance without S3" {
   seed_account
   pack_fixture
   run "$BASH_STARTER_ARTIFACT" --s3-bucket fixture-bucket example.com
   [ "$status" -eq 69 ]
-  [[ "$output" == *'lifecycle implementation not yet available'* ]]
+  [[ "$output" == *'S3 object cannot be inspected safely'* ]]
 }
