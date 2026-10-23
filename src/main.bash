@@ -159,7 +159,13 @@ certbotbot_verify_material() {
 ## First issuance requires canonical renewal path finalization before it can
 ## pass the same certificate and archive gates as an existing lineage.
 ## Publisher input uses the identical bucket/key used by the fetch adapter.
-## No publication follows any nonzero provider or verification status.
+## Only after complete certificate/key verification does the orchestrator
+## forward the provider's durable-change Boolean and the resolved literal
+## UPLOAD_NO_RENEWAL Boolean. A successful unchanged run can republish without
+## forcing ACME issuance; false cannot suppress publication of changed state.
+## This public integration is exercised in
+## doc/mvp-upload-no-renewal-integration.md. No publication follows any
+## nonzero provider or verification status.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT
