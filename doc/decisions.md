@@ -319,3 +319,20 @@ without changing the authoritative S3 archive. Certificate cryptographic
 checks, upload policy and remote persistence remain separate gates.
 
 See [ADR-027](adr/ADR-027-validated-candidate-before-publication.md).
+
+
+### ADR-028: Verified Single-Key S3 Publication and No-Op Policy
+
+Only a successful selected-certificate lifecycle may ask the publisher
+to write durable state, and the publisher itself builds and validates
+the private candidate before one S3 PutObject to the already selected
+bucket/key. A successful unchanged no-op skips publication by default;
+a real durable-state change or explicit UPLOAD_NO_RENEWAL override
+requires the same validated candidate and exact one-object upload.
+Failures before PutObject protect known-good S3 state, while an
+interrupted/failed PutObject leaves remote state uncertain rather than
+providing a false rollback guarantee. Caller verification of previous
+retrieval, successful Certbot, selected name and exact same bucket/key
+remains mandatory before public dispatch may be enabled.
+
+See [ADR-028](adr/ADR-028-single-key-s3-publication.md).

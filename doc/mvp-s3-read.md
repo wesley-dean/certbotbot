@@ -47,3 +47,14 @@ public executable continues to fail explicitly at its unimplemented
 lifecycle boundary (status 69). Task #29 will bind this adapter to a
 private Certbot workspace and safe archive extraction. Nothing in this
 PR makes ordinary `certbotbot example.com` perform live cloud operations.
+
+
+## Matching publication boundary
+
+The later publication adapter is specified in
+[mvp-s3-publication.md](mvp-s3-publication.md) and governed by ADR-028.
+It uses the **same caller-resolved BUCKET/KEY** after successful
+Certbot processing and candidate validation. It writes only that one
+object with `s3api put-object`, never creates a bucket, and obeys
+the durable-change and UPLOAD_NO_RENEWAL policy. A successful read
+does not itself authorize publication.

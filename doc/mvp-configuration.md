@@ -101,3 +101,16 @@ integrate the selected values with restored Certbot state, detect established
 lineage conflicts, preserve the intended certificate name across SAN changes,
 and supply mocked end-to-end evidence before any certificate-operation success
 can be reported. A preflight-only test is not evidence that S3 or Certbot works.
+
+
+## Publisher implementation boundary
+
+The independently testable `certbotbot_s3_publish` adapter defined
+under ADR-028 applies the truth table above to the already selected
+bucket/key and complete private account/lineage state. Its caller
+must still establish successful Certbot processing and independent
+certificate/key usability before calling it, and task #27 must
+prove that public retrieval and publication resolve to the exact
+same key. A provider or packaging failure cannot authorize a
+PutObject. The public entrypoint remains fail-closed until this
+integration and mocked cross-runner evidence are in place.
