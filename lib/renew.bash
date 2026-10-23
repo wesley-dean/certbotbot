@@ -16,8 +16,9 @@
 ## The supported OpenSSL output is one extension label and one comma-separated
 ## list of DNS: entries. A single trailing space after the extension header
 ## is accepted for real OpenSSL output. Other extensions, multiline values,
-## missing SANs, unknown SAN kinds, invalid names and duplicates fail closed. Comparison is
-## set-based; order of names is irrelevant. OpenSSL output is kept private.
+## missing SANs, unknown SAN kinds, invalid names, and duplicates fail closed.
+## Comparison is set-based; order of names is irrelevant. OpenSSL output is
+## kept private.
 ## @param cert Absolute readable PEM certificate path from selected live tree.
 ## @param ... One or two validated and distinct desired DNS SAN strings.
 ## @par STDIN
