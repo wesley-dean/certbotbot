@@ -28,7 +28,9 @@ literal .env/environment/CLI settings, selects the one lineage, then:
    override performs no PutObject. Changed state must be published successfully
    or the command fails.
 7. Emits a non-secret final selected-lineage/key and `published=true|false`
-   message and removes the owned workspace.
+   message and removes the owned workspace. The EXIT handler retains the
+   invocation-owned workspace path at script scope so that cleanup still runs
+   after the lifecycle function's local variables have gone out of scope.
 
 All external Certbot, AWS and OpenSSL output is suppressed or handled by
 bounded adapters. A failed stage returns a nonzero status without intentionally
