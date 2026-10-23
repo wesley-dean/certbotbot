@@ -99,7 +99,8 @@ MOCK
 verb="$1"
 shift
 printf 'certbot:%s\n' "$verb" >>"$LIFECYCLE_CALLS"
-config='' work='' logs='' name='' account=''
+config='' work='' logs='' name='' account='' reconcile=false
+sanext=''
 while (( $# )); do
   case "$1" in
     --config-dir) config="$2"; shift 2 ;;
@@ -107,12 +108,19 @@ while (( $# )); do
     --logs-dir) logs="$2"; shift 2 ;;
     --cert-name) name="$2"; shift 2 ;;
     --account) account="$2"; shift 2 ;;
+    -d) sanext+="${sanext:+,}DNS:$2"; shift 2 ;;
+    --renew-with-new-domains) reconcile=true; shift ;;
     *) shift ;;
   esac
 done
 printf 'certbot-context:%s:%s:%s:%s:%s:%s\n' \
   "$verb" "$config" "$work" "$logs" "$name" "$account" \
   >>"$LIFECYCLE_CONTEXTS"
+printf 'certbot-sans:%s:%s\n' "$verb" "$sanext" \
+  >>"$LIFECYCLE_CONTEXTS"
+if [[ "$reconcile" == true ]]; then
+  printf 'certbot-reconcile:%s\n' "$name" >>"$LIFECYCLE_CONTEXTS"
+fi
 case "$verb" in
   plugins) printf '* dns-route53\n' ;;
   show_account) [[ "$account" == account-id ]] || exit 91 ;;
@@ -121,20 +129,31 @@ case "$verb" in
     [[ "$account" == account-id &&
       "$name" == "$LIFECYCLE_EXPECTED_CERT_NAME" ]] || exit 91
     mkdir -p "$config/archive/$name" "$config/live/$name" "$config/renewal"
-    openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=example.com' \
-      -addext 'subjectAltName=DNS:example.com,DNS:*.example.com' \
-      -keyout "$config/archive/$name/privkey1.pem" \
-      -out "$config/archive/$name/cert1.pem" >/dev/null 2>&1 || exit 92
-    chmod 600 "$config/archive/$name/privkey1.pem"
+    [[ -n "$sanext" ]] || exit 92
+    if [[ "$reconcile" == true ]]; then
+      # Reconciliation reuses the original lineage key and path links.
+      [[ -f "$config/archive/$name/privkey1.pem" ]] || exit 92
+      openssl req -x509 -new -days 4 -subj '/CN=example.com' \
+        -key "$config/archive/$name/privkey1.pem" \
+        -addext "subjectAltName=$sanext" \
+        -out "$config/archive/$name/cert1.pem" >/dev/null 2>&1 || exit 92
+    else
+      openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
+        -subj '/CN=example.com' -addext "subjectAltName=$sanext" \
+        -keyout "$config/archive/$name/privkey1.pem" \
+        -out "$config/archive/$name/cert1.pem" >/dev/null 2>&1 || exit 92
+      chmod 600 "$config/archive/$name/privkey1.pem"
+    fi
     cp "$config/archive/$name/cert1.pem" "$config/archive/$name/chain1.pem"
     cp "$config/archive/$name/cert1.pem" "$config/archive/$name/fullchain1.pem"
     if [[ "$LIFECYCLE_MODE" == bad-fullchain ]]; then
       printf '%s\n' 'not a certificate' >"$config/archive/$name/fullchain1.pem"
     fi
-    for part in cert chain fullchain privkey; do
-      ln -s "../../archive/$name/${part}1.pem" "$config/live/$name/$part.pem"
-    done
-    cat >"$config/renewal/$name.conf" <<EOF
+    if [[ "$reconcile" != true ]]; then
+      for part in cert chain fullchain privkey; do
+        ln -s "../../archive/$name/${part}1.pem" "$config/live/$name/$part.pem"
+      done
+      cat >"$config/renewal/$name.conf" <<EOF
 version = 5.8.0
 archive_dir = $config/archive/$name
 cert = $config/live/$name/cert.pem
@@ -146,7 +165,8 @@ account = account-id
 authenticator = dns-route53
 server = https://acme-v02.api.letsencrypt.org/directory
 EOF
-    chmod 600 "$config/renewal/$name.conf"
+      chmod 600 "$config/renewal/$name.conf"
+    fi
     ;;
   renew)
     [[ "$LIFECYCLE_MODE" == certbot-failure ]] && exit 9
