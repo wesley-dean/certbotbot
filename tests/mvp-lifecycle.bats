@@ -169,7 +169,6 @@ teardown() {
 
 public_run() {
   run "$BASH_STARTER_ARTIFACT" --s3-bucket seeded-bucket "$@"
-  printf "# MVP DIAG status=%s output=%s\n" "$status" "$output" >&3
 }
 
 @test "first public invocation issues selected cert and publishes seeded key" {
