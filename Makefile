@@ -119,6 +119,7 @@ test: build
 
 ## Run every artifact flavor and emit one JUnit report per flavor.
 test-report: build
+	@BASH_STARTER_ARTIFACT="${PWD}/$(DIST_DEV_SCRIPT)" bats --formatter tap tests/san-reconciliation.bats || true
 	@mkdir -p "$(TEST_RESULTS_DIR)"
 	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
 
