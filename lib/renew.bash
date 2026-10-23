@@ -139,7 +139,7 @@ certbotbot_renew_fingerprint() {
 certbotbot_provider_renew() {
   local workspace selected config physical work logs directory entry
   local account='' listing current_cert before_link after_link
-  local before_cert after_cert before_state after_state status=0
+  local before_cert after_cert before_state after_state
   local -a common=()
   CERTBOTBOT_RENEWAL_OCCURRED=''
   CERTBOTBOT_DURABLE_CHANGED=''
