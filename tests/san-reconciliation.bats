@@ -67,6 +67,8 @@ case "$verb" in
       wrong_sans) value='new-unexpected' ;;
       changed_to_apex) value='new-apex' ;;
       changed_to_wildcard) value='new-wildcard' ;;
+      unrelated_sans) value='new-unrelated' ;;
+      disjoint_sans) value='new-disjoint' ;;
     esac
     printf '%s\n' "$value" >"$SAN_MOCK_CONFIG/archive/example.com/cert2.pem"
     rm "$SAN_MOCK_CONFIG/live/example.com/cert.pem"
@@ -91,6 +93,9 @@ case "$(cat "$3")" in
   old-apex|new-apex) names='DNS:example.com' ;;
   old-dual|new-dual) names='DNS:example.com, DNS:*.example.com' ;;
   old-wildcard|new-wildcard) names='DNS:*.example.com' ;;
+  new-unrelated) names='DNS:example.com, DNS:unrelated.org' ;;
+  new-disjoint) names='DNS:unrelated.org, DNS:other.net' ;;
+  old-invalid) names='DNS:example.com, IP Address:192.0.2.1' ;;
   new-unexpected) names='DNS:example.com, DNS:bad.example.net' ;;
   *) exit 99 ;;
 esac
@@ -206,13 +211,36 @@ reconcile() {
   [ "$status" -eq 65 ]
 }
 
-@test "unrelated SAN and malformed SAN input do not invoke Certbot" {
+@test "unrelated-zone SAN addition preserves exact selected lineage and account" {
+  export SAN_MOCK_SCENARIO=unrelated_sans
   reconcile example.com unrelated.org
-  [ "$status" -eq 64 ]
+  [ "$status" -eq 0 ]
+  [ "$output" = 'renewed=true durable=true' ]
+  grep -Fq '<--cert-name> <example.com>' "$SAN_MOCK_LOG"
+  grep -Fq '<--account> <account-id>' "$SAN_MOCK_LOG"
+  grep -Fq '<-d> <example.com> <-d> <unrelated.org>' "$SAN_MOCK_LOG"
+}
+
+@test "disjoint SAN transition remains on the explicit established lineage" {
+  export SAN_MOCK_SCENARIO=disjoint_sans
+  reconcile unrelated.org other.net
+  [ "$status" -eq 0 ]
+  grep -Fq '<--cert-name> <example.com>' "$SAN_MOCK_LOG"
+  grep -Fq '<-d> <unrelated.org> <-d> <other.net>' "$SAN_MOCK_LOG"
+}
+
+@test "malformed and duplicate requested SANs do not invoke Certbot" {
   reconcile 'example.com; touch /tmp/bad'
   [ "$status" -eq 64 ]
   reconcile example.com example.com
   [ "$status" -eq 64 ]
+  [ ! -e "$SAN_MOCK_LOG" ]
+}
+
+@test "malformed restored SAN encoding is not mistaken for legitimate drift" {
+  printf 'old-invalid\n' >"$CONFIG/archive/example.com/cert1.pem"
+  reconcile example.com unrelated.org
+  [ "$status" -eq 65 ]
   [ ! -e "$SAN_MOCK_LOG" ]
 }
 
