@@ -32,6 +32,7 @@ Usage: certbotbot [options] DNS_NAME
 Options:
   --config FILE                    Read selected literal .env file
   --domain NAME                    Supply primary DNS name
+  --san NAME                       Add one SAN (repeatable; unrelated zones OK)
   --include-subdomains true|false  Add complementary apex/wildcard SAN
   --cert-name NAME                 Set stable Certbot lineage name
   --s3-bucket BUCKET               Existing S3 bucket (required)
