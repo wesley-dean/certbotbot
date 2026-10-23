@@ -6,7 +6,8 @@ Status: implementation contract for approved milestone #1 tasks (#17, #20, #22, 
 
 `certbotbot [options] DNS_NAME` operates on exactly one selected primary DNS
 identity. `--help` and `--version` do not contact external services.
-Exactly one primary identity is required for ordinary operation, supplied either\nas one positional argument or with `--domain`.
+Exactly one primary identity is required for ordinary operation, supplied either
+as one positional argument or with `--domain`.
 
 Every setting resolves independently, in descending precedence:
 command-line option, explicitly exported environment variable, optional .env
@@ -62,7 +63,9 @@ of DNS-like ASCII labels. When omitted, choose the shortest textual SAN
 name; break equal-length ties using ASCII lexical order. The chosen name
 is the Certbot lineage identifier, **not** the S3 object key. An existing
 lineage with a different established identity must not be renamed or given
-a Certbot numeric suffix silently. Archive restoration and lineage-conflict
+a Certbot numeric suffix silently. See the full [certificate naming
+contract](mvp-certificate-naming.md) for the explicit-name, legacy-lineage,
+wildcard-only and SAN-policy transition behavior table. Archive restoration and lineage-conflict
 validation precede issuance. Changing SAN policy must target the same
 intended lineage or fail closed.
 
@@ -92,25 +95,21 @@ the operator must externally serialize writers and arrange recovery for
 partial or concurrent remote writes. Live AWS/ACME verification belongs
 to milestone #4.
 
-## Integration boundary
+## Public lifecycle integration and evidence
 
-This configuration-and-identity PR deliberately stops after validating and
-selecting the requested identity. Successful preflight reaches an explicit
-nonzero (69) lifecycle-unavailable result. The later archive/lifecycle PR must
-integrate the selected values with restored Certbot state, detect established
-lineage conflicts, preserve the intended certificate name across SAN changes,
-and supply mocked end-to-end evidence before any certificate-operation success
-can be reported. A preflight-only test is not evidence that S3 or Certbot works.
+The assembled public executable now resolves its selected identity and
+one bucket/key, retrieves the mandatory seeded archive, restores the
+private Certbot account/lineage state, and dispatches selected issuance,
+renewal or approved bounded SAN reconciliation. Successful provider work
+is insufficient for publication until the selected certificate/key and
+canonical metadata have independently passed verification. Publication
+uses the same selected S3 key and follows the changed-state/no-op truth
+table above, including `UPLOAD_NO_RENEWAL`.
 
-
-## Publisher implementation boundary
-
-The independently testable `certbotbot_s3_publish` adapter defined
-under ADR-028 applies the truth table above to the already selected
-bucket/key and complete private account/lineage state. Its caller
-must still establish successful Certbot processing and independent
-certificate/key usability before calling it, and task #27 must
-prove that public retrieval and publication resolve to the exact
-same key. A provider or packaging failure cannot authorize a
-PutObject. The public entrypoint remains fail-closed until this
-integration and mocked cross-runner evidence are in place.
+[Public lifecycle](mvp-public-lifecycle.md),
+[fresh-runner continuity](mvp-fresh-runner-continuity.md), and
+[S3 roundtrip verification](mvp-s3-roundtrip-validation.md) record the
+mocked end-to-end behavior. AWS, Route53 and Certbot are simulated by
+controlled test executables; live service interoperability belongs to
+milestone #4. The full naming and conflict matrix is documented in the
+[certificate naming contract](mvp-certificate-naming.md).
