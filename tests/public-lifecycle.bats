@@ -1157,14 +1157,13 @@ reset_override_existing() {
 
 assert_override_one_key() {
   local expected="$1" put_count="$2"
-  [ "$(grep -c '^aws:head-object:fixture-bucket:' \
+  [ "$(grep -Fxc "aws:head-object:fixture-bucket:$expected" \
     "$LIFECYCLE_CALLS")" -eq 1 ]
-  [ "$(grep -c '^aws:get-object:fixture-bucket:' \
+  [ "$(grep -Fxc "aws:get-object:fixture-bucket:$expected" \
     "$LIFECYCLE_CALLS")" -eq 1 ]
-  [ "$(grep -c "^aws:put-object:fixture-bucket:$expected\$" \
+  [ "$(grep -Fxc "aws:put-object:fixture-bucket:$expected" \
     "$LIFECYCLE_CALLS" || true)" -eq "$put_count" ]
-  ! grep -E '^aws:(head-object|get-object|put-object):' "$LIFECYCLE_CALLS" |
-    grep -Ev ":$expected\$"
+  [ "$(grep -c '^aws:' "$LIFECYCLE_CALLS")" -eq "$((2 + put_count))" ]
 }
 
 @test "each release artifact has a current valid SHA-256 companion" {
