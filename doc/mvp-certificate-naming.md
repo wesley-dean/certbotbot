@@ -116,7 +116,8 @@ named archive before Certbot can create or rename state. Focused tests in
 derived-name rejection, valid explicit name, lexical selection, restored
 same-name continuity, and an unrelated-name conflict. Task #94 remains
 responsible for the expanded public black-box name, precedence, SAN transition,
-and three-artifact equivalence matrix.
+and three-artifact equivalence matrix. The implemented evidence and
+scope limits are maintained in the [CERT_NAME public verification matrix](mvp-cert-name-test-matrix.md).
 
 No new accepted ADR is required for this task because ADR-020, ADR-023,
 ADR-025 and ADR-026 already govern the relevant choices. If task #93
