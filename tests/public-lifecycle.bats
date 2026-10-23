@@ -13,6 +13,8 @@ setup() {
   export LIFECYCLE_REMOTE="$ROOT/remote.tar.gz"
   export LIFECYCLE_CALLS="$ROOT/calls"
   export LIFECYCLE_MODE=ok
+  export LIFECYCLE_EXPECTED_KEY=latest.tar.gz
+  mkdir -m 700 "$ROOT/runner-temp"
   cat >"$ROOT/bin/aws" <<'MOCK'
 #!/usr/bin/env bash
 [[ "$1" == --no-cli-pager && "$2" == s3api ]] || exit 99
@@ -31,7 +33,7 @@ done
 printf 'aws:%s:%s:%s\n' "$action" "$bucket" "$key" >>"$LIFECYCLE_CALLS"
 [[ "$bucket" == fixture-bucket ]] || exit 99
 # HeadBucket is bucket-scoped and must not carry an object key.
-[[ "$action" == head-bucket || "$key" == latest.tar.gz ]] || exit 99
+[[ "$action" == head-bucket || "$key" == "$LIFECYCLE_EXPECTED_KEY" ]] || exit 99
 case "$action" in
   head-object)
     [[ "$LIFECYCLE_MODE" == head-failure ]] && exit 9
@@ -44,6 +46,8 @@ case "$action" in
   put-object)
     [[ "$LIFECYCLE_MODE" == put-failure ]] && exit 9
     cp "$body" "$LIFECYCLE_REMOTE" || exit 9
+    # A lost response cannot prove whether S3 accepted the put.
+    [[ "$LIFECYCLE_MODE" == put-after-write-failure ]] && exit 9
     ;;
   head-bucket) : ;;
   *) exit 99 ;;
@@ -77,6 +81,9 @@ case "$verb" in
     chmod 600 "$config/archive/$name/privkey1.pem"
     cp "$config/archive/$name/cert1.pem" "$config/archive/$name/chain1.pem"
     cp "$config/archive/$name/cert1.pem" "$config/archive/$name/fullchain1.pem"
+    if [[ "$LIFECYCLE_MODE" == bad-fullchain ]]; then
+      printf '%s\n' 'not a certificate' >"$config/archive/$name/fullchain1.pem"
+    fi
     for part in cert chain fullchain privkey; do
       ln -s "../../archive/$name/${part}1.pem" "$config/live/$name/$part.pem"
     done
@@ -96,6 +103,20 @@ EOF
     ;;
   renew)
     [[ "$LIFECYCLE_MODE" == certbot-failure ]] && exit 9
+    if [[ "$LIFECYCLE_MODE" == metadata-changed ]]; then
+      printf '%s\n' '{"meta":"renewed"}' \
+        >"$config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json"
+    elif [[ "$LIFECYCLE_MODE" == renew-changed ]]; then
+      openssl req -x509 -new \
+        -key "$config/archive/$name/privkey1.pem" \
+        -days 4 -subj '/CN=example.com' \
+        -addext 'subjectAltName=DNS:example.com,DNS:*.example.com' \
+        -out "$config/archive/$name/cert1.pem" >/dev/null 2>&1 || exit 93
+      cp "$config/archive/$name/cert1.pem" \
+        "$config/archive/$name/chain1.pem"
+      cp "$config/archive/$name/cert1.pem" \
+        "$config/archive/$name/fullchain1.pem"
+    fi
     exit 0
     ;;
   *) exit 98 ;;
@@ -112,7 +133,8 @@ teardown() {
 }
 
 execute() {
-  run "$BASH_STARTER_ARTIFACT" --s3-bucket fixture-bucket example.com
+  run env TMPDIR="$ROOT/runner-temp" "$BASH_STARTER_ARTIFACT" \
+    --s3-bucket fixture-bucket "$@" example.com
 }
 
 @test "seeded first issuance publishes one same-key archive" {
