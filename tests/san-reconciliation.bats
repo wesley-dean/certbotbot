@@ -115,6 +115,7 @@ reconcile() {
       "$CERTBOTBOT_RENEWAL_OCCURRED" "$CERTBOTBOT_DURABLE_CHANGED"
     exit "$status"
   ' _ "$BASH_STARTER_ARTIFACT" "$WORKSPACE" "$NAME" "$@"
+  printf 'SAN DIAG: status=%s output=%s\n' "$status" "$output"
 }
 
 @test "apex-only to dual SAN replaces exactly the existing named lineage" {
