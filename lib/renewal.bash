@@ -13,13 +13,15 @@
 ## Requires a restored private configuration passing the local ACME state
 ## preflight, and a regular private renewal file for the selected name.
 ## prepare converts canonical /etc/letsencrypt paths into the private root;
-## finalize performs exactly the inverse. The entire input is parsed before
+## finalize performs exactly the inverse. verify checks canonical source
+## paths and the supported metadata schema without modifying any file.
+## The entire input is parsed before
 ## writing a same-directory temporary output, so validation failures preserve
 ## the original bytes. Only a bounded conservative Route53 configuration
 ## dialect is supported. No account, host, PEM, or S3 data is mutated.
 ## @param config Absolute canonical owned mode-0700 config directory.
 ## @param name Validated single non-wildcard certificate lineage name.
-## @param direction prepare or finalize.
+## @param direction prepare, finalize, or read-only verify.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT
@@ -27,7 +29,7 @@
 ## @par STDERR
 ## Fixed diagnostics; configuration data is never printed.
 ## @returns Nothing is written to STDOUT.
-## @retval 0 Renewal paths mapped without touching unrelated state.
+## @retval 0 Paths mapped or canonical metadata verified, as requested.
 ## @retval 64 Invalid caller arguments or unsafe config root.
 ## @retval 65 Unexpected, incomplete, or unsafe renewal metadata.
 ## @retval 74 Failure writing a private replacement file.
@@ -58,6 +60,7 @@ certbotbot_renewal_map() {
   fi
   case "$direction" in
     prepare) source_root=/etc/letsencrypt; dest_root="$config" ;;
+    verify) source_root=/etc/letsencrypt; dest_root=/etc/letsencrypt ;;
     finalize) source_root="$config"; dest_root=/etc/letsencrypt ;;
     *)
       printf '%s\n' 'certbotbot: invalid renewal mapping direction' >&2
@@ -224,6 +227,9 @@ certbotbot_renewal_map() {
   if [[ "$valid" != true ]]; then
     printf '%s\n' 'certbotbot: unsupported renewal configuration' >&2
     return 65
+  fi
+  if [[ "$direction" == verify ]]; then
+    return 0
   fi
   temporary="$(umask 077; mktemp "$config/renewal/.mapping.XXXXXXXX")" || {
     printf '%s\n' 'certbotbot: renewal mapping staging unavailable' >&2
