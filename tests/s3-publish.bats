@@ -274,7 +274,7 @@ publish() {
   [ ! -e "$S3_MOCK_LOG" ]
 }
 
-@test "public lifecycle is still fail-closed until integration" {
+@test "public lifecycle fails closed without seeded storage" {
   publish true false
   [ "$status" -eq 0 ]
   run "$BASH_STARTER_ARTIFACT" --s3-bucket fixture-bucket example.com
