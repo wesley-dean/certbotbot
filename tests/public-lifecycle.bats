@@ -81,10 +81,16 @@ case "$action" in
     # Permit a successful local Certbot operation with an independent remote
     # failure, including acceptance followed by a lost response.
     put_mode="${LIFECYCLE_PUT_MODE:-$LIFECYCLE_MODE}"
-    [[ "$put_mode" == put-failure ]] && exit 9
+    if [[ "$put_mode" == put-failure ]]; then
+      printf '%s\n' 'AWS failure mock-private-PUT-TOKEN' >&2
+      exit 9
+    fi
     cp "$body" "$LIFECYCLE_REMOTE" || exit 9
     # A lost response cannot prove whether S3 accepted the put.
-    [[ "$put_mode" == put-after-write-failure ]] && exit 9
+    if [[ "$put_mode" == put-after-write-failure ]]; then
+      printf '%s\n' 'AWS lost-response mock-private-PUT-TOKEN' >&2
+      exit 9
+    fi
     exit 0
     ;;
   head-bucket)
@@ -1130,4 +1136,286 @@ reset_seeded_remote() {
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
   cmp -s "$LIFECYCLE_REMOTE" "$ROOT/force-before-invalid.tar.gz"
   [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
+}
+
+# Each matrix test starts with one valid account-only archive, issues once,
+# and checks the next invocation against the single known-good remote object.
+prepare_override_existing() {
+  execute
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"published=true"* ]] || return 1
+  cp "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+}
+
+reset_override_existing() {
+  cp "$ROOT/override-baseline.tar.gz" "$LIFECYCLE_REMOTE"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_MODE=ok
+  unset LIFECYCLE_PUT_MODE
+}
+
+assert_override_one_key() {
+  local expected="$1" put_count="$2"
+  [ "$(grep -Fxc "aws:head-object:fixture-bucket:$expected" \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fxc "aws:get-object:fixture-bucket:$expected" \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fxc "aws:put-object:fixture-bucket:$expected" \
+    "$LIFECYCLE_CALLS" || true)" -eq "$put_count" ]
+  [ "$(grep -c '^aws:' "$LIFECYCLE_CALLS")" -eq "$((2 + put_count))" ]
+}
+
+@test "each release artifact has a current valid SHA-256 companion" {
+  local parent name
+  parent="$(dirname "$BASH_STARTER_ARTIFACT")"
+  name="$(basename "$BASH_STARTER_ARTIFACT")"
+  [ -s "$BASH_STARTER_ARTIFACT.sha256" ]
+  [ ! -e "$BASH_STARTER_ARTIFACT.256" ]
+  run bash -c 'cd "$1" && sha256sum -c -- "$2.sha256"' \
+    _ "$parent" "$name"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$name: OK"* ]]
+}
+
+@test "first issuance publishes for either override Boolean" {
+  local flag
+  for flag in false true; do
+    tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/seed" .
+    : >"$LIFECYCLE_CALLS"
+    execute --upload-no-renewal="$flag"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"issued example.com"* ]]
+    [[ "$output" == *"published=true"* ]]
+    [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+    ! grep -q '^certbot:renew$' "$LIFECYCLE_CALLS"
+    assert_override_one_key latest.tar.gz 1
+    tar -tzf "$LIFECYCLE_REMOTE" |
+      grep -Fxq './renewal/example.com.conf'
+  done
+}
+
+@test "default unchanged selected renewal skips upload and preserves bytes" {
+  prepare_override_existing
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checked example.com"* ]]
+  [[ "$output" == *"published=false"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  assert_override_one_key latest.tar.gz 0
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+}
+
+@test "CLI true overrides exported and literal false to republish once" {
+  prepare_override_existing
+  printf '%s\n' 'UPLOAD_NO_RENEWAL=false' >"$ROOT/override.env"
+  export UPLOAD_NO_RENEWAL=false
+  execute --config "$ROOT/override.env" --upload-no-renewal=true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  assert_override_one_key latest.tar.gz 1
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fxq './renewal/example.com.conf'
+}
+
+@test "CLI false overrides exported and literal true without writing" {
+  prepare_override_existing
+  printf '%s\n' 'UPLOAD_NO_RENEWAL=true' >"$ROOT/override.env"
+  export UPLOAD_NO_RENEWAL=true
+  execute --config "$ROOT/override.env" --upload-no-renewal false
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  assert_override_one_key latest.tar.gz 0
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+}
+
+@test "environment true overrides literal false with one valid put" {
+  prepare_override_existing
+  printf '%s\n' 'UPLOAD_NO_RENEWAL=false' >"$ROOT/override.env"
+  export UPLOAD_NO_RENEWAL=true
+  execute --config "$ROOT/override.env"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=true"* ]]
+  assert_override_one_key latest.tar.gz 1
+}
+
+@test "environment false overrides literal true to skip unchanged upload" {
+  prepare_override_existing
+  printf '%s\n' 'UPLOAD_NO_RENEWAL=true' >"$ROOT/override.env"
+  export UPLOAD_NO_RENEWAL=false
+  execute --config "$ROOT/override.env"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  assert_override_one_key latest.tar.gz 0
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+}
+
+@test "literal file true and false override the default when env absent" {
+  local flag expected_put
+  prepare_override_existing
+  unset UPLOAD_NO_RENEWAL
+  for flag in true false; do
+    reset_override_existing
+    printf 'UPLOAD_NO_RENEWAL=%s\n' "$flag" >"$ROOT/override.env"
+    execute --config "$ROOT/override.env"
+    [ "$status" -eq 0 ]
+    if [[ "$flag" == true ]]; then
+      expected_put=1
+      [[ "$output" == *"published=true"* ]]
+    else
+      expected_put=0
+      [[ "$output" == *"published=false"* ]]
+      cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+    fi
+    assert_override_one_key latest.tar.gz "$expected_put"
+  done
+}
+
+@test "invalid or duplicate override settings fail before AWS and Certbot" {
+  local candidate
+  for candidate in TRUE False yes 1 ''; do
+    : >"$LIFECYCLE_CALLS"
+    execute --upload-no-renewal="$candidate"
+    [ "$status" -eq 64 ]
+    ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+    ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  done
+  : >"$LIFECYCLE_CALLS"
+  execute --upload-no-renewal=true --upload-no-renewal=false
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  export UPLOAD_NO_RENEWAL=TRUE
+  : >"$LIFECYCLE_CALLS"
+  execute
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  unset UPLOAD_NO_RENEWAL
+  printf '%s\n' 'UPLOAD_NO_RENEWAL=yes' >"$ROOT/override.env"
+  : >"$LIFECYCLE_CALLS"
+  execute --config "$ROOT/override.env"
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+}
+
+@test "due renewal publishes changed selected state for either override value" {
+  local flag
+  prepare_override_existing
+  for flag in false true; do
+    reset_override_existing
+    export LIFECYCLE_MODE=renew-changed
+    execute --upload-no-renewal="$flag"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"published=true"* ]]
+    [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+    ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+    assert_override_one_key latest.tar.gz 1
+    ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+    tar -tzf "$LIFECYCLE_REMOTE" |
+      grep -Fxq './renewal/example.com.conf'
+  done
+}
+
+@test "metadata-only durable update publishes under either override value" {
+  local flag
+  prepare_override_existing
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/unchanged-leaf.pem"
+  for flag in false true; do
+    reset_override_existing
+    export LIFECYCLE_MODE=metadata-changed
+    execute --upload-no-renewal="$flag"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"published=true"* ]]
+    [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+    assert_override_one_key latest.tar.gz 1
+    tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+      >"$ROOT/leaf-after.pem"
+    cmp -s "$ROOT/unchanged-leaf.pem" "$ROOT/leaf-after.pem"
+    [ "$(tar -xOf "$LIFECYCLE_REMOTE" \
+      ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json)" = \
+      '{"meta":"renewed"}' ]
+  done
+}
+
+@test "invalid downloaded archive blocks both override states before provider" {
+  local flag
+  printf '%s\n' 'invalid S3 tarball private payload' >"$LIFECYCLE_REMOTE"
+  cp "$LIFECYCLE_REMOTE" "$ROOT/invalid-object"
+  for flag in false true; do
+    : >"$LIFECYCLE_CALLS"
+    execute --upload-no-renewal="$flag"
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"published=true"* ]]
+    ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+    assert_override_one_key latest.tar.gz 0
+    cmp -s "$LIFECYCLE_REMOTE" "$ROOT/invalid-object"
+  done
+}
+
+@test "failed selected renewal forbids publication with either override" {
+  local flag
+  prepare_override_existing
+  for flag in false true; do
+    reset_override_existing
+    export LIFECYCLE_MODE=certbot-failure
+    execute --upload-no-renewal="$flag"
+    [ "$status" -eq 74 ]
+    [[ "$output" != *"published=true"* ]]
+    [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+    assert_override_one_key latest.tar.gz 0
+    cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+  done
+}
+
+@test "invalid issued leaf blocks PutObject under either override" {
+  local flag
+  for flag in false true; do
+    tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/seed" .
+    cp "$LIFECYCLE_REMOTE" "$ROOT/bad-cert-object"
+    : >"$LIFECYCLE_CALLS"
+    export LIFECYCLE_MODE=bad-fullchain
+    execute --upload-no-renewal="$flag"
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"published=true"* ]]
+    [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+    assert_override_one_key latest.tar.gz 0
+    cmp -s "$LIFECYCLE_REMOTE" "$ROOT/bad-cert-object"
+  done
+}
+
+@test "denied PutObject returns uncertainty with redacted stderr under both values" {
+  local flag
+  prepare_override_existing
+  for flag in false true; do
+    reset_override_existing
+    export LIFECYCLE_MODE=metadata-changed
+    export LIFECYCLE_PUT_MODE=put-failure
+    execute --upload-no-renewal="$flag"
+    [ "$status" -eq 74 ]
+    [[ "$output" == *"remote state is uncertain"* ]]
+    [[ "$output" != *"published=true"* ]]
+    [[ "$output" != *"mock-private-PUT-TOKEN"* ]]
+    assert_override_one_key latest.tar.gz 1
+    cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+  done
+}
+
+@test "accepted PutObject with lost response remains uncertain for both values" {
+  local flag
+  prepare_override_existing
+  for flag in false true; do
+    reset_override_existing
+    export LIFECYCLE_MODE=metadata-changed
+    export LIFECYCLE_PUT_MODE=put-after-write-failure
+    execute --upload-no-renewal="$flag"
+    [ "$status" -eq 74 ]
+    [[ "$output" == *"remote state is uncertain"* ]]
+    [[ "$output" != *"published=true"* ]]
+    [[ "$output" != *"mock-private-PUT-TOKEN"* ]]
+    assert_override_one_key latest.tar.gz 1
+    ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/override-baseline.tar.gz"
+  done
 }
