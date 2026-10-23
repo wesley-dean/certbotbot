@@ -18,7 +18,7 @@
 ## and retains Certbot's ordinary renewal/no-op behavior. Any mismatch
 ## follows certbotbot_provider_reconcile only after the restored leaf's
 ## existing SAN extension is strictly parsed; invalid state is not SAN drift.
-## The public executable remains unavailable until full lifecycle gating.
+## The public lifecycle retains full certificate and archive publication gates.
 ## @param workspace Private restored mode-0700 workspace path.
 ## @param selected Explicit stable non-wildcard Certbot certificate name.
 ## @param ... One to 100 distinct canonical desired DNS SANs.
