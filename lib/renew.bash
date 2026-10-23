@@ -267,9 +267,11 @@ certbotbot_provider_renew() {
   CERTBOTBOT_DURABLE_CHANGED=false
   if [[ "$before_link" != "$after_link" ||
     "$before_cert" != "$after_cert" ]]; then
+    # shellcheck disable=SC2034
     CERTBOTBOT_RENEWAL_OCCURRED=true
   fi
   if [[ "$before_state" != "$after_state" ]]; then
+    # shellcheck disable=SC2034
     CERTBOTBOT_DURABLE_CHANGED=true
   fi
   return 0
