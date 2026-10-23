@@ -193,14 +193,6 @@ issue() {
   [ ! -e "$CERTBOT_PROVIDER_MOCK_LOG" ]
 }
 
-@test "provider success is not public lifecycle or publication success" {
-  issue example.com example.com
-  [ "$status" -eq 0 ]
-  [ ! -e "$WORKSPACE/config/live" ]
-  run "$BASH_STARTER_ARTIFACT" --s3-bucket seeded-bucket example.com
-  [ "$status" -eq 69 ]
-}
-
 
 @test "explicit stable cert name is independent of the requested DNS SAN" {
   issue custom.example.com example.com

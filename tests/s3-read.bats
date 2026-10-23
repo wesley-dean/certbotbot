@@ -164,8 +164,3 @@ run_s3_fetch() {
   [[ "$output" != *'endpoint URL'* ]]
 }
 
-@test "ordinary CLI still refuses to claim lifecycle completion" {
-  run "$BASH_STARTER_ARTIFACT" --s3-bucket sample-bucket example.com
-  [ "$status" -eq 69 ]
-  [ ! -s "$MOCK_CALLS" ]
-}

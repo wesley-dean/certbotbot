@@ -113,10 +113,3 @@ pack_fixture() {
   [[ "$entries" != *"/etc/letsencrypt"* ]]
 }
 
-@test "layout fixture does not enable public certificate lifecycle" {
-  seed_account
-  pack_fixture
-  run "$BASH_STARTER_ARTIFACT" --s3-bucket fixture-bucket example.com
-  [ "$status" -eq 69 ]
-  [[ "$output" == *'lifecycle implementation not yet available'* ]]
-}

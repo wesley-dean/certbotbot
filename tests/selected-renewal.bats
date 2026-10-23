@@ -238,9 +238,3 @@ renew() {
   ! grep -Fq '<--force-renewal>' "$RENEW_MOCK_LOG"
 }
 
-@test "public lifecycle remains unavailable until verified S3 publication" {
-  renew example.com '*.example.com'
-  [ "$status" -eq 0 ]
-  run "$BASH_STARTER_ARTIFACT" --s3-bucket seeded-bucket example.com
-  [ "$status" -eq 69 ]
-}

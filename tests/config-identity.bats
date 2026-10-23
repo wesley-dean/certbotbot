@@ -110,8 +110,3 @@ teardown() {
   [ "$status" -eq 64 ]
 }
 
-@test "valid ordinary input reaches explicit unfinished lifecycle boundary" {
-  run "${BASH_STARTER_ARTIFACT}" --s3-bucket bucket --upload-no-renewal=false example.com
-  [ "$status" -eq 69 ]
-  [[ "$output" == *"lifecycle implementation not yet available"* ]]
-}

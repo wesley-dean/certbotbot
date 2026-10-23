@@ -14,9 +14,11 @@
 ## @brief Checks the selected leaf's exact DNS SAN set through OpenSSL.
 ## @details
 ## The supported OpenSSL output is one extension label and one comma-separated
-## list of DNS: entries. Other extensions, multiline values, missing SANs,
-## unknown SAN kinds, invalid names and duplicates fail closed. Comparison is
-## set-based; order of names is irrelevant. OpenSSL output is kept private.
+## list of DNS: entries. A single trailing space after the extension header
+## is accepted for real OpenSSL output. Other extensions, multiline values,
+## missing SANs, unknown SAN kinds, invalid names, and duplicates fail closed.
+## Comparison is set-based; order of names is irrelevant. OpenSSL output is
+## kept private.
 ## @param cert Absolute readable PEM certificate path from selected live tree.
 ## @param ... One or two validated and distinct desired DNS SAN strings.
 ## @par STDIN
@@ -37,7 +39,9 @@ certbotbot_renew_sans_match() {
   command -v openssl >/dev/null 2>&1 || return 1
   output="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null)" ||
     return 1
-  [[ "$output" == $'X509v3 Subject Alternative Name:\n'* ]] || return 1
+  # OpenSSL may print one space after the otherwise exact extension label.
+  [[ "$output" == $'X509v3 Subject Alternative Name:\n'* ]] ||
+    [[ "$output" == $'X509v3 Subject Alternative Name: \n'* ]] || return 1
   line="${output#*$'\n'}"
   [[ "$line" != *$'\n'* ]] || return 1
   IFS=, read -r -a parts <<< "$line"
