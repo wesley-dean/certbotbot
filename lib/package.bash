@@ -19,7 +19,9 @@
 ## @details
 ## Requires a canonical owned mode-0700 workspace with a complete
 ## WORKSPACE/config tree and an absent WORKSPACE/candidate.tar.gz. The
-## account/lineage preflight must find the selected lineage present, while\n## permitting other complete lineages. Every archived lineage is validated\n## canonically before serializing the full unchanged configuration tree. The existing
+## account/lineage preflight must find the selected lineage present, while
+## permitting other complete lineages. Every archived lineage is validated
+## canonically before serializing the full unchanged configuration tree. The existing
 ## renewal parser's verify mode requires the five persisted path values
 ## to refer to canonical /etc/letsencrypt, and rejects unsupported
 ## metadata without modifying any source file. Selected private-key PEMs
