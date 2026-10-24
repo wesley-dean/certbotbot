@@ -237,7 +237,8 @@ esac
 MOCK
   chmod 755 "$ROOT/bin/"*
   export PATH="$ROOT/bin:$PATH"
-  unset DOMAIN S3_BUCKET S3_KEY CERT_NAME ADDITIONAL_SANS
+  unset DOMAIN S3_BUCKET S3_KEY S3_KEY_TEMPLATE BACKUP_KEY_TEMPLATE
+  unset CERT_NAME ADDITIONAL_SANS
   unset GPG_SYMMETRIC_KEY CERTBOTBOT_GPG_SECRET ARCHIVE_ENCRYPTION
   unset ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED
   export UPLOAD_NO_RENEWAL=false INCLUDE_SUBDOMAINS=true
@@ -2473,4 +2474,114 @@ MOCK_GPG
   encryption_assert_remote_ciphertext
   encryption_decode_remote "$ROOT/encryption-lost-response.tar.gz"
   encryption_no_secret_exposure
+}
+
+# Filename tests reuse the full live-command AWS/Certbot fixture above. These
+# deliberately exercise the same configured key at HeadObject, GetObject and
+# PutObject, beyond argument-only rejection tests in filename-verification.bats.
+
+@test "templated filename stays frozen across mocked midnight and all three S3 calls" {
+  export LIFECYCLE_EXPECTED_KEY=state-20261020.tar.gz
+  export FILENAME_DATE_CALLS="$ROOT/clock-calls"
+  cat >"$ROOT/bin/date" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$1" == -u && "$2" == +%Y%m%d ]] || exit 90
+if [[ -s "$FILENAME_DATE_CALLS" ]]; then
+  printf '20261021\n'
+else
+  printf '20261020\n'
+fi
+printf 'called\n' >>"$FILENAME_DATE_CALLS"
+MOCK
+  chmod 755 "$ROOT/bin/date"
+  execute --s3-key-template 'state-{YEAR}{MONTH}{DOM}.tar.gz'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"s3://fixture-bucket/state-20261020.tar.gz"* ]]
+  [[ "$output" == *"published=true"* ]]
+  [ "$(wc -l <"$FILENAME_DATE_CALLS")" -eq 1 ]
+  [ "$(grep -Fc 'aws:head-object:fixture-bucket:state-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fc 'aws:get-object:fixture-bucket:state-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:state-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:' "$LIFECYCLE_CALLS")" -eq 3 ]
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/example.com.conf'
+}
+
+@test "fresh runner restores no-op then forced publishes to the same templated key" {
+  export LIFECYCLE_EXPECTED_KEY=cert-20261020.tar.gz
+  cat >"$ROOT/bin/date" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$1" == -u && "$2" == +%Y%m%d ]] || exit 90
+printf '20261020\n'
+MOCK
+  chmod 755 "$ROOT/bin/date"
+  mkdir -m 700 "$ROOT/filename-runner-a" "$ROOT/filename-runner-b"
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/filename-runner-a"
+  execute --s3-key-template 'cert-{YEAR}{MONTH}{DOM}.tar.gz'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true'* ]]
+  cp "$LIFECYCLE_REMOTE" "$ROOT/filename-baseline.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/filename-runner-b"
+  execute --s3-key-template 'cert-{YEAR}{MONTH}{DOM}.tar.gz'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=false'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/filename-baseline.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+
+  execute --s3-key-template 'cert-{YEAR}{MONTH}{DOM}.tar.gz' \
+    --upload-no-renewal true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true'* ]]
+  [ "$(grep -Fc 'aws:head-object:fixture-bucket:cert-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fc 'aws:get-object:fixture-bucket:cert-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:cert-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ -z "$(find "$ROOT/filename-runner-a" -mindepth 1 -print -quit)" ]
+  [ -z "$(find "$ROOT/filename-runner-b" -mindepth 1 -print -quit)" ]
+}
+
+@test "explicit backup template does not create a second object on successful issue" {
+  export LIFECYCLE_EXPECTED_KEY=latest.tar.gz
+  cat >"$ROOT/bin/date" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$1" == -u && "$2" == +%Y%m%d ]] || exit 90
+printf '20261020\n'
+MOCK
+  chmod 755 "$ROOT/bin/date"
+  execute --backup-key-template 'archive-{YEAR}{MONTH}{DOM}.tar.gz'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true'* ]]
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:latest.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:' "$LIFECYCLE_CALLS")" -eq 3 ]
+  ! grep -q 'archive-20261020.tar.gz' "$LIFECYCLE_CALLS"
+}
+
+@test "encryption migration under a templated key preserves ciphertext and key identity" {
+  require_gpg_ocb
+  export LIFECYCLE_EXPECTED_KEY=secure-20261020.tar.gz
+  export GPG_SYMMETRIC_KEY=filename-encryption-interoperability-fixture
+  cat >"$ROOT/bin/date" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$1" == -u && "$2" == +%Y%m%d ]] || exit 90
+printf '20261020\n'
+MOCK
+  chmod 755 "$ROOT/bin/date"
+  execute --s3-key-template 'secure-{YEAR}{MONTH}{DOM}.tar.gz' \
+    --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true'* ]]
+  head -c 22 "$LIFECYCLE_REMOTE" |
+    cmp -s - <(printf 'CERTBOTBOT-GPG-OCB-V1\n')
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:secure-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q 'secure-20261020.tar.gz.enc' "$LIFECYCLE_CALLS"
+  cp "$LIFECYCLE_REMOTE" "$ROOT/secure-filename-baseline"
+  : >"$LIFECYCLE_CALLS"
+  execute --s3-key-template 'secure-{YEAR}{MONTH}{DOM}.tar.gz'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=false'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/secure-filename-baseline"
+  ! grep -q 'secret-inherited' "$LIFECYCLE_CALLS"
 }
