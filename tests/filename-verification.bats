@@ -7,7 +7,6 @@ setup() {
   mkdir -m 700 "$ROOT/bin"
   cat >"$ROOT/bin/aws" <<'MOCK'
 #!/usr/bin/env bash
-printf 'raw:%s\n' "$*" >>"$FILENAME_AWS_TRACE"
 [[ "$1" == --no-cli-pager && "$2" == s3api ]] || exit 99
 action="$3"
 shift 3
@@ -18,12 +17,12 @@ while (( $# )); do
     --key) key="$2"; shift 2 ;;
     *) shift ;;
   esac
+done
 printf '%s|%s|%s\n' "$action" "$bucket" "$key" >>"$FILENAME_AWS_CALLS"
 exit 9
 MOCK
   chmod 755 "$ROOT/bin/aws"
   export FILENAME_AWS_CALLS="$ROOT/aws-calls"
-  export FILENAME_AWS_TRACE="$ROOT/aws-trace"
   export PATH="$ROOT/bin:$PATH"
   unset DOMAIN S3_KEY S3_KEY_TEMPLATE BACKUP_KEY_TEMPLATE S3_BUCKET
   unset ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION GPG_SYMMETRIC_KEY
@@ -58,16 +57,6 @@ assert_zero_aws() {
   install_filename_clock
   run "$BASH_STARTER_ARTIFACT" --s3-bucket bucket example.com
   [ "$status" -eq 69 ]
-  if [[ ! -e "$FILENAME_AWS_CALLS" ]]; then
-    printf '# AWS mock log missing: status=%s output=%q\n' "$status" "$output"
-    printf '# fixture aws=%s PATH=%s\n' "$(command -v aws)" "$PATH"
-    if [[ -f "$FILENAME_AWS_TRACE" ]]; then
-      while IFS= read -r trace; do printf '# %s\n' "$trace"; done <"$FILENAME_AWS_TRACE"
-    else
-      printf '# aws mock was not executed\n'
-    fi
-    false
-  fi
   grep -Fxq 'head-object|bucket|latest.tar.gz' "$FILENAME_AWS_CALLS"
   [ "$(wc -l <"$FILENAME_AWS_CALLS")" -eq 1 ]
   [ ! -e "$FILENAME_CLOCK_CALLS" ]
