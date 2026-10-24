@@ -412,3 +412,18 @@ This narrowly extends ADR-028/031's single-key restrictions without
 authorizing backup deletion, which requires task #84's independent decision.
 
 See [ADR-033](adr/ADR-033-opt-in-dated-backup-publication.md).
+
+### ADR-034: Scoped, Conditional Retention of Managed Dated Backups
+
+Dated-backup retention is separately enabled through a canonical decimal count;
+zero preserves all copies, while positive N keeps the newest N provably eligible
+backup keys **only after** verified current-plus-backup publication. The initial
+S3/gzip-tar deletion scope requires an anchored, unambiguous date-template
+namespace, full paginated listing, exact-key v1 metadata verification, strict
+protection of the current key and newly published backup, and ETag-conditional
+per-object deletion. Ambiguous inventories or identities prohibit all deletion;
+any failed or uncertain delete stops further work and reports partial success.
+This decision authorizes no immediate destructive behavior and does not migrate
+old templates, prune historical versions or grant alternate backend support.
+
+See [ADR-034](adr/ADR-034-scoped-conditional-managed-backup-retention.md).
