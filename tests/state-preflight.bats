@@ -35,6 +35,7 @@ make_lineage() {
     printf 'fixture-%s\n' "$piece" >"$CONFIG/archive/example.com/$piece"1.pem
     ln -s "../../archive/example.com/$piece"1.pem "$CONFIG/live/example.com/$piece.pem"
   done
+  chmod 600 "$CONFIG/archive/example.com/privkey1.pem"
   cat >"$CONFIG/renewal/example.com.conf" <<'CONF'
 version = 5.8.0
 archive_dir = /etc/letsencrypt/archive/example.com
@@ -55,6 +56,7 @@ make_other_lineage() {
     printf 'fixture-other-%s\n' "$part" >"$CONFIG/archive/other.org/$part"1.pem
     ln -s "../../archive/other.org/$part"1.pem "$CONFIG/live/other.org/$part.pem"
   done
+  chmod 600 "$CONFIG/archive/other.org/privkey1.pem"
   sed 's/example.com/other.org/g' "$CONFIG/renewal/example.com.conf" \
     >"$CONFIG/renewal/other.org.conf"
   chmod 600 "$CONFIG/renewal/other.org.conf"
