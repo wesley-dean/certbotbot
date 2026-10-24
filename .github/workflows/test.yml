@@ -146,7 +146,7 @@ jobs:
       - name: Verify guarded retention before full artifact matrix
         run: |
           BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
-            bats --formatter tap tests/retention.bats
+            bats --formatter tap tests/retention.bats tests/retention-safety.bats
 
       - name: Run Bats tests for every artifact flavor
         id: bats
