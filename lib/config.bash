@@ -236,6 +236,8 @@ certbotbot_config_resolve() {
   fi
   if [[ -n "${cli[BACKUP_KEY_TEMPLATE]+x}" ]]; then
     CERTBOTBOT_BACKUP_KEY_TEMPLATE="${cli[BACKUP_KEY_TEMPLATE]}"
+    # Consumed by lib/filename.bash after config resolution.
+    # shellcheck disable=SC2034
     CERTBOTBOT_BACKUP_KEY_TEMPLATE_EXPLICIT=true
   fi
   [[ -n "$CERTBOTBOT_S3_KEY" && -n "$CERTBOTBOT_BACKUP_KEY_TEMPLATE" ]] ||
