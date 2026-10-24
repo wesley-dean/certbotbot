@@ -116,6 +116,13 @@ jobs:
           git check-ignore -q doc/reference/index.html
           test -z "$(git status --short)"
 
+      # Fast public-command fixture smoke gate: useful TAP failure detail
+      # appears before the full three-flavor JUnit matrix runs.
+      - name: Verify filename contract with TAP diagnostics
+        run: |
+          BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
+            bats --formatter tap tests/filename-verification.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true
