@@ -64,6 +64,8 @@ if [[ "$key" == "$LIFECYCLE_BACKUP_KEY" &&
         "$(test -f "$LIFECYCLE_BACKUP_REMOTE" && echo yes || echo no)" \
         "$(test -f "$LIFECYCLE_BACKUP_META" && echo yes || echo no)" >>"$LIFECYCLE_CALLS"
       [[ "${LIFECYCLE_BACKUP_MODE:-}" != head-failure ]] || exit 9
+      if [[ "${LIFECYCLE_BACKUP_MODE:-}" == confirm-failure &&
+        -f "$LIFECYCLE_BACKUP_REMOTE" ]]; then exit 9; fi
       [[ -f "$LIFECYCLE_BACKUP_REMOTE" ]] ||
         { printf '(404)\n' >&2; exit 9; }
       [[ -f "$LIFECYCLE_BACKUP_META" ]] || exit 9
@@ -71,6 +73,12 @@ if [[ "$key" == "$LIFECYCLE_BACKUP_KEY" &&
       # Preserve the exact five-tab-field v1 metadata fixture unchanged.
       printf '"backupetag01"\t%s\t' "$size"
       cat -- "$LIFECYCLE_BACKUP_META" || exit 9
+      exit 0
+      ;;
+    get-object)
+      [[ -f "$LIFECYCLE_BACKUP_REMOTE" && -n "$target" &&
+        ! -e "$target" ]] || exit 9
+      cp -- "$LIFECYCLE_BACKUP_REMOTE" "$target" || exit 9
       exit 0
       ;;
     put-object)
