@@ -64,6 +64,8 @@ if [[ "$key" == "$LIFECYCLE_BACKUP_KEY" &&
         "$(test -f "$LIFECYCLE_BACKUP_REMOTE" && echo yes || echo no)" \
         "$(test -f "$LIFECYCLE_BACKUP_META" && echo yes || echo no)" >>"$LIFECYCLE_CALLS"
       [[ "${LIFECYCLE_BACKUP_MODE:-}" != head-failure ]] || exit 9
+      if [[ "${LIFECYCLE_BACKUP_MODE:-}" == confirm-failure &&
+        -f "$LIFECYCLE_BACKUP_REMOTE" ]]; then exit 9; fi
       [[ -f "$LIFECYCLE_BACKUP_REMOTE" ]] ||
         { printf '(404)\n' >&2; exit 9; }
       [[ -f "$LIFECYCLE_BACKUP_META" ]] || exit 9
@@ -71,6 +73,12 @@ if [[ "$key" == "$LIFECYCLE_BACKUP_KEY" &&
       # Preserve the exact five-tab-field v1 metadata fixture unchanged.
       printf '"backupetag01"\t%s\t' "$size"
       cat -- "$LIFECYCLE_BACKUP_META" || exit 9
+      exit 0
+      ;;
+    get-object)
+      [[ -f "$LIFECYCLE_BACKUP_REMOTE" && -n "$target" &&
+        ! -e "$target" ]] || exit 9
+      cp -- "$LIFECYCLE_BACKUP_REMOTE" "$target" || exit 9
       exit 0
       ;;
     put-object)
@@ -2770,4 +2778,249 @@ MOCK
   execute --dated-backup-enabled sometimes
   [ "$status" -eq 64 ]
   ! grep -q '^aws:' "$LIFECYCLE_CALLS" 2>/dev/null
+}
+
+# Task #83: all cases run once per standalone artifact via make test-report.
+# The fake clock deliberately has no access to the host's local timezone.
+dated_recovery_clock() {
+  export BACKUP_RECOVERY_DATE="$1"
+  cat >"$ROOT/bin/date" <<'CLOCK'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$1" == -u && "$2" == +%Y%m%d ]] || exit 95
+printf '%s\n' "$BACKUP_RECOVERY_DATE"
+CLOCK
+  chmod 755 "$ROOT/bin/date"
+}
+
+# Fetch a named backup as untrusted bytes into a separate operator-owned root.
+# Never pass the dated key as the main command's --s3-key argument.
+dated_recovery_download() {
+  local target_root="$1"
+  mkdir -m 700 -- "$target_root" || return 1
+  (umask 077
+    aws --no-cli-pager s3api get-object --bucket fixture-bucket \
+      --key "$LIFECYCLE_BACKUP_KEY" --output json \
+      "$target_root/downloaded.tar.gz" >/dev/null
+  )
+}
+
+@test "dated recovery object is downloaded and safely restored offline in a separate private root" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'backup=confirmed'* ]]
+  local recovery="$ROOT/manual-recovery"
+  : >"$LIFECYCLE_CALLS"
+  dated_recovery_download "$recovery"
+  cmp -s "$LIFECYCLE_BACKUP_REMOTE" "$recovery/downloaded.tar.gz"
+  [ "$(stat -c %a -- "$recovery")" = 700 ]
+  [ "$(stat -c %a -- "$recovery/downloaded.tar.gz")" = 600 ]
+  run bash -c '
+    source "$1" --help >/dev/null || exit $?
+    certbotbot_archive_restore "$2" "$3" || exit $?
+    certbotbot_state_preflight "$3/config" example.com || exit $?
+    certbotbot_state_canonical_all "$3/config" example.com
+  ' _ "$BASH_STARTER_ARTIFACT" "$recovery/downloaded.tar.gz" "$recovery"
+  [ "$status" -eq 0 ]
+  [ -f "$recovery/config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json" ]
+  cmp -s "$ROOT/seed/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json" \
+    "$recovery/config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json"
+  [ -f "$recovery/config/renewal/example.com.conf" ]
+  [ -L "$recovery/config/live/example.com/cert.pem" ]
+  [ -s "$recovery/config/archive/example.com/privkey1.pem" ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_BACKUP_REMOTE" "$LIFECYCLE_REMOTE"
+}
+
+@test "fresh runner reads current archive and never consults dated key on ordinary no-op" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  mkdir -m 700 "$ROOT/recovery-runner-a" "$ROOT/recovery-runner-b"
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/recovery-runner-a"
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  cp -- "$LIFECYCLE_BACKUP_REMOTE" "$ROOT/backup-before"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/recovery-runner-b"
+  # An unreachable dated object must not affect the regular no-op path.
+  export LIFECYCLE_BACKUP_MODE=head-failure
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=false; backup=skipped'* ]]
+  grep -Fxq 'aws:get-object:fixture-bucket:latest.tar.gz' "$LIFECYCLE_CALLS"
+  ! grep -q 'archive-20261020.tar.gz' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  cmp -s "$ROOT/backup-before" "$LIFECYCLE_BACKUP_REMOTE"
+  [ -z "$(find "$ROOT/recovery-runner-a" -mindepth 1 -print -quit)" ]
+  [ -z "$(find "$ROOT/recovery-runner-b" -mindepth 1 -print -quit)" ]
+}
+
+@test "UTC date change creates a separate named copy and preserves previous day" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  cp -- "$LIFECYCLE_BACKUP_REMOTE" "$ROOT/backup-20261020.tar.gz"
+  cp -- "$LIFECYCLE_BACKUP_META" "$ROOT/backup-20261020.meta"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_BACKUP_KEY=archive-20261021.tar.gz
+  export LIFECYCLE_BACKUP_REMOTE="$ROOT/backup-20261021.tar.gz"
+  export LIFECYCLE_BACKUP_META="$ROOT/backup-20261021.meta"
+  dated_recovery_clock 20261021
+  execute --dated-backup-enabled true --upload-no-renewal true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'backup=confirmed'* ]]
+  [ -s "$ROOT/backup-20261020.tar.gz" ]
+  [ -s "$LIFECYCLE_BACKUP_REMOTE" ]
+  grep -Fxq 'aws:put-object:fixture-bucket:archive-20261021.tar.gz' "$LIFECYCLE_CALLS"
+  ! grep -q 'archive-20261020.tar.gz' "$LIFECYCLE_CALLS"
+  grep -Fq $'20261020' "$ROOT/backup-20261020.meta"
+  grep -Fq $'20261021' "$LIFECYCLE_BACKUP_META"
+  cmp -s "$LIFECYCLE_BACKUP_REMOTE" "$LIFECYCLE_REMOTE"
+}
+
+@test "backup post-PUT HEAD failure is reported as partial success and retains current" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  export LIFECYCLE_BACKUP_MODE=confirm-failure
+  execute --dated-backup-enabled true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'current accepted; dated backup confirmation failed'* ]]
+  [[ "$output" != *'backup=confirmed'* ]]
+  [ -s "$LIFECYCLE_REMOTE" ]
+  [ -s "$LIFECYCLE_BACKUP_REMOTE" ]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:latest.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:archive-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^aws:delete-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "backup HEAD denial before current write fails closed with no remote mutations" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  export LIFECYCLE_BACKUP_MODE=head-failure
+  cp -- "$LIFECYCLE_REMOTE" "$ROOT/authoritative-before"
+  execute --dated-backup-enabled true
+  [ "$status" -eq 69 ]
+  [[ "$output" == *'dated backup object cannot be inspected'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$ROOT/authoritative-before" "$LIFECYCLE_REMOTE"
+  [ ! -e "$LIFECYCLE_BACKUP_REMOTE" ]
+}
+
+@test "foreign backup scope metadata refuses changes to current-key identity" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  cp -- "$LIFECYCLE_BACKUP_REMOTE" "$ROOT/backup-scope-before"
+  cp -- "$LIFECYCLE_REMOTE" "$ROOT/current-scope-before"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_KEY=other-current.tar.gz
+  execute --dated-backup-enabled true --s3-key other-current.tar.gz \
+    --upload-no-renewal true
+  [ "$status" -eq 69 ]
+  [[ "$output" == *'not safely managed'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$ROOT/backup-scope-before" "$LIFECYCLE_BACKUP_REMOTE"
+  cmp -s "$ROOT/current-scope-before" "$LIFECYCLE_REMOTE"
+}
+
+@test "unsupported ZIP bzip2 and alternative storage choices are rejected without cloud calls" {
+  local template
+  for template in 'archive-{YEAR}{MONTH}{DOM}.zip' \
+    'archive-{YEAR}{MONTH}{DOM}.tar.bz2'; do
+    execute --dated-backup-enabled true --backup-key-template "$template"
+    [ "$status" -eq 64 ]
+    ! grep -q '^aws:' "$LIFECYCLE_CALLS" 2>/dev/null
+  done
+  execute --dated-backup-enabled true --storage-backend sftp
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS" 2>/dev/null
+}
+
+@test "tampered downloaded dated backup fails offline validation before extraction" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  local recovery="$ROOT/damaged-recovery"
+  dated_recovery_download "$recovery"
+  printf 'corrupt\n' >>"$recovery/downloaded.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  run bash -c '
+    source "$1" --help >/dev/null || exit $?
+    certbotbot_archive_restore "$2" "$3"
+  ' _ "$BASH_STARTER_ARTIFACT" "$recovery/downloaded.tar.gz" "$recovery"
+  [ "$status" -eq 65 ]
+  [ ! -e "$recovery/config" ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS" 2>/dev/null
+  cmp -s "$LIFECYCLE_BACKUP_REMOTE" "$LIFECYCLE_REMOTE"
+}
+
+@test "encrypted dated copy roundtrips in isolated recovery workspace with authentication" {
+  require_gpg_ocb
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  export GPG_SYMMETRIC_KEY=fixture-dated-recovery-authenticated-secret
+  execute --dated-backup-enabled true \
+    --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'backup=confirmed'* ]]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+  head -c 22 "$LIFECYCLE_BACKUP_REMOTE" |
+    cmp -s - <(printf 'CERTBOTBOT-GPG-OCB-V1\n')
+  # The direct read-only AWS mock must not receive the GnuPG secret.
+  export -n GPG_SYMMETRIC_KEY
+  local recovery="$ROOT/encrypted-recovery"
+  dated_recovery_download "$recovery"
+  : >"$LIFECYCLE_CALLS"
+  run env RECOVERY_TEST_SECRET="$GPG_SYMMETRIC_KEY" bash -c '
+    source "$1" --help >/dev/null || exit $?
+    CERTBOTBOT_GPG_SECRET="$RECOVERY_TEST_SECRET"
+    unset RECOVERY_TEST_SECRET
+    CERTBOTBOT_ARCHIVE_ENCRYPTION=gpg-ocb
+    CERTBOTBOT_ARCHIVE_MIGRATION=none
+    CERTBOTBOT_ARCHIVE_MIGRATION_BACKUP_CONFIRMED=false
+    certbotbot_crypto_require "$3" || exit $?
+    certbotbot_crypto_unwrap "$3" || exit $?
+    certbotbot_archive_restore "$3/downloaded.tar.gz" "$3" || exit $?
+    certbotbot_state_preflight "$3/config" example.com || exit $?
+    certbotbot_state_canonical_all "$3/config" example.com
+  ' _ "$BASH_STARTER_ARTIFACT" "$recovery/downloaded.tar.gz" "$recovery"
+  [ "$status" -eq 0 ]
+  [ -s "$recovery/config/archive/example.com/privkey1.pem" ]
+  [ -f "$recovery/config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json" ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  ! grep -q 'secret-inherited' "$LIFECYCLE_CALLS"
+}
+
+@test "wrong key cannot authenticate offline encrypted backup or expose restored state" {
+  require_gpg_ocb
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  export GPG_SYMMETRIC_KEY=fixture-dated-recovery-correct-secret
+  execute --dated-backup-enabled true \
+    --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  export -n GPG_SYMMETRIC_KEY
+  local recovery="$ROOT/wrong-key-recovery"
+  dated_recovery_download "$recovery"
+  : >"$LIFECYCLE_CALLS"
+  run bash -c '
+    source "$1" --help >/dev/null || exit $?
+    CERTBOTBOT_GPG_SECRET=wrong-test-secret
+    CERTBOTBOT_ARCHIVE_ENCRYPTION=gpg-ocb
+    CERTBOTBOT_ARCHIVE_MIGRATION=none
+    certbotbot_crypto_require "$3" || exit $?
+    certbotbot_crypto_unwrap "$3"
+  ' _ "$BASH_STARTER_ARTIFACT" "$recovery/downloaded.tar.gz" "$recovery"
+  [ "$status" -eq 65 ]
+  [ ! -e "$recovery/config" ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
 }
