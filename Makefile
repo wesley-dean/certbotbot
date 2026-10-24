@@ -14,10 +14,13 @@ DIST_MIN_SCRIPT := $(DIST_DIR)/$(PROJECT_NAME).min.bash
 DIST_SCRIPTS := $(DIST_DEV_SCRIPT) $(DIST_SCRIPT) $(DIST_MIN_SCRIPT)
 DIST_CHECKSUMS := $(addsuffix .sha256,$(DIST_SCRIPTS))
 LEGACY_CHECKSUMS := $(addsuffix .256,$(DIST_SCRIPTS))
-CORE_SOURCE_FILES := lib/config.bash lib/identity.bash lib/s3.bash lib/crypto.bash lib/archive.bash lib/restore.bash lib/state.bash lib/renewal.bash lib/certbot.bash lib/renew.bash lib/reconcile.bash lib/package.bash lib/publish.bash
+CORE_SOURCE_FILES := lib/config.bash lib/filename.bash lib/identity.bash lib/s3.bash lib/crypto.bash lib/archive.bash lib/restore.bash lib/state.bash lib/renewal.bash lib/certbot.bash lib/renew.bash lib/reconcile.bash lib/package.bash lib/publish.bash
 PLUGIN_SOURCE_FILES :=
 ENTRYPOINT_SOURCE := src/main.bash
 SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(ENTRYPOINT_SOURCE)
+# This pinned build-time library is assembled, never sourced from vendor at runtime.
+MKTEXT_LIBRARY := vendor/mktext.bash
+ASSEMBLED_SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(MKTEXT_LIBRARY) $(ENTRYPOINT_SOURCE)
 TEST_SCRIPTS := $(sort $(wildcard tests/*.bats))
 TEST_RESULTS_DIR := test-results
 
@@ -56,7 +59,13 @@ build: $(DIST_SCRIPTS) $(DIST_CHECKSUMS)
 ## cannot infer from source mtimes.  Repeated builds remain byte-stable when those
 ## inputs are unchanged, while an explicit VERSION override is never silently
 ## ignored because an older artifact already exists.
-$(DIST_DEV_SCRIPT): FORCE $(SOURCE_FILES)
+$(DIST_DEV_SCRIPT): FORCE $(SOURCE_FILES) $(DEPENDENCY_MANIFEST)
+	@test -f "$(MKTEXT_LIBRARY)" && test ! -L "$(MKTEXT_LIBRARY)" || { printf '%s\n' 'Missing prepared mktext library; run make deps' >&2; exit 1; }
+	@expected="$$(awk '/^id=wesley-dean\/mktext@0\.0\.17 / { for(i=1;i<=NF;i++) if ($$i ~ /^digest=sha256:/) { sub(/^digest=sha256:/, "", $$i); print $$i } }' "$(DEPENDENCY_MANIFEST)")"; \
+	[[ "$$expected" =~ ^[0-9a-f]{64}$$ ]] || { printf '%s\n' 'Missing or ambiguous mktext digest in dependencies.txt' >&2; exit 1; }; \
+	if command -v sha256sum >/dev/null 2>&1; then printf '%s  %s\n' "$$expected" "$(MKTEXT_LIBRARY)" | sha256sum -c - >/dev/null 2>&1; \
+	elif command -v shasum >/dev/null 2>&1; then [[ "$$(shasum -a 256 "$(MKTEXT_LIBRARY)" | awk '{print $$1}')" == "$$expected" ]]; \
+	else printf '%s\n' 'SHA-256 verification tool unavailable' >&2; exit 1; fi || { printf '%s\n' 'Prepared mktext hash mismatch; run make deps' >&2; exit 1; }
 	mkdir -p "$(DIST_DIR)"
 	{ \
 		printf '%s\n' '#!/usr/bin/env bash'; \
@@ -75,7 +84,7 @@ $(DIST_DEV_SCRIPT): FORCE $(SOURCE_FILES)
 		printf 'BASH_STARTER_BUILD_DATE=%q\n' "$(BUILD_DATE)"; \
 		printf 'BASH_STARTER_BUILD_COMMIT=%q\n' "$(BUILD_COMMIT)"; \
 		printf '\n'; \
-		cat $(SOURCE_FILES); \
+		cat $(ASSEMBLED_SOURCE_FILES); \
 	} >"$@.tmp"
 	chmod 0755 "$@.tmp"
 	mv "$@.tmp" "$@"
