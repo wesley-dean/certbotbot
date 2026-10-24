@@ -173,9 +173,9 @@ certbotbot_retention_apply() {
   local workspace="$1" bucket="$2" current="$3" key date middle
   local row truncated next count encoding listed_prefix csv pipes
   local token='' pages=0 total=0 page_count confirmed=false
-  local published_etag="$CERTBOTBOT_BACKUP_ETAG" size field record
-  local -a args=() keys=() matches=() sorted_keys=() sorted_etags=()
-  local -a ordered=() targets=() target_etags=()
+  local published_etag="$CERTBOTBOT_BACKUP_ETAG" field
+  local -a args=() keys=() matches=()
+  local -a targets=() target_etags=()
   local -A seen=() seen_tokens=() seen_dates=()
   CERTBOTBOT_RETENTION_DELETED=0
   if [[ "${CERTBOTBOT_BACKUP_RETENTION_COUNT:-0}" == 0 ]]; then return 0; fi
