@@ -132,6 +132,13 @@ case "$action" in
     esac
     ;;
   head-object)
+    # A lost authorization boundary after an accepted delete must NOT be
+    # mistaken for confirmed 404 merely because the mock removed its file.
+    if [[ "$RETENTION_SAFETY_MODE" == head-post-denied &&
+      -f "$ROOT/deleted-marker-$key" ]]; then
+      printf 'AccessDenied\n' >&2
+      exit 9
+    fi
     [[ -f "$ROOT/objects/$key" ]] || {
       printf 'An error occurred (404) when calling the HeadObject operation\n' >&2
       exit 9
@@ -141,11 +148,7 @@ case "$action" in
       printf 'AccessDenied\n' >&2
       exit 9
     fi
-    if [[ "$RETENTION_SAFETY_MODE" == head-post-denied &&
-      -f "$ROOT/deleted-marker-$key" ]]; then
-      printf 'AccessDenied\n' >&2
-      exit 9
-    fi
+
     date="$key"
     date="${date#*-}"
     date="${date%.tar.gz}"
