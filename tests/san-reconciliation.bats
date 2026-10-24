@@ -19,6 +19,7 @@ setup() {
     ln -s "../../archive/$NAME/${part}1.pem" "$CONFIG/live/$NAME/$part.pem"
   done
   printf 'old-apex\n' >"$CONFIG/archive/$NAME/cert1.pem"
+  chmod 600 "$CONFIG/archive/$NAME/privkey1.pem"
   cat >"$CONFIG/renewal/$NAME.conf" <<'CONF'
 version = 5.8.0
 archive_dir = /etc/letsencrypt/archive/example.com
