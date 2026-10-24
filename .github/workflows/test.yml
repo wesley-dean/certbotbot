@@ -132,6 +132,15 @@ jobs:
               --filter 'dated backup|backup enabled|same UTC day|unrecognized same-day|failed authoritative PUT|lost response from dated' \
               tests/public-lifecycle.bats
 
+      # Public recoverability/failure tests surface TAP assertion lines before
+      # the longer all-artifact JUnit matrix and do not contact real AWS/ACME.
+      - name: Verify read-only dated recovery and fault boundaries
+        run: |
+          BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
+            bats --formatter tap \
+              --filter 'dated recovery object|fresh runner reads current|UTC date change|backup post-PUT HEAD|backup HEAD denial|foreign backup scope|unsupported ZIP|tampered downloaded|encrypted dated copy|wrong key cannot' \
+              tests/public-lifecycle.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true
