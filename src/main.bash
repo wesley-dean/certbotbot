@@ -36,7 +36,9 @@ Options:
   --include-subdomains true|false  Add complementary apex/wildcard SAN
   --cert-name NAME                 Set stable Certbot lineage name
   --s3-bucket BUCKET               Existing S3 bucket (required)
-  --s3-key KEY                     Existing archive key (latest.tar.gz)
+  --s3-key KEY                     Existing literal key (latest.tar.gz)
+  --s3-key-template TEMPLATE       Optional current archive key template
+  --backup-key-template TEMPLATE   Optional dated backup key template
   --upload-no-renewal true|false   Republish successful unchanged archive\n  --archive-encryption MODE        auto | none | gpg-ocb\n  --archive-migration MODE         none | plaintext-to-gpg-ocb\n  --archive-migration-backup-confirmed true|false
   --help                           Show help
   --version                        Show build provenance
@@ -308,6 +310,7 @@ certbotbot_main() {
   esac
   certbotbot_config_resolve "$@" || return $?
   certbotbot_identity_resolve || return $?
+  certbotbot_filename_resolve || return $?
   certbotbot_lifecycle_execute
 }
 
