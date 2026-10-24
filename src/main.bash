@@ -154,7 +154,10 @@ certbotbot_verify_material() {
 ## would have expired before cleanup.  This function is not a sourced library
 ## API: callers must not rely on preserving their EXIT trap.
 ##
-## All restored lineage metadata is validated before provider execution.\n## Unselected state is fingerprinted before and after selected Certbot work;\n## any mutation refuses publication. Missing or unsafe S3 state never triggers\n## account registration or host fallback.  An absent selected lineage is issued using the restored account;
+## All restored lineage metadata is validated before provider execution.
+## Unselected state is fingerprinted before and after selected Certbot work;
+## any mutation refuses publication. Missing or unsafe S3 state never triggers
+## account registration or host fallback.  An absent selected lineage is issued using the restored account;
 ## an existing one is renewed or reconciled only as explicitly authorized.
 ## First issuance requires canonical renewal path finalization before it can
 ## pass the same certificate and archive gates as an existing lineage.
