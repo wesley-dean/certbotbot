@@ -2092,6 +2092,7 @@ require_gpg_ocb() {
 }
 
 @test "migrating the same S3 key requires explicit operator backup acknowledgement" {
+  require_gpg_ocb
   export GPG_SYMMETRIC_KEY=fixture-strong-password-not-a-real-credential
   execute --archive-encryption gpg-ocb
   [ "$status" -eq 65 ]
