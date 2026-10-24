@@ -1,11 +1,11 @@
 # Opt-In Client-Side Archive Encryption Contract
 
-Status: **task #41 design-only contract** for approved story #14.
+Status: **ADR-031 accepted in task #41; implementation in task #42**
+with comprehensive interoperability evidence tracked in task #43.
 Governing decision:
 [ADR-031](adr/ADR-031-opt-in-authenticated-gpg-archive-encryption.md).
-Implementation is task #42; executable encrypted/unencrypted
-acceptance is task #43.  This document does not enable encryption
-in the current release.
+The public interface is implemented as an opt-in transport wrapper.
+The complete negative and independent-runner acceptance matrix is task #43.
 
 ## Operator intent and configuration
 
