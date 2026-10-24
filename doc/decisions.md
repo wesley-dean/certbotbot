@@ -383,3 +383,17 @@ validation and uncertainty guarantees.
 
 See [ADR-031](adr/ADR-031-opt-in-authenticated-gpg-archive-encryption.md).
 
+### ADR-032: Deterministic and Safe Archive Filename Templates
+
+The existing `S3_KEY` remains a literal, backward-compatible authoritative
+current object key, defaulting to `latest.tar.gz`; an opt-in
+`S3_KEY_TEMPLATE` may replace its selection at a higher configuration tier,
+and a distinct `BACKUP_KEY_TEMPLATE` describes optional recovery-copy naming.
+Certbotbot supplies a single frozen UTC date as YEAR/MONTH/DOM and uses pinned
+mktext only for nonrecursive literal substitution, enforcing strict basename,
+extension, unknown-token, and current/backup collision safety before remote
+operations. This decision does not authorize second-object publication or
+destructive retention, which require separate governance under #81/#84, and
+it does not claim future alternate backend/format support.
+
+See [ADR-032](adr/ADR-032-deterministic-safe-archive-filename-templates.md).
