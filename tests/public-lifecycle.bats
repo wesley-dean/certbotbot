@@ -1722,3 +1722,62 @@ assert_override_one_key() {
   assert_no_certbot_or_put
   cmp -s "$LIFECYCLE_REMOTE" "$ROOT/invalid-leaf-baseline.tar.gz"
 }
+
+# Story #56 / task #61: selected-only actions on a shared archive.
+# The larger cross-runner and negative matrix is reserved for task #62.
+
+@test "second independent selected lineage retains first key and renewal state" {
+  execute
+  [ "$status" -eq 0 ]
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/privkey1.pem \
+    >"$ROOT/first-key.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/first-cert.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/example.com.conf \
+    >"$ROOT/first-renewal.conf"
+  : >"$LIFECYCLE_CALLS"
+  : >"$LIFECYCLE_CONTEXTS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued other.org"* && "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:renew$' "$LIFECYCLE_CALLS"
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/other.org.conf'
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/example.com.conf'
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/privkey1.pem \
+    | cmp -s - "$ROOT/first-key.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    | cmp -s - "$ROOT/first-cert.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/example.com.conf \
+    | cmp -s - "$ROOT/first-renewal.conf"
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  execute --cert-name example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "unsafe nonselected canonical metadata blocks issuance and publication" {
+  execute
+  [ "$status" -eq 0 ]
+  mkdir -m 700 "$ROOT/multi-bad"
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/multi-bad"
+  sed -i 's@/etc/letsencrypt/live/example.com@/tmp/foreign@example.com@g' \
+    "$ROOT/multi-bad/renewal/example.com.conf"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/multi-bad" .
+  cp "$LIFECYCLE_REMOTE" "$ROOT/multi-bad-baseline.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  execute_domain other.org --cert-name other.org
+  [ "$status" -ne 0 ]
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/multi-bad-baseline.tar.gz"
+}
