@@ -442,3 +442,19 @@ separately approved client extension.
 
 See [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md)
 and [the separate-client contract](separate-client-contract.md).
+
+### ADR-036: Parallel Producer Validation with Verified CI Artifact Handoff
+
+Producer validation will use one checksum-verified build per GitHub Actions
+workflow run, distribute its exact files through a short-lived same-run
+handoff, and run the development, ordinary and minified executable
+contracts in independently scheduled Bats, Bash 4.3 and authenticated
+encryption jobs.  A stable aggregate check must reject any missing,
+skipped, cancelled or failed required job rather than reporting partial
+success.  The release pipeline must validate and attest those same
+intended bytes before a separately privileged final job creates the
+tag/release; local three-flavor Make commands and the distinct
+separate-client testing contract remain intact.
+
+See [ADR-036](adr/ADR-036-parallel-producer-verification-and-handoff.md)
+and [the parallel CI validation contract](parallel-ci-validation-contract.md).
