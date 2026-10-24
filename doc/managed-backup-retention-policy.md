@@ -128,6 +128,7 @@ No new executable or runtime library dependency is introduced beyond the
 existing trusted AWS CLI and GNU system utilities. `tests/retention.bats`
 checks the disabled default, invalid counts, retention-only template rules,
 complete preflight before deletion, and fixed nonsecret error handling.
-Task #86 must add detailed pagination, ambiguous inventory, cross-writer,
-conditional-failure and protected-set scenarios. Mocked acceptance does not
+Task #86's [retention safety verification guide](retention-safety-verification.md)
+traces adversarial pagination, ambiguous inventory, conditional-failure and
+protected-set scenarios, without claiming live-cloud guarantees. Mocked acceptance does not
 prove AWS IAM permissions, remote durability or cross-writer transactions.
