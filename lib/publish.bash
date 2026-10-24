@@ -26,8 +26,7 @@
 ## @brief Applies the no-op policy and uploads one locally verified candidate.
 ## @details
 ## WORKSPACE/config must contain a complete, already processed selected
-## lineage, a single registered production account, and canonical renewal
-## metadata. The caller must have verified the Certbot result and certificate
+## lineage, a single registered production account, and canonical renewal\n## metadata for every stored lineage. The full candidate includes every\n## unrelated lineage, not a selected-only subset. The caller must have verified the Certbot result and certificate
 ## material, and must pass the exact bucket/key used for the earlier S3 read.
 ##
 ## When CHANGED and OVERRIDE are both false, no candidate or AWS call is
@@ -114,7 +113,8 @@ certbotbot_s3_publish() {
   config="$workspace/config"
   if ! certbotbot_state_preflight "$config" "$selected" >/dev/null 2>&1 ||
     [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]] ||
-    ! certbotbot_renewal_map "$config" "$selected" verify >/dev/null 2>&1; then
+    ! certbotbot_renewal_map "$config" "$selected" verify >/dev/null 2>&1 ||
+    ! certbotbot_state_canonical_all "$config" "$selected" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected publication state is unsuitable' >&2
     return 65
   fi
