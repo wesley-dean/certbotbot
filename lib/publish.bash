@@ -26,7 +26,9 @@
 ## @brief Applies the no-op policy and uploads one locally verified candidate.
 ## @details
 ## WORKSPACE/config must contain a complete, already processed selected
-## lineage, a single registered production account, and canonical renewal\n## metadata for every stored lineage. The full candidate includes every\n## unrelated lineage, not a selected-only subset. The caller must have verified the Certbot result and certificate
+## lineage, a single registered production account, and canonical renewal
+## metadata for every stored lineage. The full candidate includes every
+## unrelated lineage, not a selected-only subset. The caller must have verified the Certbot result and certificate
 ## material, and must pass the exact bucket/key used for the earlier S3 read.
 ##
 ## When CHANGED and OVERRIDE are both false, no candidate or AWS call is
