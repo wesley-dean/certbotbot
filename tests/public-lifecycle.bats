@@ -2960,3 +2960,69 @@ dated_recovery_download() {
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS" 2>/dev/null
   cmp -s "$LIFECYCLE_BACKUP_REMOTE" "$LIFECYCLE_REMOTE"
 }
+
+@test "encrypted dated copy roundtrips in isolated recovery workspace with authentication" {
+  require_gpg_ocb
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  export GPG_SYMMETRIC_KEY=fixture-dated-recovery-authenticated-secret
+  execute --dated-backup-enabled true \
+    --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'backup=confirmed'* ]]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+  head -c 22 "$LIFECYCLE_BACKUP_REMOTE" |
+    cmp -s - <(printf 'CERTBOTBOT-GPG-OCB-V1\n')
+  # The direct read-only AWS mock must not receive the GnuPG secret.
+  export -n GPG_SYMMETRIC_KEY
+  local recovery="$ROOT/encrypted-recovery"
+  dated_recovery_download "$recovery"
+  : >"$LIFECYCLE_CALLS"
+  run env RECOVERY_TEST_SECRET="$GPG_SYMMETRIC_KEY" bash -c '
+    source "$1" --help >/dev/null || exit $?
+    CERTBOTBOT_GPG_SECRET="$RECOVERY_TEST_SECRET"
+    unset RECOVERY_TEST_SECRET
+    CERTBOTBOT_ARCHIVE_ENCRYPTION=gpg-ocb
+    CERTBOTBOT_ARCHIVE_MIGRATION=none
+    CERTBOTBOT_ARCHIVE_MIGRATION_BACKUP_CONFIRMED=false
+    certbotbot_crypto_require "$3" || exit $?
+    cp -- "$2" "$3/downloaded.tar.gz" || exit $?
+    certbotbot_crypto_unwrap "$3" || exit $?
+    certbotbot_archive_restore "$3/downloaded.tar.gz" "$3" || exit $?
+    certbotbot_state_preflight "$3/config" example.com || exit $?
+    certbotbot_state_canonical_all "$3/config" example.com
+  ' _ "$BASH_STARTER_ARTIFACT" "$recovery/downloaded.tar.gz" "$recovery"
+  [ "$status" -eq 0 ]
+  [ -s "$recovery/config/archive/example.com/privkey1.pem" ]
+  [ -f "$recovery/config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json" ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  ! grep -q 'secret-inherited' "$LIFECYCLE_CALLS"
+}
+
+@test "wrong key cannot authenticate offline encrypted backup or expose restored state" {
+  require_gpg_ocb
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_recovery_clock 20261020
+  export GPG_SYMMETRIC_KEY=fixture-dated-recovery-correct-secret
+  execute --dated-backup-enabled true \
+    --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  export -n GPG_SYMMETRIC_KEY
+  local recovery="$ROOT/wrong-key-recovery"
+  dated_recovery_download "$recovery"
+  : >"$LIFECYCLE_CALLS"
+  run bash -c '
+    source "$1" --help >/dev/null || exit $?
+    CERTBOTBOT_GPG_SECRET=wrong-test-secret
+    CERTBOTBOT_ARCHIVE_ENCRYPTION=gpg-ocb
+    CERTBOTBOT_ARCHIVE_MIGRATION=none
+    certbotbot_crypto_require "$3" || exit $?
+    cp -- "$2" "$3/downloaded.tar.gz" || exit $?
+    certbotbot_crypto_unwrap "$3"
+  ' _ "$BASH_STARTER_ARTIFACT" "$recovery/downloaded.tar.gz" "$recovery"
+  [ "$status" -eq 65 ]
+  [ ! -e "$recovery/config" ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
