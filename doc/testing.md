@@ -70,6 +70,38 @@ stripping, minification, embedded dependencies, provenance, or checksums should 
 validated against the artifact bytes and behavior rather than only against
 maintained source.
 
+### CI single-flavor test entry points
+
+GitHub Actions matrix jobs can test one prebuilt producer executable without
+rebuilding it. The `test-one` and `test-report-one` targets accept exactly
+`TEST_FLAVOR=development`, `TEST_FLAVOR=ordinary`, or
+`TEST_FLAVOR=minified`. They run the same complete Bats test-file inventory
+as the existing all-flavor targets. For example:
+
+```bash
+make build
+make test-one TEST_FLAVOR=development
+make test-report-one TEST_FLAVOR=ordinary
+```
+
+The single-flavor targets require the selected executable in `dist/` to be
+an executable regular file with valid Bash syntax and a matching, regular
+`.sha256` companion containing the exact basename. They reject a missing
+or empty test inventory, symlinks, stale `.256` companions and digest
+mismatches **before invoking Bats**. No dependency bootstrap or
+`make build` runs as a side effect; a caller must arrange and independently
+verify a complete trusted cross-job handoff as governed by ADR-036. The selected
+suite's Bats exit status remains authoritative.
+
+`test-report-one` writes one report to
+`test-results/bats-<flavor>.xml`. The legacy `make test` still
+builds and tests all three producer flavors, while `make test-report`
+continues to build and emit its historical `bats-development.xml`,
+`bats-stripped.xml` and `bats-minified.xml` files. The current
+single-flavor names use `ordinary` for the stripped representation;
+the older local report name is retained for backward compatibility.
+The standalone certificate client is not a fourth producer flavor.
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful

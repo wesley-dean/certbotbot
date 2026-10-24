@@ -44,7 +44,7 @@ BUILD_COMMIT ?= $(shell commit="$$(git rev-parse --short=12 HEAD 2>/dev/null || 
 BUILD_DATE ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || printf 'unknown')
 SHFMT_ARGUMENTS := -i 2 -bn -ci -sr -kp
 
-.PHONY: all adr-index build check checksums clean deps deps-check distclean docs docs-clean FORCE format test test-report verify-bashdeps
+.PHONY: all adr-index build check checksums clean deps deps-check distclean docs docs-clean FORCE format test test-one test-report test-report-one verify-bashdeps
 
 ## Synchronize repository dependencies, then build consumer artifacts.
 all: deps
@@ -130,6 +130,47 @@ test: build
 test-report: build
 	@mkdir -p "$(TEST_RESULTS_DIR)"
 	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
+
+## Run one complete Bats suite against an already-built and verified producer flavor.
+## CI uses this test-only entry point to avoid FORCE rebuilds of handed-off bytes.
+## TEST_FLAVOR is passed through Make's environment, never interpolated into shell.
+test-one test-report-one:
+	@set -eu; \
+	case "${TEST_FLAVOR-}" in \
+	  development) artifact='$(DIST_DEV_SCRIPT)' ;; \
+	  ordinary) artifact='$(DIST_SCRIPT)' ;; \
+	  minified) artifact='$(DIST_MIN_SCRIPT)' ;; \
+	  *) printf '%s\n' 'TEST_FLAVOR must be development, ordinary, or minified' >&2; exit 64 ;; \
+	esac; \
+	if [[ -z '$(TEST_SCRIPTS)' ]]; then \
+	  printf '%s\n' 'Bats test inventory is empty' >&2; exit 65; \
+	fi; \
+	checksum="$artifact.sha256"; \
+	if [[ ! -f "$artifact" || -L "$artifact" || ! -x "$artifact" || \
+	  ! -f "$checksum" || -L "$checksum" || \
+	  -e "$artifact.256" || -L "$artifact.256" ]]; then \
+	  printf '%s\n' 'Missing, unsafe, or stale producer artifact or checksum' >&2; exit 65; \
+	fi; \
+	if command -v sha256sum >/dev/null 2>&1; then \
+	  digest="$(sha256sum -- "$artifact" | awk '{print $1}')"; \
+	elif command -v shasum >/dev/null 2>&1; then \
+	  digest="$(shasum -a 256 -- "$artifact" | awk '{print $1}')"; \
+	else \
+	  printf '%s\n' 'SHA-256 verification tool unavailable' >&2; exit 69; \
+	fi; \
+	if [[ ! "$digest" =~ ^[0-9a-f]{64}$ ]] || \
+	  ! printf '%s  %s\n' "$digest" "${artifact##*/}" | cmp -s - "$checksum"; then \
+	  printf '%s\n' 'Producer artifact checksum mismatch' >&2; exit 65; \
+	fi; \
+	if ! bash -n "$artifact"; then \
+	  printf '%s\n' 'Invalid producer artifact Bash syntax' >&2; exit 65; \
+	fi; \
+	if [[ '$@' == 'test-one' ]]; then \
+	  BASH_STARTER_ARTIFACT="${PWD}/$artifact" bats $(TEST_SCRIPTS); \
+	else \
+	  mkdir -p '$(TEST_RESULTS_DIR)'; \
+	  BASH_STARTER_ARTIFACT="${PWD}/$artifact" bats --formatter junit $(TEST_SCRIPTS) >'$(TEST_RESULTS_DIR)/bats-'"${TEST_FLAVOR}"'.xml'; \
+	fi
 
 FORCE:
 
