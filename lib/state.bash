@@ -245,11 +245,14 @@ certbotbot_state_lineage() {
 ## @retval 0 Every archived lineage has canonical supported metadata.
 ## @retval 65 Any incomplete or noncanonical archive state.
 certbotbot_state_canonical_all() {
-  local config="$1" selected="$2" file base name
+  local config="$1" selected="$2" file base name selected_state
   if ! certbotbot_state_preflight "$config" "$selected" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: unsupported shared archive state' >&2
     return 65
   fi
+  # The verifier checks other lineages under their own names. Preserve the
+  # selected absent/present result used by the public dispatcher.
+  selected_state="$CERTBOTBOT_LINEAGE_STATE"
   for file in "$config/renewal/"*.conf; do
     [[ -f "$file" && ! -L "$file" ]] || continue
     base="${file##*/}"
@@ -259,6 +262,7 @@ certbotbot_state_canonical_all() {
       return 65
     fi
   done
+  CERTBOTBOT_LINEAGE_STATE="$selected_state"
   return 0
 }
 
