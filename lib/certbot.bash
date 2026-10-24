@@ -51,7 +51,7 @@ certbotbot_provider_sans() {
 ## @details
 ## Verifies one 0700 caller-owned workspace with canonical paths, a valid
 ## non-wildcard selected lineage name, a bounded canonical SAN set, and
-## account-only restored state. Rejects any existing/partial lineage before
+## account-only or multi-lineage restored state. Rejects a present or partial\n## selected lineage, or any unsafe unselected renewal state, before
 ## spawning Certbot. The provider refuses archived cli.ini and hook scripts
 ## through the preflight, and sets no implicit fallback account.
 ##
@@ -130,7 +130,8 @@ certbotbot_provider_issue() {
     fi
   done
   if ! certbotbot_state_preflight "$config" "$selected" >/dev/null 2>&1 ||
-    [[ "$CERTBOTBOT_LINEAGE_STATE" != absent ]]; then
+    [[ "$CERTBOTBOT_LINEAGE_STATE" != absent ]] ||
+    ! certbotbot_state_canonical_all "$config" "$selected" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: existing account or lineage unsuitable' >&2
     return 65
   fi
