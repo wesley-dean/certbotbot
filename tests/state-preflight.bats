@@ -48,6 +48,18 @@ CONF
   chmod 600 "$CONFIG/renewal/example.com.conf"
 }
 
+make_other_lineage() {
+  local part
+  mkdir -p "$CONFIG/live/other.org" "$CONFIG/archive/other.org"
+  for part in cert chain fullchain privkey; do
+    printf 'fixture-other-%s\n' "$part" >"$CONFIG/archive/other.org/$part"1.pem
+    ln -s "../../archive/other.org/$part"1.pem "$CONFIG/live/other.org/$part.pem"
+  done
+  sed 's/example.com/other.org/g' "$CONFIG/renewal/example.com.conf" \
+    >"$CONFIG/renewal/other.org.conf"
+  chmod 600 "$CONFIG/renewal/other.org.conf"
+}
+
 @test "seeded single production account without lineage is accepted as absent" {
   preflight
   [ "$status" -eq 0 ]
@@ -99,11 +111,11 @@ CONF
   [ "$status" -eq 65 ]
 }
 
-@test "mismatched lineage names refuse implicit numeric replacement" {
+@test "complete unrelated lineage is allowed while selected target is absent" {
   make_lineage
   preflight other.example.com
-  [ "$status" -eq 65 ]
-  [[ "$output" != *'state:present'* ]]
+  [ "$status" -eq 0 ]
+  [ "$output" = 'state:absent' ]
 }
 
 @test "orphaned archive or live tree is never regarded as absent" {
@@ -174,4 +186,55 @@ CONF
 @test "public lifecycle remains fail-closed after local state implementation" {
   run "$BASH_STARTER_ARTIFACT" --s3-bucket bucket example.com
   [ "$status" -eq 69 ]
+}
+
+@test "two independent complete lineages can each be selected or left untouched" {
+  make_lineage
+  make_other_lineage
+  preflight
+  [ "$status" -eq 0 ]
+  [ "$output" = 'state:present' ]
+  preflight other.org
+  [ "$status" -eq 0 ]
+  [ "$output" = 'state:present' ]
+  preflight new.example.net
+  [ "$status" -eq 0 ]
+  [ "$output" = 'state:absent' ]
+}
+
+@test "incomplete unselected lineage fails before activating selected state" {
+  make_lineage
+  make_other_lineage
+  rm "$CONFIG/live/other.org/privkey.pem"
+  preflight
+  [ "$status" -eq 65 ]
+  [ "$output" = 'state:' ]
+}
+
+@test "unselected cross-lineage symlinks are never admitted" {
+  make_lineage
+  make_other_lineage
+  rm "$CONFIG/live/other.org/cert.pem"
+  ln -s ../../archive/example.com/cert1.pem \
+    "$CONFIG/live/other.org/cert.pem"
+  preflight
+  [ "$status" -eq 65 ]
+}
+
+@test "orphan unselected renewal and archive paths cannot be ignored" {
+  make_lineage
+  make_other_lineage
+  rm "$CONFIG/renewal/other.org.conf"
+  preflight
+  [ "$status" -eq 65 ]
+  [ "$output" = 'state:' ]
+}
+
+@test "unselected renewal hooks fail even when selected is healthy" {
+  make_lineage
+  make_other_lineage
+  printf '%s\n' 'renew_hook = /bin/true' \
+    >>"$CONFIG/renewal/other.org.conf"
+  preflight
+  [ "$status" -eq 65 ]
 }
