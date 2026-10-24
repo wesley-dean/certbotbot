@@ -18,6 +18,7 @@ setup() {
     printf 'fixture:%s\n' "$part" >"$CONFIG/archive/$NAME/${part}1.pem"
     ln -s "../../archive/$NAME/${part}1.pem" "$CONFIG/live/$NAME/$part.pem"
   done
+  chmod 600 "$CONFIG/archive/$NAME/privkey1.pem"
   RENEWAL="$CONFIG/renewal/$NAME.conf"
   cat >"$RENEWAL" <<'CONF'
 # Certbot-generated renewal configuration

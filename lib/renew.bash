@@ -213,7 +213,8 @@ certbotbot_provider_renew() {
     fi
   done
   if ! certbotbot_state_preflight "$config" "$selected" >/dev/null 2>&1 ||
-    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]]; then
+    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]] ||
+    ! certbotbot_state_canonical_all "$config" "$selected" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: existing selected lineage is unsuitable' >&2
     return 65
   fi

@@ -877,18 +877,29 @@ MOCK
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
 }
 
-@test "conflicting stored explicit lineage refuses silent reissue or rename" {
+@test "distinct explicit names issue independent lineages and retain the original" {
   export LIFECYCLE_EXPECTED_CERT_NAME=issued.example.com
   execute --cert-name issued.example.com
   [ "$status" -eq 0 ]
-  cp "$LIFECYCLE_REMOTE" "$ROOT/before-conflict.tar.gz"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/issued.example.com/cert1.pem \
+    >"$ROOT/first-explicit-cert.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/issued.example.com.conf \
+    >"$ROOT/first-explicit-renewal.conf"
   : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=different.example.com
   execute --cert-name different.example.com
-  [ "$status" -eq 65 ]
-  [[ "$output" != *"published=true"* ]]
-  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
-  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-conflict.tar.gz"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued different.example.com"* &&
+    "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/issued.example.com.conf'
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/different.example.com.conf'
+  ! tar -tzf "$LIFECYCLE_REMOTE" | grep -Fq './renewal/different.example.com-0001.conf'
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/issued.example.com/cert1.pem |
+    cmp -s - "$ROOT/first-explicit-cert.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/issued.example.com.conf |
+    cmp -s - "$ROOT/first-explicit-renewal.conf"
   [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
 }
 
@@ -1621,23 +1632,31 @@ assert_override_one_key() {
   ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-renew.tar.gz"
 }
 
-@test "shorter added SAN requires explicit preservation of the existing lineage" {
+@test "shorter SAN chooses new lineage unless existing lineage is explicitly selected" {
   execute
   [ "$status" -eq 0 ]
-  cp "$LIFECYCLE_REMOTE" "$ROOT/before-shorter.tar.gz"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/before-shorter-cert.pem"
   : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=io.uk
   execute --san io.uk
-  [ "$status" -eq 65 ]
-  assert_no_certbot_or_put
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-shorter.tar.gz"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued io.uk"* && "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/io.uk.conf'
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem |
+    cmp -s - "$ROOT/before-shorter-cert.pem"
 
   : >"$LIFECYCLE_CALLS"
   : >"$LIFECYCLE_CONTEXTS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
   execute --cert-name example.com --san io.uk
   [ "$status" -eq 0 ]
   [[ "$output" == *"checked example.com"* && "$output" == *"published=true"* ]]
   grep -Fxq 'certbot-reconcile:example.com' "$LIFECYCLE_CONTEXTS"
   assert_remote_sans example.com '*.example.com' io.uk '*.io.uk'
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/io.uk.conf'
 }
 
 @test "multi-SAN successful unchanged forced republish uses one original key" {
@@ -1721,4 +1740,63 @@ assert_override_one_key() {
   [[ "$output" != *"published=true"* ]]
   assert_no_certbot_or_put
   cmp -s "$LIFECYCLE_REMOTE" "$ROOT/invalid-leaf-baseline.tar.gz"
+}
+
+# Story #56 / task #61: selected-only actions on a shared archive.
+# The larger cross-runner and negative matrix is reserved for task #62.
+
+@test "second independent selected lineage retains first key and renewal state" {
+  execute
+  [ "$status" -eq 0 ]
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/privkey1.pem \
+    >"$ROOT/first-key.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/first-cert.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/example.com.conf \
+    >"$ROOT/first-renewal.conf"
+  : >"$LIFECYCLE_CALLS"
+  : >"$LIFECYCLE_CONTEXTS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued other.org"* && "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:renew$' "$LIFECYCLE_CALLS"
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/other.org.conf'
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/example.com.conf'
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/privkey1.pem \
+    | cmp -s - "$ROOT/first-key.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    | cmp -s - "$ROOT/first-cert.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/example.com.conf \
+    | cmp -s - "$ROOT/first-renewal.conf"
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  execute --cert-name example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "unsafe nonselected canonical metadata blocks issuance and publication" {
+  execute
+  [ "$status" -eq 0 ]
+  mkdir -m 700 "$ROOT/multi-bad"
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/multi-bad"
+  sed -i 's|/etc/letsencrypt/live/example.com|/tmp/foreign/example.com|g' \
+    "$ROOT/multi-bad/renewal/example.com.conf"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/multi-bad" .
+  cp "$LIFECYCLE_REMOTE" "$ROOT/multi-bad-baseline.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  execute_domain other.org --cert-name other.org
+  [ "$status" -ne 0 ]
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/multi-bad-baseline.tar.gz"
 }

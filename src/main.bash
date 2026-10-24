@@ -4,8 +4,8 @@
 ## @brief Executes the selected-certificate MVP lifecycle from public CLI.
 ## @details
 ## This is the only public lifecycle dispatcher.  It resolves an identity once,
-## reads one mandatory seeded S3 object, restores it into an ephemeral private
-## workspace, selects either first issuance or selected-lineage renewal, and
+## reads one mandatory seeded S3 object, restores every stored lineage into an
+## ephemeral private workspace, issues or renews only the selected lineage, and
 ## verifies certificate material before the existing single-key publisher runs.
 ## All remote write authority is conditioned on successful local verification.
 ## Each invocation owns and destroys only its freshly allocated workspace.
@@ -142,7 +142,7 @@ certbotbot_verify_material() {
 }
 
 ## @fn certbotbot_lifecycle_execute()
-## @brief Runs exactly one seeded-archive selected-certificate lifecycle.
+## @brief Runs one selected certificate from the single shared S3 archive.
 ## @details
 ## Runs as a conventional Bash function so the pinned release minifier can
 ## serialize it safely.  The public executable invokes it only after resolving
@@ -154,8 +154,10 @@ certbotbot_verify_material() {
 ## would have expired before cleanup.  This function is not a sourced library
 ## API: callers must not rely on preserving their EXIT trap.
 ##
-## Missing or unsafe S3 state never triggers account registration or host
-## fallback.  An absent selected lineage is issued using the restored account;
+## All restored lineage metadata is validated before provider execution.
+## Unselected state is fingerprinted before and after selected Certbot work;
+## any mutation refuses publication. Missing or unsafe S3 state never triggers
+## account registration or host fallback.  An absent selected lineage is issued using the restored account;
 ## an existing one is renewed or reconciled only as explicitly authorized.
 ## First issuance requires canonical renewal path finalization before it can
 ## pass the same certificate and archive gates as an existing lineage.
@@ -183,7 +185,7 @@ certbotbot_verify_material() {
 ## @note The exact nonzero stage status is propagated unchanged.
 certbotbot_lifecycle_execute() {
   local workspace='' config account_dir account_before='' entry
-  local changed='' outcome=''
+  local changed='' outcome='' unselected_before='' unselected_after=''
   workspace="$(certbotbot_workspace_create)" || return $?
   # An EXIT trap runs after a returned function loses its local variables.
   # Hold only the freshly allocated, validated workspace path at script scope.
@@ -200,6 +202,13 @@ certbotbot_lifecycle_execute() {
   config="$workspace/config"
   certbotbot_state_preflight "$config" "$CERTBOTBOT_CERT_NAME" ||
     return $?
+  certbotbot_state_canonical_all "$config" "$CERTBOTBOT_CERT_NAME" ||
+    return $?
+  unselected_before="$(certbotbot_state_unselected_fingerprint \
+    "$config" "$CERTBOTBOT_CERT_NAME")" || {
+    printf '%s\n' 'certbotbot: cannot snapshot unselected certificate state' >&2
+    return 65
+  }
 
   account_dir="$config/accounts/acme-v02.api.letsencrypt.org/directory"
   for entry in "$account_dir/"*; do
@@ -242,6 +251,19 @@ certbotbot_lifecycle_execute() {
   if [[ ! -d "$account_dir/$account_before" ||
     -L "$account_dir/$account_before" ]]; then
     printf '%s\n' 'certbotbot: restored ACME account identity changed' >&2
+    return 65
+  fi
+  # Validate every lineage before publication and reject any accidental
+  # mutation of unselected certificate keys, metadata or version history.
+  certbotbot_state_canonical_all "$config" "$CERTBOTBOT_CERT_NAME" ||
+    return $?
+  unselected_after="$(certbotbot_state_unselected_fingerprint \
+    "$config" "$CERTBOTBOT_CERT_NAME")" || {
+    printf '%s\n' 'certbotbot: cannot verify unselected certificate state' >&2
+    return 65
+  }
+  if [[ "$unselected_before" != "$unselected_after" ]]; then
+    printf '%s\n' 'certbotbot: unselected certificate state changed' >&2
     return 65
   fi
   certbotbot_verify_material "$workspace" "$CERTBOTBOT_CERT_NAME" \
