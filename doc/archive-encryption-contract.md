@@ -47,9 +47,13 @@ Encrypted S3 object, at the SAME operator-selected bucket/key:
 ```
 
 GnuPG is required only in enabled encrypted mode.  The minimum is
-2.2.21 with working `--use-ocb-sym`.  It must not silently substitute
-legacy CFB/MDC or an unauthenticated cipher if the required OCB option
-is missing.  Newly emitted messages use `AES256`, iterated/salted S2K
+2.4.7 or newer with working `--force-ocb` symmetric AES-256/OCB.
+GnuPG 2.2.21 supports AEAD **decryption**, but `--use-ocb-sym` for
+symmetric **encryption** first appeared in 2.5.19. The runtime must
+probe actual AEAD packet generation and a successful authenticated
+roundtrip instead of trusting a version string or the mere presence
+of an option. It must not silently substitute legacy CFB/MDC or an
+unauthenticated cipher if the required OCB feature is unavailable.  Newly emitted messages use `AES256`, iterated/salted S2K
 mode 3, `SHA512`, and `--s2k-count 16777216`.  Secrets must be
 randomly generated with at least roughly 256 bits of entropy because
 the OpenPGP S2K is not memory-hard.
