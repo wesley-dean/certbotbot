@@ -352,3 +352,18 @@ multi-lineage archives require the separate approved story #56.
 
 See [ADR-029](adr/ADR-029-arbitrary-multi-san-selected-lineage.md).
 
+### ADR-030: Multiple Independent Certificate Lineages in One Shared Archive
+
+A single existing S3 tar.gz object may contain multiple independent, unrelated
+Certbot certificate lineages while each ordinary invocation still targets
+**one exact selected lineage**. The preflight validates all restored lineage
+triplets and account state, the provider modifies only the selected lineage,
+and the publisher packages the complete validated configuration without
+altering other lineages. Existing account-only and one-lineage archives remain
+compatible; no implicit bulk renew, orphan deletion, additional S3 objects,
+or concurrent-writer protection is introduced. This decision narrowly
+supersedes the MVP extra-lineage prohibition in ADR-023 and selected-only
+eligibility in ADR-027, retaining their other security obligations.
+
+See [ADR-030](adr/ADR-030-shared-archive-multiple-lineages.md).
+
