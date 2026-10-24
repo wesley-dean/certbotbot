@@ -61,7 +61,8 @@ certbotbot_provider_existing() {
     return 64
   fi
   if ! certbotbot_state_preflight "$workspace/config" "$selected" >/dev/null 2>&1 ||
-    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]]; then
+    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]] ||
+    ! certbotbot_state_canonical_all "$workspace/config" "$selected" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected lineage is unsuitable' >&2
     return 65
   fi
@@ -161,7 +162,8 @@ certbotbot_provider_reconcile() {
   done
 
   if ! certbotbot_state_preflight "$config" "$selected" >/dev/null 2>&1 ||
-    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]]; then
+    [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]] ||
+    ! certbotbot_state_canonical_all "$config" "$selected" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected lineage is unsuitable for SAN change' >&2
     return 65
   fi
