@@ -1,9 +1,9 @@
 # Managed Dated-Backup Retention Policy
 
-**Status:** Design specification for approved task #84, governed by
-[ADR-034](adr/ADR-034-scoped-conditional-managed-backup-retention.md).
-**Not yet implemented.** Task #85 implements retention, and #86
-supplies the complete destructive-operation test matrix. This document
+**Status:** Scoped S3/tar.gz retention implemented by technical task #85,
+governed by [ADR-034](adr/ADR-034-scoped-conditional-managed-backup-retention.md).
+Full destructive-failure verification remains tracked under task #86.
+Alternate storage backends and archive formats are not implemented. This document
 defines intended behavior, not claims of a passing executable feature.
 
 ## Configuration and opt-in
@@ -100,3 +100,34 @@ satisfy equivalent scoped capability and content contracts. Unsupported
 combinations with positive retention cannot silently skip deletion.
 See [ADR-034](adr/ADR-034-scoped-conditional-managed-backup-retention.md)
 for the threat model, alternatives and residual limitations.
+
+## Implementation and verification boundary
+
+The public CLI exposes `--backup-retention-count N` (or
+`BACKUP_RETENTION_COUNT` in the environment or literal `.env`). With N=0,
+ordinary publication does not issue any retention ListObjectsV2 or
+DeleteObject operation. With N greater than zero, the public status line
+adds `retention=completed; deleted=<confirmed_count>` or
+`retention=skipped; deleted=0` for an unchanged no-op. Failures after
+both publications return nonzero with a fixed `current accepted; backup
+confirmed; retention ...` diagnostic and never roll back the current key.
+
+The first-party S3 planner uses AWS CLI v2 `--no-paginate` and a fixed
+JMESPath scalar projection to read one complete ListObjectsV2 page at a
+time, with URL-encoded object keys, a precisely bounded literal prefix,
+response-schema validation, continuation-token cycle detection and a
+100,000-object/1,000-page safety limit. A key requiring percent decoding
+is refused rather than silently normalized, so an unusual unrelated key
+within the narrow prefix can deliberately block cleanup. This is an
+intentional fail-closed restriction, not a general-purpose bucket scanner.
+A complete exact-key metadata HEAD and ETag verification pass precedes
+every conditional delete.
+
+The retention module is assembled into the same three standalone artifacts.
+No new executable or runtime library dependency is introduced beyond the
+existing trusted AWS CLI and GNU system utilities. `tests/retention.bats`
+checks the disabled default, invalid counts, retention-only template rules,
+complete preflight before deletion, and fixed nonsecret error handling.
+Task #86 must add detailed pagination, ambiguous inventory, cross-writer,
+conditional-failure and protected-set scenarios. Mocked acceptance does not
+prove AWS IAM permissions, remote durability or cross-writer transactions.
