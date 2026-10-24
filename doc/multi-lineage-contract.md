@@ -1,8 +1,7 @@
 # Multiple Certificate Lineages: Shared Archive and Selection Contract
 
-Status: **design-only specification for task #60**. It is the target for
-implementation task #61 and the comprehensive cross-runner verification
-task #62. Governing decision:
+Status: **accepted design from task #60, implementation in task #61;**
+comprehensive cross-runner verification is tracked in task #62. Governing decision:
 [ADR-030](adr/ADR-030-shared-archive-multiple-lineages.md).
 This extends the [MVP archive layout](mvp-archive-layout.md) and
 [restored state preflight](mvp-state-preflight.md) rather than replacing
