@@ -104,7 +104,8 @@ certbotbot_retention_preflight() {
     "$suffix" == *..* ||
     "$suffix" == *'{'* || "$suffix" == *'}'* ||
     "$CERTBOTBOT_BACKUP_KEY" != "$prefix$CERTBOTBOT_FILENAME_DATE$suffix" ||
-    "$CERTBOTBOT_BACKUP_KEY" == "$CERTBOTBOT_S3_KEY" ]] ||
+    "$CERTBOTBOT_BACKUP_KEY" == "$CERTBOTBOT_S3_KEY" ||
+    "$CERTBOTBOT_S3_KEY" == "$prefix"* ]] ||
     ! certbotbot_retention_date_valid "$CERTBOTBOT_FILENAME_DATE"; then
     certbotbot_retention_error 64 'retention template is not safely scoped'
     return 64
