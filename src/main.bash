@@ -40,6 +40,7 @@ Options:
   --s3-key-template TEMPLATE       Optional current archive key template
   --backup-key-template TEMPLATE   Optional dated backup key template
   --dated-backup-enabled true|false  Publish an additional date-named copy
+  --backup-retention-count N        Keep newest N managed copies (default 0)
   --upload-no-renewal true|false   Republish successful unchanged archive\n  --archive-encryption MODE        auto | none | gpg-ocb\n  --archive-migration MODE         none | plaintext-to-gpg-ocb\n  --archive-migration-backup-confirmed true|false
   --help                           Show help
   --version                        Show build provenance
