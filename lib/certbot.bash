@@ -51,7 +51,8 @@ certbotbot_provider_sans() {
 ## @details
 ## Verifies one 0700 caller-owned workspace with canonical paths, a valid
 ## non-wildcard selected lineage name, a bounded canonical SAN set, and
-## account-only or multi-lineage restored state. Rejects a present or partial\n## selected lineage, or any unsafe unselected renewal state, before
+## account-only or multi-lineage restored state. Rejects a present or partial
+## selected lineage, or any unsafe unselected renewal state, before
 ## spawning Certbot. The provider refuses archived cli.ini and hook scripts
 ## through the preflight, and sets no implicit fallback account.
 ##
