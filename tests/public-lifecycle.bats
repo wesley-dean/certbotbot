@@ -68,9 +68,9 @@ if [[ "$key" == "$LIFECYCLE_BACKUP_KEY" &&
         { printf '(404)\n' >&2; exit 9; }
       [[ -f "$LIFECYCLE_BACKUP_META" ]] || exit 9
       size="$(stat -c %s -- "$LIFECYCLE_BACKUP_REMOTE")" || exit 9
-      read -r schema utc hash format encryption <"$LIFECYCLE_BACKUP_META" || exit 9
-      printf '"backupetag01"\t%s\t%s\t%s\t%s\t%s\n' \
-        "$size" "$schema" "$utc" "$hash" "$format" "$encryption"
+      # Preserve the exact five-tab-field v1 metadata fixture unchanged.
+      printf '"backupetag01"\t%s\t' "$size"
+      cat -- "$LIFECYCLE_BACKUP_META" || exit 9
       exit 0
       ;;
     put-object)
