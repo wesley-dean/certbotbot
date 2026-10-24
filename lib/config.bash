@@ -247,20 +247,16 @@ certbotbot_config_resolve() {
     *) certbotbot_error 'invalid archive migration mode'; return 64 ;;
   esac
   if [[ "$CERTBOTBOT_ARCHIVE_ENCRYPTION" == gpg-ocb &&
-    ( "$CERTBOTBOT_GPG_SECRET" == * { certbotbot_error 'DNS identity is required'; return 64; }
-  [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
-  [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* && "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
-}
-\n'* ||
-      "$CERTBOTBOT_GPG_SECRET" == * { certbotbot_error 'DNS identity is required'; return 64; }
-  [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
-  [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* && "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
-}
-\r'* ) ]]; then
+    ( "$CERTBOTBOT_GPG_SECRET" == *$'\n'* ||
+      "$CERTBOTBOT_GPG_SECRET" == *$'\r'* ) ]]; then
     certbotbot_error 'invalid encryption key'
     return 64
   fi
-  [[ -n "$CERTBOTBOT_DOMAIN" ]] || { certbotbot_error 'DNS identity is required'; return 64; }
-  [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
-  [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* && "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
+  [[ -n "$CERTBOTBOT_DOMAIN" ]] ||
+    { certbotbot_error 'DNS identity is required'; return 64; }
+  [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] ||
+    { certbotbot_error 'S3 bucket and key are required'; return 64; }
+  [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* &&
+    "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] ||
+    { certbotbot_error 'invalid S3 object key'; return 64; }
 }
