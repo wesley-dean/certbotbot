@@ -183,6 +183,12 @@ certbotbot_s3_publish() {
     # Consumed by the public CLI status reporter in src/main.bash.
     # shellcheck disable=SC2034
     CERTBOTBOT_S3_BACKUP_STATUS=confirmed
+    if [[ "${CERTBOTBOT_BACKUP_RETENTION_COUNT:-0}" != 0 ]]; then
+      certbotbot_retention_apply "$workspace" "$bucket" "$key" || return $?
+      # Consumed by the public status reporter in src/main.bash.
+      # shellcheck disable=SC2034
+      CERTBOTBOT_RETENTION_STATUS=completed
+    fi
   fi
   return 0
 }
