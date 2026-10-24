@@ -2651,7 +2651,13 @@ MOCK
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
   dated_backup_clock
   execute --dated-backup-enabled true
-  [ "$status" -eq 0 ]
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
   [[ "$output" == *'published=true; backup=confirmed'* ]]
   [ -f "$LIFECYCLE_BACKUP_REMOTE" ]
   cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
@@ -2664,10 +2670,22 @@ MOCK
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
   dated_backup_clock
   execute --dated-backup-enabled true
-  [ "$status" -eq 0 ]
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
   : >"$LIFECYCLE_CALLS"
   execute --dated-backup-enabled true
-  [ "$status" -eq 0 ]
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
   [[ "$output" == *'published=false; backup=skipped'* ]]
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
 }
@@ -2676,10 +2694,22 @@ MOCK
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
   dated_backup_clock
   execute --dated-backup-enabled true
-  [ "$status" -eq 0 ]
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
   : >"$LIFECYCLE_CALLS"
   execute --dated-backup-enabled true --upload-no-renewal true
-  [ "$status" -eq 0 ]
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
   [[ "$output" == *'published=true; backup=confirmed'* ]]
   [ "$(grep -Fc 'aws:put-object:fixture-bucket:archive-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
   cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
