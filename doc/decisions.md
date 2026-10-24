@@ -397,3 +397,18 @@ destructive retention, which require separate governance under #81/#84, and
 it does not claim future alternate backend/format support.
 
 See [ADR-032](adr/ADR-032-deterministic-safe-archive-filename-templates.md).
+
+### ADR-033: Opt-In Dated Backup Publication After Current-State Success
+
+An explicitly enabled dated recovery copy is published only after the normal
+authoritative current-key write succeeds, using exactly the same complete
+validated shared archive bytes and encrypted envelope when configured.
+The default remains one current S3 object with the existing no-op policy,
+while a frozen UTC template determines the additional backup key.
+Same-date replacement is conditional on matching certbotbot-managed metadata
+and S3 ETag preconditions; unknown objects are never overwritten by name alone,
+and accepted-current/failed-backup is reported as nonzero partial success.
+This narrowly extends ADR-028/031's single-key restrictions without
+authorizing backup deletion, which requires task #84's independent decision.
+
+See [ADR-033](adr/ADR-033-opt-in-dated-backup-publication.md).
