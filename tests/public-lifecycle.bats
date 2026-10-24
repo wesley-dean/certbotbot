@@ -2141,3 +2141,336 @@ require_gpg_ocb() {
   [[ "$output" != *fixture-strong-password-not-a-real-credential* ]]
   [[ "$output" != *not-the-original-credential* ]]
 }
+
+# ADR-031 / task #43: full public-command encrypted and plaintext compatibility.
+# All real-GnuPG tests are mandatory under the dedicated Ubuntu 26.04 job.
+# These fixtures intentionally retain one seeded S3 key and never call AWS.
+
+encryption_assert_remote_ciphertext() {
+  head -c 22 "$LIFECYCLE_REMOTE" |
+    cmp -s - <(printf 'CERTBOTBOT-GPG-OCB-V1\n') || return 1
+  ! gzip -t "$LIFECYCLE_REMOTE" 2>/dev/null || return 1
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -le 1 ] || return 1
+}
+
+encryption_decode_remote() {
+  local target="$1" home="$ROOT/encryption-inspect-home"
+  [[ -d "$home" ]] || mkdir -m 700 -- "$home" || return 1
+  tail -c +23 -- "$LIFECYCLE_REMOTE" >"$ROOT/encryption-inspect-packet" ||
+    return 1
+  (umask 077; env -u GPG_SYMMETRIC_KEY -u CERTBOTBOT_GPG_SECRET \
+    gpg --no-options --homedir "$home" --batch --yes --no-tty \
+    --pinentry-mode loopback --no-symkey-cache --passphrase-fd 3 \
+    --decrypt --output "$target" "$ROOT/encryption-inspect-packet" \
+    3<<<"$GPG_SYMMETRIC_KEY" >/dev/null 2>&1) || return 1
+  gzip -t "$target" && tar -tzf "$target" >/dev/null
+}
+
+encryption_seed_object() {
+  require_gpg_ocb
+  export GPG_SYMMETRIC_KEY=encryption-interoperability-test-only-7fb81647
+  execute --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ] || return 1
+  encryption_assert_remote_ciphertext || return 1
+}
+
+encryption_no_secret_exposure() {
+  [[ "$output" != *"$GPG_SYMMETRIC_KEY"* ]] || return 1
+  ! grep -q 'secret-inherited' "$LIFECYCLE_CALLS" || return 1
+  ! grep -Fq -- "$GPG_SYMMETRIC_KEY" "$LIFECYCLE_CALLS" || return 1
+  ! grep -Fq -- "$GPG_SYMMETRIC_KEY" "$LIFECYCLE_CONTEXTS" || return 1
+}
+
+@test "encryption setting honors literal file, environment, and CLI precedence" {
+  printf '%s\n' 'ARCHIVE_ENCRYPTION=gpg-ocb' \
+    'S3_BUCKET=fixture-bucket' >"$ROOT/encryption.env"
+  execute --config "$ROOT/encryption.env"
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  ARCHIVE_ENCRYPTION=none
+  export ARCHIVE_ENCRYPTION
+  execute --config "$ROOT/encryption.env"
+  [ "$status" -eq 0 ]
+  gzip -t "$LIFECYCLE_REMOTE"
+  unset ARCHIVE_ENCRYPTION
+  : >"$LIFECYCLE_CALLS"
+  execute --config "$ROOT/encryption.env" --archive-encryption none
+  [ "$status" -eq 0 ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "encryption secret is forbidden in CLI and literal config file" {
+  printf '%s\n' 'GPG_SYMMETRIC_KEY=not-a-real-secret' \
+    'S3_BUCKET=fixture-bucket' >"$ROOT/bad-encryption.env"
+  execute --config "$ROOT/bad-encryption.env"
+  [ "$status" -eq 64 ]
+  [[ "$output" != *not-a-real-secret* ]]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  execute --gpg-symmetric-key not-a-real-secret
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+}
+
+@test "encryption rejects unknown mode, migration direction, and invalid backup flag" {
+  execute --archive-encryption future-v2
+  [ "$status" -eq 64 ]
+  execute --archive-migration gpg-ocb-to-plaintext
+  [ "$status" -eq 64 ]
+  execute --archive-migration-backup-confirmed maybe
+  [ "$status" -eq 64 ]
+  execute --archive-migration-backup-confirmed true
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+}
+
+@test "encryption secret with newline or carriage return is rejected before AWS" {
+  export GPG_SYMMETRIC_KEY=$'fake-line-one\nfake-line-two'
+  execute
+  [ "$status" -eq 64 ]
+  [[ "$output" != *fake-line-one* ]]
+  export GPG_SYMMETRIC_KEY=$'fake-line-one\rfake-line-two'
+  execute
+  [ "$status" -eq 64 ]
+  [[ "$output" != *fake-line-two* ]]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+}
+
+@test "encryption unsupported GnuPG version fails before S3 and Certbot" {
+  cat >"$ROOT/bin/gpg" <<'MOCK_GPG'
+#!/usr/bin/env bash
+if [[ "$1" == --version ]]; then
+  printf 'gpg (GnuPG) 2.2.27\n'
+  exit 0
+fi
+exit 91
+MOCK_GPG
+  chmod 755 "$ROOT/bin/gpg"
+  export GPG_SYMMETRIC_KEY=pretend-secret-for-old-runtime-only
+  execute
+  [ "$status" -eq 69 ]
+  assert_no_certbot_or_put
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  [[ "$output" != *pretend-secret-for-old-runtime-only* ]]
+}
+
+@test "encryption clean runners preserve complete tar account and two lineages" {
+  require_gpg_ocb
+  for runner in a b c d; do
+    mkdir -m 700 "$ROOT/crypto-runner-$runner"
+  done
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/crypto-runner-a"
+  execute
+  [ "$status" -eq 0 ]
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/crypto-runner-b"
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 0 ]
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/privkey1.pem \
+    >"$ROOT/encryption-original-key.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/other.org.conf \
+    >"$ROOT/encryption-original-renewal.conf"
+  export GPG_SYMMETRIC_KEY=encryption-interoperability-test-only-7fb81647
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/crypto-runner-c"
+  : >"$LIFECYCLE_CALLS"
+  execute --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'checked example.com'* && "$output" == *'published=true'* ]]
+  encryption_assert_remote_ciphertext
+  encryption_decode_remote "$ROOT/encryption-two-lineages.tar.gz"
+  [ "$(tar -tzf "$ROOT/encryption-two-lineages.tar.gz" |
+    grep -c '^./renewal/[^/]*\.conf$')" -eq 2 ]
+  tar -xOf "$ROOT/encryption-two-lineages.tar.gz" \
+    ./archive/example.com/privkey1.pem |
+    cmp -s - "$ROOT/encryption-original-key.pem"
+  tar -xOf "$ROOT/encryption-two-lineages.tar.gz" \
+    ./renewal/other.org.conf |
+    cmp -s - "$ROOT/encryption-original-renewal.conf"
+  tar -xOf "$ROOT/encryption-two-lineages.tar.gz" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json |
+    grep -Fxq '{"seed":"private"}'
+
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/crypto-runner-d"
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  export LIFECYCLE_MODE=renew-changed
+  : >"$LIFECYCLE_CALLS"
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'checked other.org'* && "$output" == *'published=true'* ]]
+  encryption_assert_remote_ciphertext
+  encryption_decode_remote "$ROOT/encryption-renewed-two-lineages.tar.gz"
+  tar -xOf "$ROOT/encryption-renewed-two-lineages.tar.gz" \
+    ./archive/example.com/privkey1.pem |
+    cmp -s - "$ROOT/encryption-original-key.pem"
+  tar -xOf "$ROOT/encryption-renewed-two-lineages.tar.gz" \
+    ./renewal/other.org.conf |
+    cmp -s - "$ROOT/encryption-original-renewal.conf"
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  encryption_no_secret_exposure
+  for runner in a b c d; do
+    [ -z "$(find "$ROOT/crypto-runner-$runner" -mindepth 1 -print -quit)" ]
+  done
+}
+
+@test "encryption migration of unchanged plaintext requires and makes one write" {
+  require_gpg_ocb
+  execute
+  [ "$status" -eq 0 ]
+  export GPG_SYMMETRIC_KEY=encryption-interoperability-test-only-7fb81647
+  : >"$LIFECYCLE_CALLS"
+  execute --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'checked example.com'* && "$output" == *'published=true'* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  encryption_assert_remote_ciphertext
+  encryption_no_secret_exposure
+}
+
+@test "encryption missing key refuses encrypted object without cloud overwrite" {
+  encryption_seed_object
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  unset GPG_SYMMETRIC_KEY
+  : >"$LIFECYCLE_CALLS"
+  execute
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+}
+
+@test "encryption mode downgrade rejects ciphertext before cloud or provider" {
+  encryption_seed_object
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  : >"$LIFECYCLE_CALLS"
+  execute --archive-encryption none
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+}
+
+@test "encryption migration cannot run twice or reinterpret encrypted input" {
+  encryption_seed_object
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  : >"$LIFECYCLE_CALLS"
+  execute --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+}
+
+@test "encryption wrong key fails closed without logging secret or publishing" {
+  encryption_seed_object
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  export GPG_SYMMETRIC_KEY=distinct-wrong-key-not-a-credential
+  : >"$LIFECYCLE_CALLS"
+  execute
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  encryption_no_secret_exposure
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+}
+
+@test "encryption tampered authentication tag blocks provider and PutObject" {
+  encryption_seed_object
+  local length byte other escaped
+  length="$(stat -c %s "$LIFECYCLE_REMOTE")"
+  byte="$(od -An -tu1 -j "$((length - 1))" -N 1 \
+    "$LIFECYCLE_REMOTE" | tr -d '[:space:]')"
+  other="$((byte ^ 1))"
+  printf -v escaped '\\%03o' "$other"
+  printf '%b' "$escaped" | dd of="$LIFECYCLE_REMOTE" bs=1 \
+    seek="$((length - 1))" conv=notrunc status=none
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-corrupted-baseline"
+  : >"$LIFECYCLE_CALLS"
+  execute
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-corrupted-baseline"
+  encryption_no_secret_exposure
+}
+
+@test "encryption unknown version never triggers plaintext migration fallback" {
+  require_gpg_ocb
+  export GPG_SYMMETRIC_KEY=encryption-interoperability-test-only-7fb81647
+  printf 'CERTBOTBOT-GPG-OCB-V2\nmalformed-version\n' >"$LIFECYCLE_REMOTE"
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-unknown-baseline"
+  execute --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-unknown-baseline"
+}
+
+@test "encryption legacy non-AEAD GnuPG packet cannot impersonate OCB envelope" {
+  require_gpg_ocb
+  export GPG_SYMMETRIC_KEY=encryption-interoperability-test-only-7fb81647
+  mkdir -m 700 "$ROOT/legacy-gpg-home"
+  printf 'this payload is not an authorized certbotbot archive\n' \
+    >"$ROOT/legacy-cleartext"
+  (umask 077; env -u GPG_SYMMETRIC_KEY \
+    gpg --no-options --homedir "$ROOT/legacy-gpg-home" --batch --yes \
+      --no-tty --pinentry-mode loopback --no-symkey-cache \
+      --passphrase-fd 3 --symmetric --cipher-algo AES256 \
+      --output "$ROOT/legacy-ciphertext" "$ROOT/legacy-cleartext" \
+      3<<<"$GPG_SYMMETRIC_KEY" >/dev/null 2>&1)
+  printf 'CERTBOTBOT-GPG-OCB-V1\n' >"$LIFECYCLE_REMOTE"
+  cat "$ROOT/legacy-ciphertext" >>"$LIFECYCLE_REMOTE"
+  cp "$LIFECYCLE_REMOTE" "$ROOT/legacy-baseline"
+  : >"$LIFECYCLE_CALLS"
+  execute
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/legacy-baseline"
+}
+
+@test "encryption forced unchanged republish remains ciphertext on exact S3 key" {
+  encryption_seed_object
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  : >"$LIFECYCLE_CALLS"
+  execute --upload-no-renewal true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true'* ]]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  encryption_assert_remote_ciphertext
+  ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  encryption_decode_remote "$ROOT/encryption-republish.tar.gz"
+  encryption_no_secret_exposure
+}
+
+@test "encryption failed PutObject retains previous ciphertext without rollback claim" {
+  encryption_seed_object
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  export LIFECYCLE_PUT_MODE=put-failure
+  : >"$LIFECYCLE_CALLS"
+  execute --upload-no-renewal true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'remote state is uncertain'* ]]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  encryption_no_secret_exposure
+}
+
+@test "encryption lost PutObject acknowledgement reports uncertain remote result" {
+  encryption_seed_object
+  cp "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  export LIFECYCLE_PUT_MODE=put-after-write-failure
+  : >"$LIFECYCLE_CALLS"
+  execute --upload-no-renewal true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'remote state is uncertain'* ]]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/encryption-last-good"
+  encryption_assert_remote_ciphertext
+  encryption_decode_remote "$ROOT/encryption-lost-response.tar.gz"
+  encryption_no_secret_exposure
+}

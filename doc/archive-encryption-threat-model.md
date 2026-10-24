@@ -2,6 +2,7 @@
 
 Status: **ADR-031 accepted; opt-in encryption implementation task #42**
 with broader negative and interoperability verification in task #43.
+Task #43's evidence map is in [archive-encryption-verification.md](archive-encryption-verification.md).
 See [ADR-031](adr/ADR-031-opt-in-authenticated-gpg-archive-encryption.md)
 and [archive-encryption-contract.md](archive-encryption-contract.md).
 This extends the

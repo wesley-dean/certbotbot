@@ -171,3 +171,52 @@ jobs:
               bash:4.3 \
               bash tests/compat-bash43.bash
           done
+
+  # ADR-031 requires real AES-256/OCB crypto evidence. The ordinary 24.04
+  # Bats matrix remains supported, but its GnuPG 2.4.4 cannot run these
+  # cases; the approved minimum is 2.4.7. 26.04 ships GnuPG 2.4.8.
+  encryption:
+    name: Authenticated archive interoperability
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install distribution crypto and test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats curl gnupg make openssl
+
+      - name: Build verified portable artifacts
+        run: |
+          make all
+          make deps-check
+          (cd dist && for sum in *.bash.sha256; do sha256sum -c "$sum"; done)
+
+      - name: Require non-skipped authenticated encryption evidence for all variants
+        run: |
+          set -euo pipefail
+          gpg --version | head -n 1
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+            report="${RUNNER_TEMP}/$(basename "$artifact").tap"
+            if ! BASH_STARTER_ARTIFACT="${PWD}/${artifact}" bats \
+              --formatter tap \
+              --filter 'encryption|encrypted|ciphertext|migrat|decryption|GnuPG' \
+              tests/public-lifecycle.bats >"$report"; then
+              cat "$report"
+              printf '%s\n' 'Authenticated encryption acceptance tests failed' >&2
+              exit 1
+            fi
+            cat "$report"
+            if grep -Eq '^ok [0-9]+ .*# skip' "$report"; then
+              printf '%s\n' 'Authenticated encryption tests cannot be skipped' >&2
+              exit 1
+            fi
+            count="$(grep -Ec '^ok [0-9]+ ' "$report" || :)"
+            if (( count < 20 )); then
+              printf '%s\n' 'Authenticated encryption test inventory incomplete' >&2
+              exit 1
+            fi
+          done

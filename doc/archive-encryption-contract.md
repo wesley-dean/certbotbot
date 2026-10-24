@@ -2,6 +2,7 @@
 
 Status: **ADR-031 accepted in task #41; implementation in task #42**
 with comprehensive interoperability evidence tracked in task #43.
+Task #43's evidence map is in [archive-encryption-verification.md](archive-encryption-verification.md).
 Governing decision:
 [ADR-031](adr/ADR-031-opt-in-authenticated-gpg-archive-encryption.md).
 The public interface is implemented as an opt-in transport wrapper.
