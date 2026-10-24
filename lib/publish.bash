@@ -35,7 +35,7 @@
 ## performed; CERTBOTBOT_S3_PUBLISHED=false indicates a successful skip.
 ## Otherwise the function creates WORKSPACE/candidate.tar.gz through
 ## certbotbot_archive_package, which enforces strict tar/gzip validation.
-## It sends that exact file using one AWS CLI v2 s3api put-object call with
+## When ADR-031 encryption is enabled, only a validated authenticated OCB\n## envelope is eligible for the single same-key PutObject call. Migration\n## forces one verified publication even for otherwise unchanged Certbot state.\n## It sends the chosen file using one AWS CLI v2 s3api put-object call with
 ## explicit SHA256 checksum algorithm and application/gzip content type.
 ## On success CERTBOTBOT_S3_PUBLISHED=true. On failure it is cleared.
 ##
@@ -121,7 +121,8 @@ certbotbot_s3_publish() {
     return 65
   fi
 
-  if [[ "$changed" == false && "$override" == false ]]; then
+  if [[ "$changed" == false && "$override" == false &&
+    "${CERTBOTBOT_MIGRATING:-false}" != true ]]; then
     # Caller-visible publication outcome (successful no-op, no remote write).
     # shellcheck disable=SC2034
     CERTBOTBOT_S3_PUBLISHED=false
@@ -132,10 +133,16 @@ certbotbot_s3_publish() {
     return 69
   fi
   certbotbot_archive_package "$workspace" "$selected" || return $?
+  local content_type=application/gzip
+  if [[ "$CERTBOTBOT_ARCHIVE_ENCRYPTION" == gpg-ocb ]]; then
+    certbotbot_crypto_wrap "$workspace" || return $?
+    candidate="$workspace/candidate.tar.gz.enc"
+    content_type=application/octet-stream
+  fi
 
   if ! aws --no-cli-pager s3api put-object \
     --bucket "$bucket" --key "$key" --body "$candidate" \
-    --checksum-algorithm SHA256 --content-type application/gzip \
+    --checksum-algorithm SHA256 --content-type "$content_type" \
     --output json >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: S3 archive upload failed; remote state is uncertain' >&2
     return 74

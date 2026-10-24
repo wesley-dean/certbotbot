@@ -37,7 +37,7 @@ Options:
   --cert-name NAME                 Set stable Certbot lineage name
   --s3-bucket BUCKET               Existing S3 bucket (required)
   --s3-key KEY                     Existing archive key (latest.tar.gz)
-  --upload-no-renewal true|false   Republish successful unchanged archive
+  --upload-no-renewal true|false   Republish successful unchanged archive\n  --archive-encryption MODE        auto | none | gpg-ocb\n  --archive-migration MODE         none | plaintext-to-gpg-ocb\n  --archive-migration-backup-confirmed true|false
   --help                           Show help
   --version                        Show build provenance
 EOF
@@ -195,8 +195,12 @@ certbotbot_lifecycle_execute() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
+  if [[ "$CERTBOTBOT_ARCHIVE_ENCRYPTION" == gpg-ocb ]]; then
+    certbotbot_crypto_require "$workspace" || return $?
+  fi
   certbotbot_s3_fetch "$workspace" "$CERTBOTBOT_S3_BUCKET" \
     "$CERTBOTBOT_S3_KEY" || return $?
+  certbotbot_crypto_unwrap "$workspace" || return $?
   certbotbot_archive_restore "$workspace/downloaded.tar.gz" "$workspace" ||
     return $?
   config="$workspace/config"
@@ -292,6 +296,12 @@ certbotbot_lifecycle_execute() {
 ## @retval 64 Invalid invocation.
 ## @note Nonzero lifecycle stage statuses propagate unchanged.
 certbotbot_main() {
+  # Do not inherit an exported secret into *any* child, including help's
+  # external formatter. Shell tracing must be disabled before reading it.
+  set +x
+  local CERTBOTBOT_GPG_SECRET="${GPG_SYMMETRIC_KEY-}"
+  export -n CERTBOTBOT_GPG_SECRET
+  unset GPG_SYMMETRIC_KEY
   case "${1:-}" in
     --help|-h|help) certbotbot_usage; return 0 ;;
     --version|-V|version) certbotbot_version; return 0 ;;
