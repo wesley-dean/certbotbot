@@ -280,7 +280,13 @@ certbotbot_lifecycle_execute() {
     "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" \
     "$changed" "$CERTBOTBOT_UPLOAD_NO_RENEWAL" || return $?
 
-  if [[ "$CERTBOTBOT_DATED_BACKUP_ENABLED" == true ]]; then
+  if [[ "$CERTBOTBOT_BACKUP_RETENTION_COUNT" != 0 ]]; then
+    printf 'certbotbot: %s %s; s3://%s/%s; published=%s; backup=%s; retention=%s; deleted=%s\n' \
+      "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
+      "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED" \
+      "$CERTBOTBOT_S3_BACKUP_STATUS" "$CERTBOTBOT_RETENTION_STATUS" \
+      "$CERTBOTBOT_RETENTION_DELETED"
+  elif [[ "$CERTBOTBOT_DATED_BACKUP_ENABLED" == true ]]; then
     printf 'certbotbot: %s %s; s3://%s/%s; published=%s; backup=%s\n' \
       "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
       "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED" \
