@@ -98,7 +98,8 @@ must stop with no PutObject rather than follow the success path.
 GnuPG is required **only for encryption-enabled execution**, but once
 enabled its executable, libraries, agent and crypto configuration
 become part of the certificate private-key trust boundary. The
-implementation must probe OCB support, prevent reliance on
+implementation must probe actual symmetric OCB encryption/decryption
+and authenticated packet format, prevent reliance on
 system-wide GnuPG settings, avoid version-sensitive default ciphers,
 and not fetch dependencies at runtime or build time without explicit
 dependency-governance approval. No hand-rolled cryptographic
