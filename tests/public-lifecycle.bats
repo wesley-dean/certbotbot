@@ -15,6 +15,10 @@ setup() {
   export LIFECYCLE_CONTEXTS="$ROOT/certbot-contexts"
   export LIFECYCLE_MODE=ok
   export LIFECYCLE_EXPECTED_KEY=latest.tar.gz
+  export LIFECYCLE_BACKUP_KEY=archive-20261020.tar.gz
+  export LIFECYCLE_BACKUP_REMOTE="$ROOT/dated-backup.tar.gz"
+  export LIFECYCLE_BACKUP_META="$ROOT/dated-backup.meta"
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=false
   export LIFECYCLE_EXPECTED_CERT_NAME=example.com
   mkdir -m 700 "$ROOT/runner-temp"
   cat >"$ROOT/bin/aws" <<'MOCK'
@@ -22,17 +26,26 @@ setup() {
 [[ "$1" == --no-cli-pager && "$2" == s3api ]] || exit 99
 action="$3"
 shift 3
+if [[ "$action" == put-object && "${1:-}" == --generate-cli-skeleton &&
+  "${2:-}" == input ]]; then
+  printf '%s\n' '{"IfMatch":"","IfNoneMatch":""}'
+  exit 0
+fi
 if [[ -n "${GPG_SYMMETRIC_KEY+x}" ||
   -n "${CERTBOTBOT_GPG_SECRET+x}" ]]; then
   printf '%s\n' 'aws:secret-inherited' >>"$LIFECYCLE_CALLS"
   exit 97
 fi
-bucket='' key='' body='' target=''
+bucket='' key='' body='' target='' metadata='' match='' none='' query=''
 while (( $# )); do
   case "$1" in
     --bucket) bucket="$2"; shift 2 ;;
     --key) key="$2"; shift 2 ;;
     --body) body="$2"; shift 2 ;;
+    --metadata) metadata="$2"; shift 2 ;;
+    --if-match) match="$2"; shift 2 ;;
+    --if-none-match) none="$2"; shift 2 ;;
+    --query) query="$2"; shift 2 ;;
     --checksum-algorithm|--content-type|--output) shift 2 ;;
     *) target="$1"; shift ;;
   esac
@@ -40,7 +53,42 @@ done
 printf 'aws:%s:%s:%s\n' "$action" "$bucket" "$key" >>"$LIFECYCLE_CALLS"
 [[ "$bucket" == fixture-bucket ]] || exit 99
 # HeadBucket is bucket-scoped and must not carry an object key.
-[[ "$action" == head-bucket || "$key" == "$LIFECYCLE_EXPECTED_KEY" ]] || exit 99
+[[ "$action" == head-bucket || "$key" == "$LIFECYCLE_EXPECTED_KEY" ||
+  ( "$LIFECYCLE_BACKUP_ENABLED_MOCK" == true &&
+    "$key" == "$LIFECYCLE_BACKUP_KEY" ) ]] || exit 99
+if [[ "$key" == "$LIFECYCLE_BACKUP_KEY" &&
+  "$LIFECYCLE_BACKUP_ENABLED_MOCK" == true ]]; then
+  case "$action" in
+    head-object)
+      [[ "${LIFECYCLE_BACKUP_MODE:-}" != head-failure ]] || exit 9
+      [[ -f "$LIFECYCLE_BACKUP_REMOTE" ]] ||
+        { printf '(404)\n' >&2; exit 9; }
+      [[ -f "$LIFECYCLE_BACKUP_META" ]] || exit 9
+      size="$(stat -c %s -- "$LIFECYCLE_BACKUP_REMOTE")" || exit 9
+      IFS=$'\t' read -r schema utc hash format encryption < "$LIFECYCLE_BACKUP_META"
+      printf '"backupetag01"\t%s\t%s\t%s\t%s\t%s\n' \
+        "$size" "$schema" "$utc" "$hash" "$format" "$encryption"
+      exit 0
+      ;;
+    put-object)
+      if [[ "${LIFECYCLE_BACKUP_MODE:-}" == put-failure ]]; then exit 9; fi
+      if [[ -f "$LIFECYCLE_BACKUP_REMOTE" ]]; then
+        [[ "$match" == '"backupetag01"' && -z "$none" ]] || exit 9
+      else
+        [[ "$none" == '*' && -z "$match" ]] || exit 9
+      fi
+      [[ -n "$metadata" ]] || exit 9
+      IFS=, read -r schema utc hash format encryption <<< "$metadata"
+      printf '%s\t%s\t%s\t%s\t%s\n' \
+        "${schema#*=}" "${utc#*=}" "${hash#*=}" \
+        "${format#*=}" "${encryption#*=}" > "$LIFECYCLE_BACKUP_META"
+      cp -- "$body" "$LIFECYCLE_BACKUP_REMOTE" || exit 9
+      [[ "${LIFECYCLE_BACKUP_MODE:-}" != lost-response ]] || exit 9
+      exit 0
+      ;;
+    *) exit 99 ;;
+  esac
+fi
 case "$action" in
   head-object)
     case "$LIFECYCLE_MODE" in
@@ -241,6 +289,7 @@ MOCK
   unset CERT_NAME ADDITIONAL_SANS
   unset GPG_SYMMETRIC_KEY CERTBOTBOT_GPG_SECRET ARCHIVE_ENCRYPTION
   unset ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED
+  unset DATED_BACKUP_ENABLED
   export UPLOAD_NO_RENEWAL=false INCLUDE_SUBDOMAINS=true
 }
 
