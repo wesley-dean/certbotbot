@@ -2634,3 +2634,90 @@ MOCK
   cmp -s "$LIFECYCLE_REMOTE" "$ROOT/secure-filename-baseline"
   ! grep -q 'secret-inherited' "$LIFECYCLE_CALLS"
 }
+
+# ADR-033 opt-in backup tests. Broader adversarial and recovery evidence in #83.
+
+@test "enabled dated backup publishes exact current candidate bytes after current PUT" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true; backup=confirmed'* ]]
+  [ -f "$LIFECYCLE_BACKUP_REMOTE" ]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:latest.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:archive-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -tzf "$LIFECYCLE_BACKUP_REMOTE" | grep -Fxq './renewal/example.com.conf'
+}
+
+@test "backup enabled ordinary no-op does not publish or create another dated copy" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  : >"$LIFECYCLE_CALLS"
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=false; backup=skipped'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "same UTC day forced update conditionally replaces only its managed backup" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  execute --dated-backup-enabled true
+  [ "$status" -eq 0 ]
+  : >"$LIFECYCLE_CALLS"
+  execute --dated-backup-enabled true --upload-no-renewal true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true; backup=confirmed'* ]]
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:archive-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+}
+
+@test "unrecognized same-day backup identity refuses both remote writes" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  printf 'unrelated-private-object' >"$LIFECYCLE_BACKUP_REMOTE"
+  printf 'unknown\t20261020\tbad\ttar.gz\tnone\n' >"$LIFECYCLE_BACKUP_META"
+  cp "$LIFECYCLE_REMOTE" "$ROOT/current-before"
+  execute --dated-backup-enabled true
+  [ "$status" -eq 69 ]
+  [[ "$output" == *'not safely managed'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/current-before"
+  grep -Fxq unrelated-private-object "$LIFECYCLE_BACKUP_REMOTE"
+}
+
+@test "failed authoritative PUT never attempts dated backup publication" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  export LIFECYCLE_PUT_MODE=put-failure
+  execute --dated-backup-enabled true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'S3 archive upload failed'* ]]
+  ! grep -q 'aws:put-object:fixture-bucket:archive-20261020.tar.gz' "$LIFECYCLE_CALLS"
+  [ ! -e "$LIFECYCLE_BACKUP_REMOTE" ]
+}
+
+@test "failed dated PUT reports accepted current as partial success" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  export LIFECYCLE_BACKUP_MODE=put-failure
+  execute --dated-backup-enabled true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'current accepted; dated backup write failed or uncertain'* ]]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 2 ]
+  [ -f "$LIFECYCLE_REMOTE" ]
+  [ ! -e "$LIFECYCLE_BACKUP_REMOTE" ]
+}
+
+@test "lost response from dated PUT reports uncertainty without rollback" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  export LIFECYCLE_BACKUP_MODE=lost-response
+  execute --dated-backup-enabled true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'current accepted; dated backup write failed or uncertain'* ]]
+  [ -f "$LIFECYCLE_BACKUP_REMOTE" ]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+}
+
+@test "invalid dated backup flag fails before any remote request" {
+  execute --dated-backup-enabled sometimes
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS" 2>/dev/null
+}
