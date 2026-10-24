@@ -4,7 +4,7 @@
 ## @brief Builds and validates one private portable Certbot archive candidate.
 ## @details
 ## Implements ADR-027: only a complete selected lineage, safe existing
-## production ACME account, and canonical renewal configuration can enter
+## production ACME account, and all canonical renewal configurations can enter
 ## the candidate stage. Source state is never rewritten to validate paths.
 ## GNU tar/gzip serializes config contents, and the existing bounded
 ## archive validator checks the exact bytes before the candidate appears.
@@ -19,7 +19,7 @@
 ## @details
 ## Requires a canonical owned mode-0700 workspace with a complete
 ## WORKSPACE/config tree and an absent WORKSPACE/candidate.tar.gz. The
-## account/lineage preflight must be present, not absent. The existing
+## account/lineage preflight must find the selected lineage present, while\n## permitting other complete lineages. Every archived lineage is validated\n## canonically before serializing the full unchanged configuration tree. The existing
 ## renewal parser's verify mode requires the five persisted path values
 ## to refer to canonical /etc/letsencrypt, and rejects unsupported
 ## metadata without modifying any source file. Selected private-key PEMs
@@ -87,7 +87,8 @@ certbotbot_archive_package() {
   config="$workspace/config"
   if ! certbotbot_state_preflight "$config" "$selected" >/dev/null 2>&1 ||
     [[ "$CERTBOTBOT_LINEAGE_STATE" != present ]] ||
-    ! certbotbot_renewal_map "$config" "$selected" verify >/dev/null 2>&1; then
+    ! certbotbot_renewal_map "$config" "$selected" verify >/dev/null 2>&1 ||
+    ! certbotbot_state_canonical_all "$config" "$selected" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected archive state is unsuitable' >&2
     return 65
   fi
