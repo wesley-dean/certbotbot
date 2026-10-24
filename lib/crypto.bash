@@ -164,6 +164,8 @@ certbotbot_crypto_unwrap() {
   local workspace="$1" raw="$1/downloaded.tar.gz"
   local body="$1/.download-packet" plain="$1/.download-plain.tar.gz"
   local marker=false
+  # Read later by the publisher; ShellCheck scans modules independently.
+  # shellcheck disable=SC2034
   CERTBOTBOT_MIGRATING=false
   [[ -s "$raw" && ! -L "$raw" ]] || return 65
   if head -c 22 -- "$raw" |
@@ -184,6 +186,7 @@ certbotbot_crypto_unwrap() {
       printf '%s\n' 'certbotbot: encrypted object or migration required' >&2
       return 65
     fi
+    # shellcheck disable=SC2034
     CERTBOTBOT_MIGRATING=true
     return 0
   fi
