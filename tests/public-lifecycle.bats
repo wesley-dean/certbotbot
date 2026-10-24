@@ -1632,23 +1632,31 @@ assert_override_one_key() {
   ! cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-renew.tar.gz"
 }
 
-@test "shorter added SAN requires explicit preservation of the existing lineage" {
+@test "shorter SAN chooses new lineage unless existing lineage is explicitly selected" {
   execute
   [ "$status" -eq 0 ]
-  cp "$LIFECYCLE_REMOTE" "$ROOT/before-shorter.tar.gz"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem \
+    >"$ROOT/before-shorter-cert.pem"
   : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=io.uk
   execute --san io.uk
-  [ "$status" -eq 65 ]
-  assert_no_certbot_or_put
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-shorter.tar.gz"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued io.uk"* && "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/io.uk.conf'
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem |
+    cmp -s - "$ROOT/before-shorter-cert.pem"
 
   : >"$LIFECYCLE_CALLS"
   : >"$LIFECYCLE_CONTEXTS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
   execute --cert-name example.com --san io.uk
   [ "$status" -eq 0 ]
   [[ "$output" == *"checked example.com"* && "$output" == *"published=true"* ]]
   grep -Fxq 'certbot-reconcile:example.com' "$LIFECYCLE_CONTEXTS"
   assert_remote_sans example.com '*.example.com' io.uk '*.io.uk'
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/io.uk.conf'
 }
 
 @test "multi-SAN successful unchanged forced republish uses one original key" {
@@ -1780,7 +1788,7 @@ assert_override_one_key() {
   [ "$status" -eq 0 ]
   mkdir -m 700 "$ROOT/multi-bad"
   tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/multi-bad"
-  sed -i 's@/etc/letsencrypt/live/example.com@/tmp/foreign@example.com@g' \
+  sed -i 's|/etc/letsencrypt/live/example.com|/tmp/foreign/example.com|g' \
     "$ROOT/multi-bad/renewal/example.com.conf"
   tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/multi-bad" .
   cp "$LIFECYCLE_REMOTE" "$ROOT/multi-bad-baseline.tar.gz"
