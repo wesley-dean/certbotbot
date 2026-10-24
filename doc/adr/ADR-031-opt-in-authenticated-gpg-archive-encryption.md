@@ -142,6 +142,15 @@ settings**; this restricted secret source is an explicit exception
 under ADR-015/016, not a reason to source a file or expose a password.
 Reject empty, newline/carriage-return or otherwise unrepresentable
 keys in encrypted mode rather than truncate them at the first line.
+The entrypoint MUST capture the secret into a **non-exported shell-local
+variable** before invoking AWS CLI, Certbot or other subprocesses, then
+remove `GPG_SYMMETRIC_KEY` from the exported environment of the Bash
+process. External commands MUST NOT inherit this secret through their
+environment; only the trusted GnuPG call receives it on its private FD.
+Disable Bash xtrace **before** reading the secret, and do not re-enable
+xtrace while the secret remains in process memory. The interpreter's
+inherited initial environment, parent logs and privileged same-user
+inspection remain outside Bash's ability to guarantee secrecy.
 
 Supply the passphrase to `gpg --batch --no-tty --pinentry-mode loopback
 --passphrase-fd 3 --no-symkey-cache` on a private non-argument file
