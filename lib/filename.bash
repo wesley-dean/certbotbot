@@ -101,11 +101,12 @@ certbotbot_filename_date() {
 ## @retval 64 Unsafe template or unavailable/failed renderer.
 certbotbot_filename_render() {
   local template="${1-}" safe rendered
-  local -A certbotbot_filename_context=(
-    [YEAR]="$CERTBOTBOT_FILENAME_YEAR"
-    [MONTH]="$CERTBOTBOT_FILENAME_MONTH"
-    [DOM]="$CERTBOTBOT_FILENAME_DOM"
-  )
+  # Use separate assignments: the pinned Bash minifier does not preserve
+  # multiline associative-array compound assignments when concatenated.
+  local -A certbotbot_filename_context=()
+  certbotbot_filename_context[YEAR]="$CERTBOTBOT_FILENAME_YEAR"
+  certbotbot_filename_context[MONTH]="$CERTBOTBOT_FILENAME_MONTH"
+  certbotbot_filename_context[DOM]="$CERTBOTBOT_FILENAME_DOM"
   safe="${template//\{YEAR\}/Y}"
   safe="${safe//\{MONTH\}/M}"
   safe="${safe//\{DOM\}/D}"
