@@ -11,6 +11,7 @@
 
 ## @fn certbotbot_crypto_packet_valid()
 ## @brief Rejects any GnuPG encrypted payload without the required AEAD mode.
+## @param workspace Owned private runner root with isolated GPG home.
 ## @param packet Existing private OpenPGP ciphertext file.
 ## @par STDIN
 ## Nothing is read from STDIN.
@@ -21,11 +22,12 @@
 ## @retval 0 Expected AES256/OCB and SHA512 iterated S2K packet layout.
 ## @retval 1 Unrecognized or downgraded OpenPGP packet layout.
 certbotbot_crypto_packet_valid() {
-  local packet="$1" detail
+  local workspace="$1" packet="$2" detail
   [[ -s "$packet" && ! -L "$packet" ]] || return 1
   # Packet inspection is not authentication; successful authenticated
   # decryption and archive validation are additional mandatory gates.
-  detail="$(gpg --no-options --batch --no-tty --list-packets "$packet" \
+  detail="$(gpg --no-options --homedir "$workspace/.gnupg" --batch --no-tty \
+    --no-symkey-cache --list-packets "$packet" \
     2>/dev/null || :)" 
   [[ "$detail" == *':symkey enc packet: version 5, cipher 9, aead 2, s2k 3, hash 10,'* &&
     "$detail" == *':aead encrypted packet: cipher=9 aead=2'* &&
@@ -55,7 +57,7 @@ certbotbot_crypto_encrypt_packet() {
     --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 16777216 \
     --output "$target" "$source" 3<<<"$CERTBOTBOT_GPG_SECRET" \
     >/dev/null 2>&1) ||
-    ! certbotbot_crypto_packet_valid "$target"; then
+    ! certbotbot_crypto_packet_valid "$workspace" "$target"; then
     rm -f -- "$target"
     return 65
   fi
@@ -78,7 +80,7 @@ certbotbot_crypto_encrypt_packet() {
 certbotbot_crypto_decrypt_packet() {
   local workspace="$1" source="$2" target="$3"
   [[ ! -e "$target" && ! -L "$target" ]] || return 65
-  certbotbot_crypto_packet_valid "$source" || return 65
+  certbotbot_crypto_packet_valid "$workspace" "$source" || return 65
   if ! (umask 077; gpg --no-options --homedir "$workspace/.gnupg" \
     --batch --yes --no-tty --pinentry-mode loopback --no-symkey-cache \
     --passphrase-fd 3 --decrypt --output "$target" "$source" \
