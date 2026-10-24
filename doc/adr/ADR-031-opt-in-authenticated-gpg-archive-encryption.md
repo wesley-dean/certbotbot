@@ -36,7 +36,7 @@ ADR-028 uncertainty and externally serialized writers remain in force.
 The first supported encryption format is **GnuPG symmetric OpenPGP with
 AES-256 and OCB authenticated encryption**, not GnuPG's default legacy
 CFB+MDC format.  The adapter invokes the installed `gpg` executable with
-`--symmetric --use-ocb-sym --cipher-algo AES256`,
+`--symmetric --force-ocb --cipher-algo AES256`,
 `--s2k-mode 3 --s2k-digest-algo SHA512`, and an explicitly configured
 iterated/salted S2K count of **16777216**.  GnuPG's native per-message
 salt, random session material and authentication tags remain under its
@@ -45,8 +45,17 @@ written objects; a decrypter MUST enforce the expected authenticated
 ciphertext mode rather than silently downgrade to legacy MDC or another
 cipher when invoking a different GnuPG version.
 
-Require **GnuPG 2.2.21 or newer with working OCB symmetric support** on
-any runner that reads or writes encrypted archives.  Missing GnuPG,
+Require **GnuPG 2.4.7 or newer with proven AES-256/OCB symmetric encryption
+and decryption support** on any runner that reads or writes encrypted
+archives. The minimum is a tested operational baseline, not a guarantee
+that every distro build supports the feature. GnuPG 2.2.21 introduced
+**AEAD decryption** support; the newer `--use-ocb-sym` encryption flag was
+only added in **2.5.19 (2026-04-24)**. The portable `--force-ocb` option
+has been verified with symmetric encryption on GnuPG 2.4.7, which produced
+OpenPGP AEAD packet tag 20 with AES-256 (cipher 9), OCB (AEAD 2) and
+iterated/salted S2K SHA-512. A noninteractive **encrypt/decrypt roundtrip
+and authenticated packet-format probe** must succeed before encryption is
+authoritative; checking the version string alone is insufficient.  Missing GnuPG,
 incompatible crypto flags, unsupported OCB or an invalid authentication
 result is a hard error; no automatic use of `openssl enc`, legacy CFB+MDC
 or plaintext is authorized.  AES-OCB is an authenticated encryption mode,
@@ -65,7 +74,7 @@ algorithm negotiation is approved.
 Primary upstream references (reviewed when adopting this decision):
 
 - <https://gnupg.org/documentation/manuals/gnupg/OpenPGP-Options.html>
-  for `--use-ocb-sym`, cipher and S2K options;
+  for `--force-ocb`, cipher and S2K options;
 - <https://www.gnupg.org/documentation/manuals/gnupg24/gpg.1.html>
   for `--passphrase-fd`, loopback pinentry and no-cache behavior.
 
