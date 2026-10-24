@@ -320,6 +320,7 @@ certbotbot_main() {
   certbotbot_config_resolve "$@" || return $?
   certbotbot_identity_resolve || return $?
   certbotbot_filename_resolve || return $?
+  certbotbot_retention_preflight || return $?
   certbotbot_lifecycle_execute
 }
 
