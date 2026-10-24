@@ -112,9 +112,14 @@ is never declared a successful format transition.
 
 The passphrase is supplied to trusted GnuPG on a private FD 3 under
 `--batch --no-tty --pinentry-mode loopback --passphrase-fd 3` and
-`--no-symkey-cache`.  The invocation must not use passphrase command
-arguments, standard process logs, shell evaluation, stdout or stderr
-for secret delivery.  Use a per-runner restricted GnuPG home and
+`--no-symkey-cache`.  The entrypoint must disable xtrace before accessing the secret, copy
+the exported key into a non-exported shell-local value, and unset the
+exported `GPG_SYMMETRIC_KEY` variable before spawning AWS CLI, Certbot,
+OpenSSL or any other child. Only the trusted GnuPG process may receive
+its passphrase via a private FD, never as an inherited environment
+variable. The invocation must not use passphrase command arguments,
+standard process logs, shell evaluation, stdout or stderr for secret
+delivery.  Use a per-runner restricted GnuPG home and
 ignore untrusted user GnuPG configuration.  Suppress untrusted GnuPG
 errors and report fixed nonsecret diagnostics and status codes.
 
