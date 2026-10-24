@@ -877,18 +877,29 @@ MOCK
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
 }
 
-@test "conflicting stored explicit lineage refuses silent reissue or rename" {
+@test "distinct explicit names issue independent lineages and retain the original" {
   export LIFECYCLE_EXPECTED_CERT_NAME=issued.example.com
   execute --cert-name issued.example.com
   [ "$status" -eq 0 ]
-  cp "$LIFECYCLE_REMOTE" "$ROOT/before-conflict.tar.gz"
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/issued.example.com/cert1.pem \
+    >"$ROOT/first-explicit-cert.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/issued.example.com.conf \
+    >"$ROOT/first-explicit-renewal.conf"
   : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=different.example.com
   execute --cert-name different.example.com
-  [ "$status" -eq 65 ]
-  [[ "$output" != *"published=true"* ]]
-  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
-  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
-  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/before-conflict.tar.gz"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued different.example.com"* &&
+    "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/issued.example.com.conf'
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/different.example.com.conf'
+  ! tar -tzf "$LIFECYCLE_REMOTE" | grep -Fq './renewal/different.example.com-0001.conf'
+  tar -xOf "$LIFECYCLE_REMOTE" ./archive/issued.example.com/cert1.pem |
+    cmp -s - "$ROOT/first-explicit-cert.pem"
+  tar -xOf "$LIFECYCLE_REMOTE" ./renewal/issued.example.com.conf |
+    cmp -s - "$ROOT/first-explicit-renewal.conf"
   [ -z "$(find "$ROOT/runner-temp" -mindepth 1 -print -quit)" ]
 }
 
