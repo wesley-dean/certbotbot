@@ -1,19 +1,17 @@
 # Archive Filename Template Contract
 
-Status: Naming implementation contract for approved task #79. Current-key
-and explicit backup-key templates are resolved through released mktext and
-validated before remote operations. Task #80 owns extended cross-feature
-verification; dated publication and retention are separate work under
-#82 and #85.
+Status: Current S3/tar.gz filename resolution is implemented by task #79;
+task #80 provides public cross-feature verification. Dated backup publication
+and retention are not yet implemented (#82 and #85 respectively).
 
 Governing decision:
 [ADR-032](adr/ADR-032-deterministic-safe-archive-filename-templates.md).
 
-## Operator-visible selection (planned)
+## Operator-visible selection
 
 The existing literal `S3_KEY` / `--s3-key` remains unchanged and defaults to
 `latest.tar.gz`. An explicitly supplied `S3_KEY_TEMPLATE` /
-`--s3-key-template` will choose a generated current object name; a separate
+`--s3-key-template` chooses a generated current object name; a separate
 `BACKUP_KEY_TEMPLATE` / `--backup-key-template` defaults to
 `archive-{YEAR}{MONTH}{DOM}.tar.gz`. Neither template is evaluated as Bash.
 
@@ -35,7 +33,7 @@ Supported tokens are **only** `{YEAR}`, `{MONTH}`, and `{DOM}`, with
 four/two/two digits. The caller computes the complete UTC date once before
 S3 access and freezes the resolved object identities for the invocation.
 
-## Validation boundary (planned)
+## Validation boundary
 
 Templates and their results are individual ASCII filename components, not
 paths or commands. They allow letters, digits, period, underscore, hyphen,
@@ -62,14 +60,12 @@ automatic remote key migration when a template changes.
 - `mktext` only performs one lexical, nonrecursive substitution pass over
   an associative-array context containing the three nonsecret date values.
   Unknown macros survive mktext rendering and are rejected by certbotbot.
-- In #79, add pinned released mktext v0.0.17 to the repository-root
-  `dependencies.txt` with an immutable release URL, `vendor/` destination,
-  and committed SHA-256 digest. `make deps` uses the pinned bashdeps
-  bootstrap to acquire it; `make deps-check` validates it offline.
-  `make build` consumes the prepared library and embeds it into all three
-  standalone executables without network access. No runtime mktext download,
-  `vendor/` sourcing, dependency-manifest access, or upstream checkout is
-  permitted. Exact acquired-byte verification remains required in #79.
+- Task #79 pinned released mktext v0.0.17 in the repository-root
+  `dependencies.txt` with a release URL, `vendor/` destination and committed
+  SHA-256 digest. `make deps` acquires it through the pinned bashdeps bootstrap,
+  `make deps-check` verifies prepared dependencies offline, and `make build`
+  validates and embeds it into all three standalone executables offline.
+  The generated executables do not fetch or source mktext at runtime.
 - S3 and gzip tar are today's supported integration baseline. Alternate
   backend/format stories #63/#65 are open; this contract does not claim
   `.tar.bz2`, `.zip`, SFTP, or other backends are working.
@@ -79,11 +75,12 @@ automatic remote key migration when a template changes.
   recovery, and retention ownership/deletion require separate Accepted
   decisions in #81 and #84; no automatic rollback or deletion is implied.
 
-## Future acceptance examples
+## Verification boundary
 
-Tests against all three public executable flavors must prove that a frozen
-2026-10-20 date renders the default recovery name, literal keys remain
-literal, source precedence is correct, unknown tokens and shell-looking
-text fail before remote mutation, and a midnight crossover cannot split
-read/write/backup identities. #80 adds cross-feature coverage after the
-relevant backup/retention implementation exists.
+[Filename-template verification](archive-filename-template-verification.md)
+traces the public-command Bats cases and Bash 4.3 assertions added in #80.
+Only the currently implemented S3/tar.gz current-key read/write path can be
+verified end to end. Backup-name validation and date freezing can be tested
+without a backup PutObject; post-publication recovery, retention candidate
+selection, destructive failures, and unsupported storage/archive formats
+remain covered by later tasks #82-#86 and open stories #63/#65.
