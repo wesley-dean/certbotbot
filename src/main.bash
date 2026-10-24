@@ -296,16 +296,16 @@ certbotbot_lifecycle_execute() {
 ## @retval 64 Invalid invocation.
 ## @note Nonzero lifecycle stage statuses propagate unchanged.
 certbotbot_main() {
-  case "${1:-}" in
-    --help|-h|help) certbotbot_usage; return 0 ;;
-    --version|-V|version) certbotbot_version; return 0 ;;
-  esac
-  # The exported input may be supplied by a CI secret manager. Disable
-  # tracing before reading it and never pass it to AWS/Certbot/other children.
+  # Do not inherit an exported secret into *any* child, including help's
+  # external formatter. Shell tracing must be disabled before reading it.
   set +x
   local CERTBOTBOT_GPG_SECRET="${GPG_SYMMETRIC_KEY-}"
   export -n CERTBOTBOT_GPG_SECRET
   unset GPG_SYMMETRIC_KEY
+  case "${1:-}" in
+    --help|-h|help) certbotbot_usage; return 0 ;;
+    --version|-V|version) certbotbot_version; return 0 ;;
+  esac
   certbotbot_config_resolve "$@" || return $?
   certbotbot_identity_resolve || return $?
   certbotbot_lifecycle_execute
