@@ -80,6 +80,8 @@ certbotbot_s3_publish() {
   CERTBOTBOT_S3_PUBLISHED=''
   CERTBOTBOT_S3_BACKUP_STATUS=disabled
   CERTBOTBOT_RETENTION_STATUS=disabled
+  # Read by the separate public status reporter in src/main.bash.
+  # shellcheck disable=SC2034
   CERTBOTBOT_RETENTION_DELETED=0
   if [[ "${CERTBOTBOT_BACKUP_RETENTION_COUNT:-0}" != 0 ]]; then
     CERTBOTBOT_RETENTION_STATUS=skipped
