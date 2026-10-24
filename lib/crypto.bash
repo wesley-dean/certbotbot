@@ -28,7 +28,7 @@ certbotbot_crypto_packet_valid() {
   # decryption and archive validation are additional mandatory gates.
   detail="$(gpg --no-options --homedir "$workspace/.gnupg" --batch --no-tty \
     --no-symkey-cache --list-packets "$packet" \
-    2>/dev/null || :)" 
+    2>/dev/null || :)"
   [[ "$detail" == *':symkey enc packet: version 5, cipher 9, aead 2, s2k 3, hash 10,'* &&
     "$detail" == *':aead encrypted packet: cipher=9 aead=2'* &&
     "$detail" == *'count 16777216'* ]]
