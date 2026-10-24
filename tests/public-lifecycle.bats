@@ -2987,7 +2987,6 @@ dated_recovery_download() {
     CERTBOTBOT_ARCHIVE_MIGRATION=none
     CERTBOTBOT_ARCHIVE_MIGRATION_BACKUP_CONFIRMED=false
     certbotbot_crypto_require "$3" || exit $?
-    cp -- "$2" "$3/downloaded.tar.gz" || exit $?
     certbotbot_crypto_unwrap "$3" || exit $?
     certbotbot_archive_restore "$3/downloaded.tar.gz" "$3" || exit $?
     certbotbot_state_preflight "$3/config" example.com || exit $?
@@ -3019,7 +3018,6 @@ dated_recovery_download() {
     CERTBOTBOT_ARCHIVE_ENCRYPTION=gpg-ocb
     CERTBOTBOT_ARCHIVE_MIGRATION=none
     certbotbot_crypto_require "$3" || exit $?
-    cp -- "$2" "$3/downloaded.tar.gz" || exit $?
     certbotbot_crypto_unwrap "$3"
   ' _ "$BASH_STARTER_ARTIFACT" "$recovery/downloaded.tar.gz" "$recovery"
   [ "$status" -eq 65 ]
