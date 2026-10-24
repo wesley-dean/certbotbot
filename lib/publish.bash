@@ -175,6 +175,8 @@ certbotbot_s3_publish() {
       CERTBOTBOT_S3_BACKUP_STATUS=failed
       return 74
     fi
+    # Consumed by the public CLI status reporter in src/main.bash.
+    # shellcheck disable=SC2034
     CERTBOTBOT_S3_BACKUP_STATUS=confirmed
   fi
   return 0
