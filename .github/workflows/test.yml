@@ -116,18 +116,17 @@ jobs:
           git check-ignore -q doc/reference/index.html
           test -z "$(git status --short)"
 
+      # Fast public-command fixture smoke gate: useful TAP failure detail
+      # appears before the full three-flavor JUnit matrix runs.
+      - name: Verify filename contract with TAP diagnostics
+        run: |
+          BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
+            bats --formatter tap tests/filename-verification.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true
         run: make test-report
-
-      # Print TAP diagnostics for filename assertions if the aggregate
-      # JUnit reporter cannot expose the failing Bats assertion/output.
-      - name: Diagnose filename verification failures
-        if: steps.bats.outcome == 'failure'
-        run: |
-          BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
-            bats --formatter tap tests/filename-verification.bats
 
       - name: Publish Bats test results
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
