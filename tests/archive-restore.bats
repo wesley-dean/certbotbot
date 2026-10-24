@@ -158,3 +158,20 @@ make_lineage() {
   [ "$status" -eq 0 ]
   [[ "$output" != *'unexpected external call'* ]]
 }
+
+@test "validated safe file modes survive restore without exposing private keys" {
+  make_lineage
+  chmod 644 "$SOURCE/archive/example.com/cert1.pem"
+  chmod 600 "$SOURCE/archive/example.com/privkey1.pem"
+  chmod 600 "$SOURCE/renewal/example.com.conf"
+  make_archive
+  restore_archive
+  [ "$status" -eq 0 ]
+  [ "$(stat -c %a "$WORKSPACE/config/archive/example.com/cert1.pem")" = 644 ]
+  [ "$(stat -c %a "$WORKSPACE/config/archive/example.com/privkey1.pem")" = 600 ]
+  [ "$(stat -c %a "$WORKSPACE/config/renewal/example.com.conf")" = 600 ]
+  [ "$(stat -c %a "$WORKSPACE/config")" = 700 ]
+  [ -L "$WORKSPACE/config/live/example.com/cert.pem" ]
+  [ "$(readlink "$WORKSPACE/config/live/example.com/cert.pem")" = \
+    '../../archive/example.com/cert1.pem' ]
+}
