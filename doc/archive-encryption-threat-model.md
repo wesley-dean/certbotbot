@@ -1,6 +1,7 @@
 # Client-Side Archive Encryption Threat Model
 
-Status: **task #41 architectural security analysis**, pending PR review.
+Status: **ADR-031 accepted; opt-in encryption implementation task #42**
+with broader negative and interoperability verification in task #43.
 See [ADR-031](adr/ADR-031-opt-in-authenticated-gpg-archive-encryption.md)
 and [archive-encryption-contract.md](archive-encryption-contract.md).
 This extends the
