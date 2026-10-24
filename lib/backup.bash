@@ -147,7 +147,7 @@ certbotbot_backup_head_valid() {
 ## @retval 64 Invalid local values.
 ## @retval 69 Missing capability or uncertain destination.
 certbotbot_backup_prepare() {
-  local workspace="$1" bucket="$2" current="$3" backup="$4" skeleton result
+  local workspace="$1" bucket="$2" current="$3" backup="$4" skeleton result head_status
   CERTBOTBOT_BACKUP_PRECONDITION=''
   CERTBOTBOT_BACKUP_ETAG=''
   [[ -n "$bucket" && -n "$current" && -n "$backup" &&
@@ -173,7 +173,9 @@ certbotbot_backup_prepare() {
     fi
     CERTBOTBOT_BACKUP_PRECONDITION=match
   else
-    if [[ ! -f "$workspace/.backup-error" ]] ||
+    head_status=$?
+    if (( head_status != 1 )) ||
+      [[ ! -f "$workspace/.backup-error" ]] ||
       ! grep -Eq '\((404|NoSuchKey)\)' "$workspace/.backup-error" ||
       ! aws --no-cli-pager s3api head-bucket --bucket "$bucket" \
         --output json >/dev/null 2>/dev/null; then
