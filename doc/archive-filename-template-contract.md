@@ -54,9 +54,14 @@ automatic remote key migration when a template changes.
 - `mktext` only performs one lexical, nonrecursive substitution pass over
   an associative-array context containing the three nonsecret date values.
   Unknown macros survive mktext rendering and are rejected by certbotbot.
-- Pinned released mktext v0.0.17 is the selected acquisition contract for
-  #79, subject to exact-byte verification during integration. There is
-  no runtime download or dependency on the source checkout.
+- In #79, add pinned released mktext v0.0.17 to the repository-root
+  `dependencies.txt` with an immutable release URL, `vendor/` destination,
+  and committed SHA-256 digest. `make deps` uses the pinned bashdeps
+  bootstrap to acquire it; `make deps-check` validates it offline.
+  `make build` consumes the prepared library and embeds it into all three
+  standalone executables without network access. No runtime mktext download,
+  `vendor/` sourcing, dependency-manifest access, or upstream checkout is
+  permitted. Exact acquired-byte verification remains required in #79.
 - S3 and gzip tar are today's supported integration baseline. Alternate
   backend/format stories #63/#65 are open; this contract does not claim
   `.tar.bz2`, `.zip`, SFTP, or other backends are working.

@@ -164,17 +164,30 @@ The candidate release for task #79 is `wesley-dean/mktext` **v0.0.17**
 - Upstream public API: `mktext set CONTEXT KEY VALUE` and
   `mktext render CONTEXT`. Bash 4.3+; published license: CC0-1.0.
 
-Task #79 must acquire the exact released bytes via a committed
-bashdeps manifest identity and digest, inspect the acquired script, verify
-checksum and license/provenance, and arrange deterministic in-build sourcing
-or assembly into all three standalone artifacts. Neither a mutable
-upstream branch nor a runtime network fetch is acceptable. The digest is
-release metadata observed during design; no independent downloaded-artifact
-hash verification is claimed by this ADR. If the published artifact differs,
-or its composition is incompatible with the build, task #79 must stop and
-propose a reviewed amendment rather than substitute different bytes.
+Task #79 MUST add mktext as a pinned, released library dependency in
+the repository-root `dependencies.txt`, with an immutable release URL,
+destination under `vendor/`, and a committed SHA-256 digest. The
+existing Make-owned `vendor/bashdeps.bash` is the only mechanism for
+acquiring/synchronizing this dependency through `make deps`. The
+`make deps-check` target MUST verify prepared dependency state offline,
+without repairing or downloading anything. The offline `make build`
+MUST consume the prepared `vendor/mktext.bash` artifact, assembling its
+necessary library contents into each of the development, ordinary, and
+minified standalone certbotbot executables in deterministic source order.
+No shipped executable may download mktext, source a file from `vendor/`,
+read `dependencies.txt`, or require the mktext checkout at runtime.
 
-Under ADR-015, sourcing this code enlarges the trusted computing base:
+The build integration must inspect the exact acquired release bytes, verify
+the committed checksum and license/provenance, and ensure the embedded
+function is available before certbotbot calls it. Neither a mutable
+upstream branch nor a runtime network fetch is acceptable. The digest above
+is release metadata observed during design; no independent
+downloaded-artifact hash verification is claimed by this ADR. If the
+published artifact differs, or its composition is incompatible with
+the build, task #79 must stop and propose a reviewed amendment rather
+than substitute different bytes.
+
+Under ADR-015, embedding this library code enlarges the trusted computing base:
 it runs in the same Bash process and can in principle observe process
 variables, sensitive in-memory state, AWS configuration, or filesystem
 authority even if certbotbot passes only nonsecret date values. The library
