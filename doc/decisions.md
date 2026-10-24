@@ -427,3 +427,18 @@ This decision authorizes no immediate destructive behavior and does not migrate
 old templates, prune historical versions or grant alternate backend support.
 
 See [ADR-034](adr/ADR-034-scoped-conditional-managed-backup-retention.md).
+
+### ADR-035: Standalone Read-Only Certificate Consumer and Additional Release Artifact
+
+The approved separate-client design introduces one independently runnable
+`certbotbot-client.bash` and its `.sha256` companion, expanding the current
+certbotbot release to eight files while retaining the existing six producer
+artifacts and their checks.  The client reads only the current configured S3
+object, supports plaintext validated full-state archives, and extracts into a
+new private destination without renewal, remote writes, or GnuPG decryption.
+It preserves the producer's current-key selection rules and uses late staging
+activation to avoid overwriting existing targets; encrypted objects require a
+separately approved client extension.
+
+See [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md)
+and [the separate-client contract](separate-client-contract.md).
