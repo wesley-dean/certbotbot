@@ -102,86 +102,204 @@ certbotbot_state_hooks() {
   fi
 }
 
-## @fn certbotbot_state_lineage()
-## @brief Classifies absent versus complete selected certificate lineage.
+## @fn certbotbot_state_lineage_one()
+## @brief Verifies one complete lineage's relative links and local member types.
 ## @details
-## An account-only archive may omit or contain empty live/archive/renewal
-## directories. Any lineage material must correspond to exactly the selected
-## name in all three trees. Relative live PEM links are checked against
-## their actual regular archive targets using the canonical link contract.
-## Renewal command hooks are rejected. No renewal config is evaluated and
-## its absolute paths are deliberately left unchanged for a later adapter.
-## @param config Canonical restored configuration root.
-## @param selected Validated, explicit or derived certificate name.
+## The caller has inventoried all top-level renewal/live/archive names.
+## This read-only check never uses contents of archived renewal configuration
+## as shell code. Every live link must target its own matching archive
+## subtree, not another certificate's versioned PEM or an absolute path.
+## @param config Private restored configuration root.
+## @param name Validated non-wildcard Certbot lineage name.
 ## @par STDIN
 ## Nothing is read from STDIN.
 ## @par STDOUT
 ## Nothing is written to STDOUT.
 ## @par STDERR
 ## Nothing is written to STDERR.
-## @returns Nothing is written to STDOUT.
-## @retval 0 REPLY is absent or present for exactly the selected lineage.
-## @retval 1 Ambiguous, partial, conflicting, or executable state.
-certbotbot_state_lineage() {
-  local config="$1" selected="$2" root path member part target
-  local present=false
-  for root in live archive renewal; do
-    if [[ -e "$config/$root" || -L "$config/$root" ]]; then
-      [[ -d "$config/$root" && ! -L "$config/$root" ]] || return 1
-      for member in "$config/$root/"*; do
-        [[ -e "$member" || -L "$member" ]] || continue
-        if [[ "${member##*/}" == README ]]; then
-          [[ -f "$member" && ! -L "$member" ]] || return 1
-          continue
-        fi
-        if [[ "$root" == renewal ]]; then
-          [[ "$member" == "$config/renewal/$selected.conf" &&
-            -f "$member" && ! -L "$member" && -s "$member" ]] ||
-            return 1
-        else
-          [[ "$member" == "$config/$root/$selected" &&
-            -d "$member" && ! -L "$member" ]] || return 1
-        fi
-        present=true
-      done
-    fi
-  done
-  if [[ "$present" == false ]]; then
-    REPLY=absent
-    return 0
-  fi
-  [[ -d "$config/live/$selected" && ! -L "$config/live/$selected" &&
-    -d "$config/archive/$selected" && ! -L "$config/archive/$selected" &&
-    -f "$config/renewal/$selected.conf" &&
-    ! -L "$config/renewal/$selected.conf" &&
-    -s "$config/renewal/$selected.conf" ]] || return 1
-  if LC_ALL=C grep -qi 'hook' "$config/renewal/$selected.conf"; then
+## @retval 0 Complete and safe supported lineage structure.
+## @retval 1 Partial or unsafe files, links, hooks or member types.
+certbotbot_state_lineage_one() {
+  local config="$1" name="$2" part path member target
+  [[ -d "$config/live/$name" && ! -L "$config/live/$name" &&
+    -d "$config/archive/$name" && ! -L "$config/archive/$name" &&
+    -f "$config/renewal/$name.conf" &&
+    ! -L "$config/renewal/$name.conf" &&
+    -s "$config/renewal/$name.conf" &&
+    -O "$config/renewal/$name.conf" ]] || return 1
+  if LC_ALL=C grep -qi 'hook' "$config/renewal/$name.conf"; then
     return 1
   fi
   for part in cert chain fullchain privkey; do
-    path="$config/live/$selected/$part.pem"
+    path="$config/live/$name/$part.pem"
     [[ -L "$path" ]] || return 1
     target="$(readlink -- "$path")" || return 1
-    certbotbot_tar_link "live/$selected/$part.pem" "$target" || return 1
+    certbotbot_tar_link "live/$name/$part.pem" "$target" || return 1
     [[ -f "$config/$REPLY" && ! -L "$config/$REPLY" ]] || return 1
   done
-  for member in "$config/live/$selected/"*; do
+  for member in "$config/live/$name/"* "$config/live/$name/".*; do
     [[ -e "$member" || -L "$member" ]] || continue
     case "${member##*/}" in
+      .|..) continue ;;
       README) [[ -f "$member" && ! -L "$member" ]] || return 1 ;;
-      cert.pem|chain.pem|fullchain.pem|privkey.pem) [[ -L "$member" ]] || return 1 ;;
+      cert.pem|chain.pem|fullchain.pem|privkey.pem)
+        [[ -L "$member" ]] || return 1 ;;
       *) return 1 ;;
     esac
   done
-  for member in "$config/archive/$selected/"*; do
+  for member in "$config/archive/$name/"* "$config/archive/$name/".*; do
     [[ -e "$member" || -L "$member" ]] || continue
+    case "${member##*/}" in .|..) continue ;; esac
     if [[ "${member##*/}" != README ]]; then
       [[ "${member##*/}" =~ ^(cert|chain|fullchain|privkey)[1-9][0-9]*\.pem$ ]] ||
         return 1
     fi
     [[ -f "$member" && ! -L "$member" && -O "$member" ]] || return 1
+    if [[ "${member##*/}" == privkey[0-9]*.pem &&
+      -n "$(find "$member" -perm /077 -print -quit 2>/dev/null)" ]]; then
+      return 1
+    fi
   done
-  REPLY=present
+  return 0
+}
+
+## @fn certbotbot_state_lineage()
+## @brief Inventories every valid lineage and classifies one selected target.
+## @details
+## An account-only archive may omit all lineage trees. All non-README members
+## in renewal/, live/ and archive/ must have complete matching triplets.
+## Every name is validated separately, so an unrelated existing certificate
+## cannot be silently dropped or chosen by SAN overlap. This read-only check
+## validates the local structure of every stored lineage and reports whether
+## the exact selected lineage is present or absent; canonical renewal metadata
+## is separately verified using certbotbot_state_canonical_all.
+## @param config Private restored configuration root.
+## @param selected Validated non-wildcard certificate name.
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## Nothing is written to STDOUT.
+## @par STDERR
+## Nothing is written to STDERR.
+## @returns Nothing is written to STDOUT; selected status is stored in REPLY.
+## @retval 0 Every stored lineage is complete; selected is absent or present.
+## @retval 1 Unsupported, ambiguous or partial stored lineage inventory.
+certbotbot_state_lineage() {
+  local config="$1" selected="$2" root member base name
+  local -A names=()
+  for root in live archive renewal; do
+    if [[ -e "$config/$root" || -L "$config/$root" ]]; then
+      [[ -d "$config/$root" && ! -L "$config/$root" ]] || return 1
+      for member in "$config/$root/"* "$config/$root/".*; do
+        [[ -e "$member" || -L "$member" ]] || continue
+        base="${member##*/}"
+        case "$base" in
+          .|..) continue ;;
+          README)
+            [[ -f "$member" && ! -L "$member" ]] || return 1
+            continue
+            ;;
+        esac
+        if [[ "$root" == renewal ]]; then
+          [[ "$base" == *.conf && -f "$member" &&
+            ! -L "$member" && -s "$member" && -O "$member" ]] || return 1
+          name="${base%.conf}"
+        else
+          [[ -d "$member" && ! -L "$member" && -O "$member" ]] || return 1
+          name="$base"
+        fi
+        [[ "$name" != *'*'* ]] && certbotbot_dns_valid "$name" || return 1
+        names["$name"]=1
+      done
+    fi
+  done
+
+  for name in "${!names[@]}"; do
+    certbotbot_state_lineage_one "$config" "$name" || return 1
+  done
+  if [[ -n "${names[$selected]+x}" ]]; then
+    REPLY=present
+  else
+    REPLY=absent
+  fi
+  return 0
+}
+
+## @fn certbotbot_state_canonical_all()
+## @brief Verifies canonical renewal metadata for every stored certificate.
+## @details
+## The selected name is an operation target, not a filter for state safety.
+## Before provider execution and before publication, verify all persisted
+## renewal files against the supported production account/Route53 dialect.
+## This function must only run when renewal paths are canonical: never between
+## selected prepare/finalize operations. The read-only mapper uses ordinary
+## structural preflight and does not rewrite any renewal file in verify mode.
+## @param config Canonical owned restored configuration directory.
+## @param selected Exact validated current selected lineage name.
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## Nothing is written to STDOUT.
+## @par STDERR
+## Fixed non-secret diagnostics only.
+## @retval 0 Every archived lineage has canonical supported metadata.
+## @retval 65 Any incomplete or noncanonical archive state.
+certbotbot_state_canonical_all() {
+  local config="$1" selected="$2" file base name
+  if ! certbotbot_state_preflight "$config" "$selected" >/dev/null 2>&1; then
+    printf '%s\n' 'certbotbot: unsupported shared archive state' >&2
+    return 65
+  fi
+  for file in "$config/renewal/"*.conf; do
+    [[ -f "$file" && ! -L "$file" ]] || continue
+    base="${file##*/}"
+    name="${base%.conf}"
+    if ! certbotbot_renewal_map "$config" "$name" verify >/dev/null 2>&1; then
+      printf '%s\n' 'certbotbot: unsupported archived renewal metadata' >&2
+      return 65
+    fi
+  done
+  return 0
+}
+
+## @fn certbotbot_state_unselected_fingerprint()
+## @brief Hashes unchanged lineage payloads outside the selected namespace.
+## @details
+## Includes all other lineages' renewal configs, versioned PEMs, private-key
+## permissions and live symlink targets. A normalized tar stream is hashed
+## without writing or logging certificate or account material. This digest
+## detects unintended changes to unselected state across a selected provider
+## call; it is not a lock or cryptographic proof of remote S3 atomicity.
+## @param config Restored private Certbot configuration tree.
+## @param selected Selected lineage name to exclude from this digest.
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## One SHA-256 digest, with no certificate or account material.
+## @par STDERR
+## Nothing is written to STDERR.
+## @returns A fingerprint of all unselected stored lineage data.
+## @retval 0 Stable digest calculated for complete archive inventory.
+## @retval 1 Tooling or state inspection unavailable.
+certbotbot_state_unselected_fingerprint() {
+  local config="$1" selected="$2" file name
+  local -a items=()
+  command -v tar >/dev/null 2>&1 || return 1
+  command -v sha256sum >/dev/null 2>&1 || return 1
+  for file in "$config/renewal/"*.conf; do
+    [[ -f "$file" && ! -L "$file" ]] || continue
+    name="${file##*/}"
+    name="${name%.conf}"
+    [[ "$name" == "$selected" ]] && continue
+    items+=("renewal/$name.conf" "live/$name" "archive/$name")
+  done
+  if (( ${#items[@]} == 0 )); then
+    sha256sum </dev/null | cut -d' ' -f1
+  else
+    (set -o pipefail; tar --sort=name --mtime='@0' --owner=0 --group=0 \
+      --numeric-owner --format=gnu -cf - -C "$config" "${items[@]}" \
+      2>/dev/null | sha256sum | cut -d' ' -f1)
+  fi
 }
 
 ## @fn certbotbot_state_preflight()
