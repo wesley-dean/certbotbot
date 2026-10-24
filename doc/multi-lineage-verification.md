@@ -28,6 +28,11 @@ Let's Encrypt or S3.
 | Failed remote write is reported without a false publication claim | `two-lineage PutObject refusal preserves mocked remote but reports uncertainty` |
 | Corrupt GetObject data fails before provider and publication | `bad GetObject on two-lineage archive does not invoke provider or PutObject` |
 
+A regression in `tests/archive-restore.bats` also asserts that safe public
+certificate modes (0644) remain unchanged while private key modes (0600)
+and private staging ownership persist after a validated restore. This
+protects the permission-preservation guarantee across repackaging.
+
 Preexisting focused suites also cover archive header/path/link validation,
 account uniqueness, canonical renewal metadata, unsafe hooks, selected-only
 Certbot flags, and the one-object publication policy.
