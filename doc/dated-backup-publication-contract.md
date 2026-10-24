@@ -85,8 +85,10 @@ secret and an independent pre-migration backup as applicable.
 
 Task #82 implements the public setting, exact-key S3 preflight and
 conditional publication with post-PUT metadata/length confirmation.
-Task #83 must cover all three public artifacts, Bash 4.3, real GnuPG
-when available, failure isolation and clean-runner recovery. Other
+Task #83's [recovery and verification guide](dated-backup-recovery-verification.md)
+defines the operator-directed read-only workflow and the mocked cross-feature
+test matrix for all three standalone artifacts, with real GnuPG when available.
+Other
 backends and formats (#63, #65) remain unsupported until separately
 implemented. Backup retirement and any deletion require #84's
 Accepted destructive-operation ADR and #85/#86 testing. S3 Versioning
