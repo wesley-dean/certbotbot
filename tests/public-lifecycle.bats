@@ -1823,7 +1823,7 @@ assert_shared_lineage_unchanged() {
   diff -qr "$ROOT/snapshot-$label/archive/$name" \
     "$current/archive/$name" >/dev/null || return 1
   for part in cert chain fullchain privkey; do
-    [[ "$(readlink -- "$ROOT/snapshot-$label/live/$name/$part.pem")" ==
+    [[ "$(readlink -- "$ROOT/snapshot-$label/live/$name/$part.pem")" == \
       "$(readlink -- "$current/live/$name/$part.pem")" ]] || return 1
   done
   # GNU find's relative name, type, mode, and symlink target report catches
