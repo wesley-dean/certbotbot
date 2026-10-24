@@ -79,6 +79,11 @@ certbotbot_s3_publish() {
   local workspace selected bucket key changed override config physical candidate
   CERTBOTBOT_S3_PUBLISHED=''
   CERTBOTBOT_S3_BACKUP_STATUS=disabled
+  CERTBOTBOT_RETENTION_STATUS=disabled
+  CERTBOTBOT_RETENTION_DELETED=0
+  if [[ "${CERTBOTBOT_BACKUP_RETENTION_COUNT:-0}" != 0 ]]; then
+    CERTBOTBOT_RETENTION_STATUS=skipped
+  fi
   if [[ "${CERTBOTBOT_DATED_BACKUP_ENABLED:-false}" == true ]]; then
     CERTBOTBOT_S3_BACKUP_STATUS=pending
   fi
