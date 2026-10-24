@@ -68,7 +68,9 @@ if [[ "$key" == "$LIFECYCLE_BACKUP_KEY" &&
         { printf '(404)\n' >&2; exit 9; }
       [[ -f "$LIFECYCLE_BACKUP_META" ]] || exit 9
       size="$(stat -c %s -- "$LIFECYCLE_BACKUP_REMOTE")" || exit 9
-      if ! IFS=
+      read -r schema utc hash format encryption <"$LIFECYCLE_BACKUP_META" || exit 9
+      printf '"backupetag01"\t%s\t%s\t%s\t%s\t%s\n' \
+        "$size" "$schema" "$utc" "$hash" "$format" "$encryption"
       exit 0
       ;;
     put-object)
