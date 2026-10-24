@@ -56,6 +56,11 @@ assert_zero_aws() {
   install_filename_clock
   run "$BASH_STARTER_ARTIFACT" --s3-bucket bucket example.com
   [ "$status" -eq 69 ]
+  if [[ ! -e "$FILENAME_AWS_CALLS" ]]; then
+    printf '# AWS mock log missing: status=%s output=%q\n' "$status" "$output"
+    printf '# fixture aws=%s PATH=%s\n' "$(command -v aws)" "$PATH"
+    false
+  fi
   grep -Fxq 'head-object|bucket|latest.tar.gz' "$FILENAME_AWS_CALLS"
   [ "$(wc -l <"$FILENAME_AWS_CALLS")" -eq 1 ]
   [ ! -e "$FILENAME_CLOCK_CALLS" ]
@@ -153,6 +158,8 @@ FILE
     --backup-key-template latest.tar.gz example.com
   [ "$status" -eq 64 ]
   assert_zero_aws
+  # Reset the simulated UTC day before testing a second independent invocation.
+  rm -f "$FILENAME_CLOCK_CALLS"
   run "$BASH_STARTER_ARTIFACT" --s3-bucket bucket \
     --s3-key-template 'archive-{YEAR}{MONTH}{DOM}.tar.gz' \
     --backup-key-template archive-20261020.tar.gz example.com
