@@ -39,6 +39,7 @@ Options:
   --s3-key KEY                     Existing literal key (latest.tar.gz)
   --s3-key-template TEMPLATE       Optional current archive key template
   --backup-key-template TEMPLATE   Optional dated backup key template
+  --dated-backup-enabled true|false  Publish an additional date-named copy
   --upload-no-renewal true|false   Republish successful unchanged archive\n  --archive-encryption MODE        auto | none | gpg-ocb\n  --archive-migration MODE         none | plaintext-to-gpg-ocb\n  --archive-migration-backup-confirmed true|false
   --help                           Show help
   --version                        Show build provenance
@@ -278,9 +279,16 @@ certbotbot_lifecycle_execute() {
     "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" \
     "$changed" "$CERTBOTBOT_UPLOAD_NO_RENEWAL" || return $?
 
-  printf 'certbotbot: %s %s; s3://%s/%s; published=%s\n' \
-    "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
-    "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED"
+  if [[ "$CERTBOTBOT_DATED_BACKUP_ENABLED" == true ]]; then
+    printf 'certbotbot: %s %s; s3://%s/%s; published=%s; backup=%s\n' \
+      "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
+      "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED" \
+      "$CERTBOTBOT_S3_BACKUP_STATUS"
+  else
+    printf 'certbotbot: %s %s; s3://%s/%s; published=%s\n' \
+      "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
+      "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED"
+  fi
   return 0
 }
 
