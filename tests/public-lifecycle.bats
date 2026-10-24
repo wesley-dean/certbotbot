@@ -2636,9 +2636,20 @@ MOCK
 }
 
 # ADR-033 opt-in backup tests. Broader adversarial and recovery evidence in #83.
+# Freeze the UTC date so the independent CI runner's clock cannot change
+# the expected recovery-key identity or cause a midnight boundary mismatch.
+dated_backup_clock() {
+  cat >"$ROOT/bin/date" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$1" == -u && "$2" == +%Y%m%d ]] || exit 95
+printf '20261020\n'
+MOCK
+  chmod 755 "$ROOT/bin/date"
+}
 
 @test "enabled dated backup publishes exact current candidate bytes after current PUT" {
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
   execute --dated-backup-enabled true
   [ "$status" -eq 0 ]
   [[ "$output" == *'published=true; backup=confirmed'* ]]
@@ -2651,6 +2662,7 @@ MOCK
 
 @test "backup enabled ordinary no-op does not publish or create another dated copy" {
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
   execute --dated-backup-enabled true
   [ "$status" -eq 0 ]
   : >"$LIFECYCLE_CALLS"
@@ -2662,6 +2674,7 @@ MOCK
 
 @test "same UTC day forced update conditionally replaces only its managed backup" {
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
   execute --dated-backup-enabled true
   [ "$status" -eq 0 ]
   : >"$LIFECYCLE_CALLS"
@@ -2674,6 +2687,7 @@ MOCK
 
 @test "unrecognized same-day backup identity refuses both remote writes" {
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
   printf 'unrelated-private-object' >"$LIFECYCLE_BACKUP_REMOTE"
   printf 'unknown\t20261020\tbad\ttar.gz\tnone\n' >"$LIFECYCLE_BACKUP_META"
   cp "$LIFECYCLE_REMOTE" "$ROOT/current-before"
@@ -2687,6 +2701,7 @@ MOCK
 
 @test "failed authoritative PUT never attempts dated backup publication" {
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
   export LIFECYCLE_PUT_MODE=put-failure
   execute --dated-backup-enabled true
   [ "$status" -eq 74 ]
@@ -2697,6 +2712,7 @@ MOCK
 
 @test "failed dated PUT reports accepted current as partial success" {
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
   export LIFECYCLE_BACKUP_MODE=put-failure
   execute --dated-backup-enabled true
   [ "$status" -eq 74 ]
@@ -2708,6 +2724,7 @@ MOCK
 
 @test "lost response from dated PUT reports uncertainty without rollback" {
   export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
   export LIFECYCLE_BACKUP_MODE=lost-response
   execute --dated-backup-enabled true
   [ "$status" -eq 74 ]
