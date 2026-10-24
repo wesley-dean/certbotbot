@@ -1,8 +1,10 @@
 # Archive Filename Template Contract
 
-Status: Target implementation contract for approved task #78; **not yet a
-supported public CLI feature**. Implementation and tests are tracked in #79
-and #80. Dated publication and retention remain separate stories #67/#68.
+Status: Naming implementation contract for approved task #79. Current-key
+and explicit backup-key templates are resolved through released mktext and
+validated before remote operations. Task #80 owns extended cross-feature
+verification; dated publication and retention are separate work under
+#82 and #85.
 
 Governing decision:
 [ADR-032](adr/ADR-032-deterministic-safe-archive-filename-templates.md).
@@ -50,6 +52,12 @@ No mutation is permitted on a collision or invalid name. There is no
 automatic remote key migration when a template changes.
 
 ## Integration and non-promises
+
+- When neither the current key nor the backup template is explicitly
+  templated, the legacy literal current-key path does not need a UTC clock
+  read. A current-key template or explicitly supplied backup template
+  freezes one date. Future dated-backup publication will resolve the default
+  backup template when that feature is enabled.
 
 - `mktext` only performs one lexical, nonrecursive substitution pass over
   an associative-array context containing the three nonsecret date values.
