@@ -136,7 +136,7 @@ test-report: build
 ## TEST_FLAVOR is passed through Make's environment, never interpolated into shell.
 test-one test-report-one:
 	@set -eu; \
-	case "${TEST_FLAVOR-}" in \
+	case "$${TEST_FLAVOR-}" in \
 	  development) artifact='$(DIST_DEV_SCRIPT)' ;; \
 	  ordinary) artifact='$(DIST_SCRIPT)' ;; \
 	  minified) artifact='$(DIST_MIN_SCRIPT)' ;; \
@@ -145,31 +145,31 @@ test-one test-report-one:
 	if [[ -z '$(TEST_SCRIPTS)' ]]; then \
 	  printf '%s\n' 'Bats test inventory is empty' >&2; exit 65; \
 	fi; \
-	checksum="$artifact.sha256"; \
-	if [[ ! -f "$artifact" || -L "$artifact" || ! -x "$artifact" || \
-	  ! -f "$checksum" || -L "$checksum" || \
-	  -e "$artifact.256" || -L "$artifact.256" ]]; then \
+	checksum="$$artifact.sha256"; \
+	if [[ ! -f "$$artifact" || -L "$$artifact" || ! -x "$$artifact" || \
+	  ! -f "$$checksum" || -L "$$checksum" || \
+	  -e "$$artifact.256" || -L "$$artifact.256" ]]; then \
 	  printf '%s\n' 'Missing, unsafe, or stale producer artifact or checksum' >&2; exit 65; \
 	fi; \
 	if command -v sha256sum >/dev/null 2>&1; then \
-	  digest="$(sha256sum -- "$artifact" | awk '{print $1}')"; \
+	  digest="$$(sha256sum -- "$$artifact" | awk '{print $$1}')"; \
 	elif command -v shasum >/dev/null 2>&1; then \
-	  digest="$(shasum -a 256 -- "$artifact" | awk '{print $1}')"; \
+	  digest="$$(shasum -a 256 -- "$$artifact" | awk '{print $$1}')"; \
 	else \
 	  printf '%s\n' 'SHA-256 verification tool unavailable' >&2; exit 69; \
 	fi; \
-	if [[ ! "$digest" =~ ^[0-9a-f]{64}$ ]] || \
-	  ! printf '%s  %s\n' "$digest" "${artifact##*/}" | cmp -s - "$checksum"; then \
+	if [[ ! "$$digest" =~ ^[0-9a-f]{64}$$ ]] || \
+	  ! printf '%s  %s\n' "$$digest" "$${artifact##*/}" | cmp -s - "$$checksum"; then \
 	  printf '%s\n' 'Producer artifact checksum mismatch' >&2; exit 65; \
 	fi; \
-	if ! bash -n "$artifact"; then \
+	if ! bash -n "$$artifact"; then \
 	  printf '%s\n' 'Invalid producer artifact Bash syntax' >&2; exit 65; \
 	fi; \
 	if [[ '$@' == 'test-one' ]]; then \
-	  BASH_STARTER_ARTIFACT="${PWD}/$artifact" bats $(TEST_SCRIPTS); \
+	  BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats $(TEST_SCRIPTS); \
 	else \
 	  mkdir -p '$(TEST_RESULTS_DIR)'; \
-	  BASH_STARTER_ARTIFACT="${PWD}/$artifact" bats --formatter junit $(TEST_SCRIPTS) >'$(TEST_RESULTS_DIR)/bats-'"${TEST_FLAVOR}"'.xml'; \
+	  BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >'$(TEST_RESULTS_DIR)/bats-'"$${TEST_FLAVOR}"'.xml'; \
 	fi
 
 FORCE:
