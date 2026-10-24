@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file lib/publish.bash
-## @brief Publishes a verified Certbot candidate to one existing S3 object.
+## @brief Publishes a verified current archive and optional dated backup.
 ## @details
-## Implements ADR-028 and the single-key no-op policy of ADR-020. This module
+## Implements ADR-028's current-key no-op policy and ADR-033's optional
+## same-payload dated copy. The default remains one authoritative object. This module
 ## is a post-success execution adapter. It requires an already successful
 ## selected Certbot operation and its independently verified durable-change
 ## result from the caller. It never calls Certbot, restores cloud resources,
@@ -23,7 +24,7 @@
 ## lost-response tests are specified in doc/mvp-failure-preservation.md.
 
 ## @fn certbotbot_s3_publish()
-## @brief Applies the no-op policy and uploads one locally verified candidate.
+## @brief Publishes the full validated candidate to current, then optional dated S3 key.
 ## @details
 ## WORKSPACE/config must contain a complete, already processed selected
 ## lineage, a single registered production account, and canonical renewal
@@ -37,7 +38,10 @@
 ## certbotbot_archive_package, which enforces strict tar/gzip validation.
 ## When ADR-031 encryption is enabled, only a validated authenticated OCB\n## envelope is eligible for the single same-key PutObject call. Migration\n## forces one verified publication even for otherwise unchanged Certbot state.\n## It sends the chosen file using one AWS CLI v2 s3api put-object call with
 ## explicit SHA256 checksum algorithm and application/gzip content type.
-## On success CERTBOTBOT_S3_PUBLISHED=true. On failure it is cleared.
+## On successful current PUT CERTBOTBOT_S3_PUBLISHED=true. A failed backup
+## after accepted current PUT is reported as a distinct nonzero partial success,
+## without a speculative rollback. The same exact validated candidate bytes
+## are used for current and backup; there is no independent re-encryption.
 ##
 ## The status says whether this local invocation requested and received
 ## success from AWS, not whether a later independent read will succeed.
@@ -61,7 +65,8 @@
 ## @retval 64 Invalid arguments, bucket/key or private workspace.
 ## @retval 65 Restored selected account/lineage or metadata is unsuitable.
 ## @retval 69 AWS CLI unavailable.
-## @retval 74 Candidate generation or remote PutObject failed.
+## @retval 74 Candidate or current PutObject failed, or current was
+## accepted but the optional backup PutObject/confirmation failed.
 ## @note Candidate builder may also propagate its defined 64 or 65 statuses.
 ## @par Examples
 ## @code
@@ -73,6 +78,10 @@
 certbotbot_s3_publish() {
   local workspace selected bucket key changed override config physical candidate
   CERTBOTBOT_S3_PUBLISHED=''
+  CERTBOTBOT_S3_BACKUP_STATUS=disabled
+  if [[ "${CERTBOTBOT_DATED_BACKUP_ENABLED:-false}" == true ]]; then
+    CERTBOTBOT_S3_BACKUP_STATUS=pending
+  fi
   if (( $# != 6 )); then
     printf '%s\n' 'certbotbot: invalid S3 publication arguments' >&2
     return 64
@@ -126,6 +135,9 @@ certbotbot_s3_publish() {
     # Caller-visible publication outcome (successful no-op, no remote write).
     # shellcheck disable=SC2034
     CERTBOTBOT_S3_PUBLISHED=false
+    if [[ "${CERTBOTBOT_DATED_BACKUP_ENABLED:-false}" == true ]]; then
+      CERTBOTBOT_S3_BACKUP_STATUS=skipped
+    fi
     return 0
   fi
   if ! command -v aws >/dev/null 2>&1; then
@@ -140,6 +152,13 @@ certbotbot_s3_publish() {
     content_type=application/octet-stream
   fi
 
+  if [[ "${CERTBOTBOT_DATED_BACKUP_ENABLED:-false}" == true ]]; then
+    [[ -n "${CERTBOTBOT_BACKUP_KEY:-}" ]] ||
+      { printf '%s\n' 'certbotbot: validated dated key is missing' >&2; return 64; }
+    certbotbot_backup_prepare "$workspace" "$bucket" "$key" \
+      "$CERTBOTBOT_BACKUP_KEY" || return $?
+  fi
+
   if ! aws --no-cli-pager s3api put-object \
     --bucket "$bucket" --key "$key" --body "$candidate" \
     --checksum-algorithm SHA256 --content-type "$content_type" \
@@ -150,5 +169,15 @@ certbotbot_s3_publish() {
   # Caller-visible publication outcome after AWS has returned success.
   # shellcheck disable=SC2034
   CERTBOTBOT_S3_PUBLISHED=true
+  if [[ "${CERTBOTBOT_DATED_BACKUP_ENABLED:-false}" == true ]]; then
+    if ! certbotbot_backup_publish "$workspace" "$bucket" \
+      "$CERTBOTBOT_BACKUP_KEY" "$candidate" "$content_type"; then
+      CERTBOTBOT_S3_BACKUP_STATUS=failed
+      return 74
+    fi
+    # Consumed by the public CLI status reporter in src/main.bash.
+    # shellcheck disable=SC2034
+    CERTBOTBOT_S3_BACKUP_STATUS=confirmed
+  fi
   return 0
 }

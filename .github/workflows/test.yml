@@ -123,6 +123,15 @@ jobs:
           BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
             bats --formatter tap tests/filename-verification.bats
 
+      # Fast opt-in S3 boundary tests; retain detailed TAP assertions when
+      # a conditional PUT or managed-metadata fixture fails.
+      - name: Verify dated backup publication with TAP diagnostics
+        run: |
+          BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
+            bats --formatter tap \
+              --filter 'dated backup|backup enabled|same UTC day|unrecognized same-day|failed authoritative PUT|lost response from dated' \
+              tests/public-lifecycle.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true

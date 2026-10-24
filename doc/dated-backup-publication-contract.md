@@ -1,8 +1,10 @@
 # Dated Backup Publication Contract
 
-Status: Design-only target for approved technical task #81. Not implemented
-in the current executable. ADR-033 is the governing decision; #82 implements
-the behavior, and #83 provides public acceptance evidence.
+Status: Implemented S3/tar.gz opt-in dated publication under ADR-033.
+Technical task #82 introduces the public option and guarded S3 writes;
+#83 provides the broader failure/recovery and release-artifact evidence.
+Retention and deletion are not implemented here and remain governed
+by ADR-034 and tasks #85/#86.
 
 ## Operator settings and identity
 
@@ -50,6 +52,25 @@ No failure results in automatic rollback, deletion or switching the next
 invocation to a backup key. A failed current write **cannot** be followed
 by an attempted backup write.
 
+## Exact status and verification limits
+
+When backups are disabled, the public success line retains its original
+`published=true|false` shape. When enabled, the success line also includes
+`backup=confirmed` following a validated two-object write or
+`backup=skipped` for an unchanged no-op. A failed current write never
+attempts the dated PUT. A failed/uncertain dated PUT or unverified HEAD
+returns nonzero with a fixed `current accepted` partial-success diagnostic;
+no automatic rollback occurs.
+
+The implementation uses the AWS CLI's generated input skeleton to verify
+support for both conditional PUT arguments before writing the current key.
+For an existing managed same-day object, the HEAD metadata must match
+schema, date, exact-current-key SHA-256, format and encryption mode, with a
+valid ETag; that ETag conditions replacement. For an absent object, the PUT
+uses If-None-Match. A positive backup PUT is confirmed through exact-key
+HEAD metadata and byte length, **not** a full payload re-download or a
+cross-key transaction.
+
 ## Recovery boundary
 
 Operator recovery means selecting and downloading an exact dated key to a
@@ -62,7 +83,8 @@ secret and an independent pre-migration backup as applicable.
 
 ## Dependencies and security limits
 
-Task #82 must implement the public setting and conditional S3 calls.
+Task #82 implements the public setting, exact-key S3 preflight and
+conditional publication with post-PUT metadata/length confirmation.
 Task #83 must cover all three public artifacts, Bash 4.3, real GnuPG
 when available, failure isolation and clean-runner recovery. Other
 backends and formats (#63, #65) remain unsupported until separately

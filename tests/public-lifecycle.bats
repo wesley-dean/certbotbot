@@ -15,6 +15,10 @@ setup() {
   export LIFECYCLE_CONTEXTS="$ROOT/certbot-contexts"
   export LIFECYCLE_MODE=ok
   export LIFECYCLE_EXPECTED_KEY=latest.tar.gz
+  export LIFECYCLE_BACKUP_KEY=archive-20261020.tar.gz
+  export LIFECYCLE_BACKUP_REMOTE="$ROOT/dated-backup.tar.gz"
+  export LIFECYCLE_BACKUP_META="$ROOT/dated-backup.meta"
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=false
   export LIFECYCLE_EXPECTED_CERT_NAME=example.com
   mkdir -m 700 "$ROOT/runner-temp"
   cat >"$ROOT/bin/aws" <<'MOCK'
@@ -22,17 +26,26 @@ setup() {
 [[ "$1" == --no-cli-pager && "$2" == s3api ]] || exit 99
 action="$3"
 shift 3
+if [[ "$action" == put-object && "${1:-}" == --generate-cli-skeleton &&
+  "${2:-}" == input ]]; then
+  printf '%s\n' '{"IfMatch":"","IfNoneMatch":""}'
+  exit 0
+fi
 if [[ -n "${GPG_SYMMETRIC_KEY+x}" ||
   -n "${CERTBOTBOT_GPG_SECRET+x}" ]]; then
   printf '%s\n' 'aws:secret-inherited' >>"$LIFECYCLE_CALLS"
   exit 97
 fi
-bucket='' key='' body='' target=''
+bucket='' key='' body='' target='' metadata='' match='' none='' query=''
 while (( $# )); do
   case "$1" in
     --bucket) bucket="$2"; shift 2 ;;
     --key) key="$2"; shift 2 ;;
     --body) body="$2"; shift 2 ;;
+    --metadata) metadata="$2"; shift 2 ;;
+    --if-match) match="$2"; shift 2 ;;
+    --if-none-match) none="$2"; shift 2 ;;
+    --query) query="$2"; shift 2 ;;
     --checksum-algorithm|--content-type|--output) shift 2 ;;
     *) target="$1"; shift ;;
   esac
@@ -40,7 +53,45 @@ done
 printf 'aws:%s:%s:%s\n' "$action" "$bucket" "$key" >>"$LIFECYCLE_CALLS"
 [[ "$bucket" == fixture-bucket ]] || exit 99
 # HeadBucket is bucket-scoped and must not carry an object key.
-[[ "$action" == head-bucket || "$key" == "$LIFECYCLE_EXPECTED_KEY" ]] || exit 99
+[[ "$action" == head-bucket || "$key" == "$LIFECYCLE_EXPECTED_KEY" ||
+  ( "$LIFECYCLE_BACKUP_ENABLED_MOCK" == true &&
+    "$key" == "$LIFECYCLE_BACKUP_KEY" ) ]] || exit 99
+if [[ "$key" == "$LIFECYCLE_BACKUP_KEY" &&
+  "$LIFECYCLE_BACKUP_ENABLED_MOCK" == true ]]; then
+  case "$action" in
+    head-object)
+      printf 'backup-head-state:remote=%s:meta=%s\n' \
+        "$(test -f "$LIFECYCLE_BACKUP_REMOTE" && echo yes || echo no)" \
+        "$(test -f "$LIFECYCLE_BACKUP_META" && echo yes || echo no)" >>"$LIFECYCLE_CALLS"
+      [[ "${LIFECYCLE_BACKUP_MODE:-}" != head-failure ]] || exit 9
+      [[ -f "$LIFECYCLE_BACKUP_REMOTE" ]] ||
+        { printf '(404)\n' >&2; exit 9; }
+      [[ -f "$LIFECYCLE_BACKUP_META" ]] || exit 9
+      size="$(stat -c %s -- "$LIFECYCLE_BACKUP_REMOTE")" || exit 9
+      # Preserve the exact five-tab-field v1 metadata fixture unchanged.
+      printf '"backupetag01"\t%s\t' "$size"
+      cat -- "$LIFECYCLE_BACKUP_META" || exit 9
+      exit 0
+      ;;
+    put-object)
+      if [[ "${LIFECYCLE_BACKUP_MODE:-}" == put-failure ]]; then exit 9; fi
+      if [[ -f "$LIFECYCLE_BACKUP_REMOTE" ]]; then
+        [[ "$match" == '"backupetag01"' && -z "$none" ]] || exit 9
+      else
+        [[ "$none" == '*' && -z "$match" ]] || exit 9
+      fi
+      [[ -n "$metadata" ]] || exit 9
+      IFS=, read -r schema utc hash format encryption <<< "$metadata"
+      printf '%s\t%s\t%s\t%s\t%s\n' \
+        "${schema#*=}" "${utc#*=}" "${hash#*=}" \
+        "${format#*=}" "${encryption#*=}" > "$LIFECYCLE_BACKUP_META"
+      cp -- "$body" "$LIFECYCLE_BACKUP_REMOTE" || exit 9
+      [[ "${LIFECYCLE_BACKUP_MODE:-}" != lost-response ]] || exit 9
+      exit 0
+      ;;
+    *) exit 99 ;;
+  esac
+fi
 case "$action" in
   head-object)
     case "$LIFECYCLE_MODE" in
@@ -241,6 +292,7 @@ MOCK
   unset CERT_NAME ADDITIONAL_SANS
   unset GPG_SYMMETRIC_KEY CERTBOTBOT_GPG_SECRET ARCHIVE_ENCRYPTION
   unset ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED
+  unset DATED_BACKUP_ENABLED
   export UPLOAD_NO_RENEWAL=false INCLUDE_SUBDOMAINS=true
 }
 
@@ -2584,4 +2636,138 @@ MOCK
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
   cmp -s "$LIFECYCLE_REMOTE" "$ROOT/secure-filename-baseline"
   ! grep -q 'secret-inherited' "$LIFECYCLE_CALLS"
+}
+
+# ADR-033 opt-in backup tests. Broader adversarial and recovery evidence in #83.
+# Freeze the UTC date so the independent CI runner's clock cannot change
+# the expected recovery-key identity or cause a midnight boundary mismatch.
+dated_backup_clock() {
+  cat >"$ROOT/bin/date" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$1" == -u && "$2" == +%Y%m%d ]] || exit 95
+printf '20261020\n'
+MOCK
+  chmod 755 "$ROOT/bin/date"
+}
+
+@test "enabled dated backup publishes exact current candidate bytes after current PUT" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
+  execute --dated-backup-enabled true
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
+  [[ "$output" == *'published=true; backup=confirmed'* ]]
+  [ -f "$LIFECYCLE_BACKUP_REMOTE" ]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:latest.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:archive-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  tar -tzf "$LIFECYCLE_BACKUP_REMOTE" | grep -Fxq './renewal/example.com.conf'
+}
+
+@test "backup enabled ordinary no-op does not publish or create another dated copy" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
+  execute --dated-backup-enabled true
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
+  : >"$LIFECYCLE_CALLS"
+  execute --dated-backup-enabled true
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
+  [[ "$output" == *'published=false; backup=skipped'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "same UTC day forced update conditionally replaces only its managed backup" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
+  execute --dated-backup-enabled true
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
+  : >"$LIFECYCLE_CALLS"
+  execute --dated-backup-enabled true --upload-no-renewal true
+  if [ "$status" -ne 0 ]; then
+    printf '# dated backup status=%s output=%q\n' "$status" "$output"
+    if [[ -f "$LIFECYCLE_CALLS" ]]; then
+      while IFS= read -r trace; do printf '# call: %s\n' "$trace"; done <"$LIFECYCLE_CALLS"
+    fi
+    false
+  fi
+  [[ "$output" == *'published=true; backup=confirmed'* ]]
+  [ "$(grep -Fc 'aws:put-object:fixture-bucket:archive-20261020.tar.gz' "$LIFECYCLE_CALLS")" -eq 1 ]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+}
+
+@test "unrecognized same-day backup identity refuses both remote writes" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
+  printf 'unrelated-private-object' >"$LIFECYCLE_BACKUP_REMOTE"
+  printf 'unknown\t20261020\tbad\ttar.gz\tnone\n' >"$LIFECYCLE_BACKUP_META"
+  cp "$LIFECYCLE_REMOTE" "$ROOT/current-before"
+  execute --dated-backup-enabled true
+  [ "$status" -eq 69 ]
+  [[ "$output" == *'not safely managed'* ]]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/current-before"
+  grep -Fxq unrelated-private-object "$LIFECYCLE_BACKUP_REMOTE"
+}
+
+@test "failed authoritative PUT never attempts dated backup publication" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
+  export LIFECYCLE_PUT_MODE=put-failure
+  execute --dated-backup-enabled true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'S3 archive upload failed'* ]]
+  ! grep -q 'aws:put-object:fixture-bucket:archive-20261020.tar.gz' "$LIFECYCLE_CALLS"
+  [ ! -e "$LIFECYCLE_BACKUP_REMOTE" ]
+}
+
+@test "failed dated PUT reports accepted current as partial success" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
+  export LIFECYCLE_BACKUP_MODE=put-failure
+  execute --dated-backup-enabled true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'current accepted; dated backup write failed or uncertain'* ]]
+  [ "$(grep -c '^aws:put-object:' "$LIFECYCLE_CALLS")" -eq 2 ]
+  [ -f "$LIFECYCLE_REMOTE" ]
+  [ ! -e "$LIFECYCLE_BACKUP_REMOTE" ]
+}
+
+@test "lost response from dated PUT reports uncertainty without rollback" {
+  export LIFECYCLE_BACKUP_ENABLED_MOCK=true
+  dated_backup_clock
+  export LIFECYCLE_BACKUP_MODE=lost-response
+  execute --dated-backup-enabled true
+  [ "$status" -eq 74 ]
+  [[ "$output" == *'current accepted; dated backup write failed or uncertain'* ]]
+  [ -f "$LIFECYCLE_BACKUP_REMOTE" ]
+  cmp -s "$LIFECYCLE_REMOTE" "$LIFECYCLE_BACKUP_REMOTE"
+}
+
+@test "invalid dated backup flag fails before any remote request" {
+  execute --dated-backup-enabled sometimes
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS" 2>/dev/null
 }
