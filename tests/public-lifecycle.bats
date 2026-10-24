@@ -22,6 +22,11 @@ setup() {
 [[ "$1" == --no-cli-pager && "$2" == s3api ]] || exit 99
 action="$3"
 shift 3
+if [[ -n "${GPG_SYMMETRIC_KEY+x}" ||
+  -n "${CERTBOTBOT_GPG_SECRET+x}" ]]; then
+  printf '%s\n' 'aws:secret-inherited' >>"$LIFECYCLE_CALLS"
+  exit 97
+fi
 bucket='' key='' body='' target=''
 while (( $# )); do
   case "$1" in
@@ -104,6 +109,11 @@ MOCK
 #!/usr/bin/env bash
 verb="$1"
 shift
+if [[ -n "${GPG_SYMMETRIC_KEY+x}" ||
+  -n "${CERTBOTBOT_GPG_SECRET+x}" ]]; then
+  printf '%s\n' 'certbot:secret-inherited' >>"$LIFECYCLE_CALLS"
+  exit 97
+fi
 printf 'certbot:%s\n' "$verb" >>"$LIFECYCLE_CALLS"
 config='' work='' logs='' name='' account='' reconcile=false
 sanext=''
@@ -228,6 +238,8 @@ MOCK
   chmod 755 "$ROOT/bin/"*
   export PATH="$ROOT/bin:$PATH"
   unset DOMAIN S3_BUCKET S3_KEY CERT_NAME ADDITIONAL_SANS
+  unset GPG_SYMMETRIC_KEY CERTBOTBOT_GPG_SECRET ARCHIVE_ENCRYPTION
+  unset ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED
   export UPLOAD_NO_RENEWAL=false INCLUDE_SUBDOMAINS=true
 }
 
@@ -2039,4 +2051,92 @@ seed_two_unrelated_lineages() {
   [ "$status" -ne 0 ]
   assert_no_certbot_or_put
   cmp -s "$LIFECYCLE_REMOTE" "$ROOT/two-before-corrupt-fetch.tar.gz"
+}
+
+# Task #42 focuses on the transport security boundary. Task #43 owns the
+# expanded cross-runner encrypted interoperability and negative matrix.
+require_gpg_ocb() {
+  local version major minor patch
+  command -v gpg >/dev/null 2>&1 || skip 'GnuPG not installed'
+  version="$(gpg --version 2>/dev/null)"
+  if [[ ! "$version" =~ gpg\\ \\(GnuPG\\)\\ ([0-9]+)\\.([0-9]+)\\.([0-9]+) ]]; then
+    skip 'GnuPG version unavailable'
+  fi
+  major="${BASH_REMATCH[1]}"
+  minor="${BASH_REMATCH[2]}"
+  patch="${BASH_REMATCH[3]}"
+  if (( major < 2 || (major == 2 &&
+    (minor < 4 || (minor == 4 && patch < 7))) )); then
+    skip 'GnuPG 2.4.7+ required by ADR-031'
+  fi
+}
+
+@test "plaintext mode remains unchanged when no key is configured" {
+  execute --archive-encryption auto
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true'* ]]
+  gzip -t "$LIFECYCLE_REMOTE"
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/example.com.conf'
+}
+
+@test "enabled archive encryption requires a key and never sends plaintext" {
+  execute --archive-encryption gpg-ocb
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+  export GPG_SYMMETRIC_KEY=fixture-strong-password-not-a-real-credential
+  execute --archive-encryption none
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  ! grep -q '^certbot:' "$LIFECYCLE_CALLS"
+}
+
+@test "migrating the same S3 key requires explicit operator backup acknowledgement" {
+  export GPG_SYMMETRIC_KEY=fixture-strong-password-not-a-real-credential
+  execute --archive-encryption gpg-ocb
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  execute --archive-migration plaintext-to-gpg-ocb
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "authenticated migration publishes ciphertext then cleanly decrypts on rerun" {
+  require_gpg_ocb
+  export GPG_SYMMETRIC_KEY=fixture-strong-password-not-a-real-credential
+  execute --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'published=true'* ]]
+  head -c 22 "$LIFECYCLE_REMOTE" |
+    cmp -s - <(printf 'CERTBOTBOT-GPG-OCB-V1\n')
+  ! gzip -t "$LIFECYCLE_REMOTE" 2>/dev/null
+  ! grep -q '^aws:secret-inherited' "$LIFECYCLE_CALLS"
+  ! grep -q '^certbot:secret-inherited' "$LIFECYCLE_CALLS"
+  cp "$LIFECYCLE_REMOTE" "$ROOT/ciphertext-original"
+  : >"$LIFECYCLE_CALLS"
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'checked example.com'* &&
+    "$output" == *'published=false'* ]]
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/ciphertext-original"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  ! grep -q 'secret-inherited' "$LIFECYCLE_CALLS"
+}
+
+@test "wrong decryption key fails before Certbot or remote state replacement" {
+  require_gpg_ocb
+  export GPG_SYMMETRIC_KEY=fixture-strong-password-not-a-real-credential
+  execute --archive-migration plaintext-to-gpg-ocb \
+    --archive-migration-backup-confirmed true
+  [ "$status" -eq 0 ]
+  cp "$LIFECYCLE_REMOTE" "$ROOT/ciphertext-safe"
+  export GPG_SYMMETRIC_KEY=not-the-original-credential
+  : >"$LIFECYCLE_CALLS"
+  execute
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/ciphertext-safe"
+  [[ "$output" != *fixture-strong-password-not-a-real-credential* ]]
+  [[ "$output" != *not-the-original-credential* ]]
 }
