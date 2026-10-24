@@ -1800,3 +1800,243 @@ assert_override_one_key() {
   ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
   cmp -s "$LIFECYCLE_REMOTE" "$ROOT/multi-bad-baseline.tar.gz"
 }
+
+# Story #56 / task #62: artifact-level multi-lineage, independent-runner
+# acceptance. AWS and Certbot are process-local doubles; OpenSSL, GNU tar,
+# gzip, actual built artifacts, and new runner directories remain real.
+
+# Preserve all unselected files, private-key modes, relative symlink targets,
+# and renewal configuration bytes. Do not compare the compressed tar stream:
+# its metadata may change without a managed certificate changing.
+snapshot_shared_lineage() {
+  local label="$1"
+  mkdir -m 700 "$ROOT/snapshot-$label"
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/snapshot-$label"
+}
+
+assert_shared_lineage_unchanged() {
+  local name="$1" label="$2" current part
+  current="$(mktemp -d "$ROOT/inspect.XXXXXXXX")" || return 1
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$current" || return 1
+  cmp -s "$ROOT/snapshot-$label/renewal/$name.conf" \
+    "$current/renewal/$name.conf" || return 1
+  diff -qr "$ROOT/snapshot-$label/archive/$name" \
+    "$current/archive/$name" >/dev/null || return 1
+  for part in cert chain fullchain privkey; do
+    [[ "$(readlink -- "$ROOT/snapshot-$label/live/$name/$part.pem")" == \
+      "$(readlink -- "$current/live/$name/$part.pem")" ]] || return 1
+  done
+  # GNU find's relative name, type, mode, and symlink target report catches
+  # changes to sensitive file permissions and any versioned history.
+  local before after
+  before="$(cd "$ROOT/snapshot-$label" &&
+    find "archive/$name" "live/$name" "renewal/$name.conf" \
+      -printf '%p|%y|%m|%l\n' | LC_ALL=C sort)" || return 1
+  after="$(cd "$current" &&
+    find "archive/$name" "live/$name" "renewal/$name.conf" \
+      -printf '%p|%y|%m|%l\n' | LC_ALL=C sort)" || return 1
+  [[ "$before" == "$after" ]] || return 1
+  rm -rf -- "$current"
+}
+
+assert_one_shared_s3_key() {
+  ! grep -q '^aws:.*:fixture-bucket:' "$LIFECYCLE_CALLS" ||
+    ! grep '^aws:.*:fixture-bucket:' "$LIFECYCLE_CALLS" |
+      grep -v ':fixture-bucket:latest.tar.gz$' >/dev/null
+}
+
+# The extra selected name changes the provider's identity, not its account,
+# key, underlying persisted S3 location, or implicit target selection.
+seed_two_unrelated_lineages() {
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  execute
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"published=true"* ]] || return 1
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"published=true"* ]] || return 1
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/example.com.conf' ||
+    return 1
+  tar -tzf "$LIFECYCLE_REMOTE" | grep -Fxq './renewal/other.org.conf' ||
+    return 1
+}
+
+@test "five clean runners preserve two unrelated lineages, account and same archive" {
+  local runner
+  for runner in a b c d e; do
+    mkdir -m 700 "$ROOT/shared-runner-$runner"
+  done
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/shared-runner-a"
+  execute
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued example.com"* && "$output" == *"published=true"* ]]
+  snapshot_shared_lineage original
+  tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
+    >"$ROOT/shared-account-original.json"
+
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/shared-runner-b"
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  : >"$LIFECYCLE_CALLS"
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued other.org"* && "$output" == *"published=true"* ]]
+  assert_shared_lineage_unchanged example.com original
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_one_shared_s3_key
+  snapshot_shared_lineage second
+
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/shared-runner-c"
+  : >"$LIFECYCLE_CALLS"
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checked other.org"* && "$output" == *"published=false"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  assert_shared_lineage_unchanged example.com original
+
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/shared-runner-d"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  export LIFECYCLE_MODE=renew-changed
+  : >"$LIFECYCLE_CALLS"
+  execute --cert-name example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checked example.com"* && "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_shared_lineage_unchanged other.org second
+  ! tar -xOf "$LIFECYCLE_REMOTE" ./archive/example.com/cert1.pem |
+    cmp -s - "$ROOT/snapshot-original/archive/example.com/cert1.pem"
+  assert_one_shared_s3_key
+
+  export LIFECYCLE_RUNNER_TMPDIR="$ROOT/shared-runner-e"
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  export LIFECYCLE_MODE=ok
+  : >"$LIFECYCLE_CALLS"
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checked other.org"* && "$output" == *"published=false"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  assert_shared_lineage_unchanged other.org second
+  tar -xOf "$LIFECYCLE_REMOTE" \
+    ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json \
+    | cmp -s - "$ROOT/shared-account-original.json"
+  [ "$(tar -tzf "$LIFECYCLE_REMOTE" | grep -c '^./renewal/[^/]*\.conf$')" -eq 2 ]
+  for runner in a b c d e; do
+    [ -z "$(find "$ROOT/shared-runner-$runner" -mindepth 1 -print -quit)" ]
+  done
+}
+
+@test "two explicitly distinct lineages may share exact DNS SANs" {
+  execute
+  [ "$status" -eq 0 ]
+  snapshot_shared_lineage overlapping
+  export LIFECYCLE_EXPECTED_CERT_NAME=second.example.net
+  : >"$LIFECYCLE_CALLS"
+  execute --cert-name second.example.net
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issued second.example.net"* &&
+    "$output" == *"published=true"* ]]
+  [ "$(grep -c '^certbot:certonly$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  assert_shared_lineage_unchanged example.com overlapping
+  tar -tzf "$LIFECYCLE_REMOTE" |
+    grep -Fxq './renewal/second.example.net.conf'
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  execute --cert-name example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"published=false"* ]]
+  ! grep -q '^certbot:certonly$' "$LIFECYCLE_CALLS"
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+}
+
+@test "invalid selected identity cannot mutate two archived lineages" {
+  seed_two_unrelated_lineages
+  cp "$LIFECYCLE_REMOTE" "$ROOT/two-before-invalid-name.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  execute --cert-name '*.other.org'
+  [ "$status" -eq 64 ]
+  ! grep -q '^aws:' "$LIFECYCLE_CALLS"
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/two-before-invalid-name.tar.gz"
+}
+
+@test "corrupt unselected lineage blocks selected operation before Certbot and PutObject" {
+  seed_two_unrelated_lineages
+  mkdir -m 700 "$ROOT/incomplete-shared"
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/incomplete-shared"
+  rm "$ROOT/incomplete-shared/live/other.org/privkey.pem"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/incomplete-shared" .
+  cp "$LIFECYCLE_REMOTE" "$ROOT/two-incomplete-baseline.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  execute --cert-name example.com
+  [ "$status" -eq 65 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/two-incomplete-baseline.tar.gz"
+}
+
+@test "missing existing account in a two-lineage archive never registers or publishes" {
+  seed_two_unrelated_lineages
+  mkdir -m 700 "$ROOT/missing-shared-account"
+  tar -xzf "$LIFECYCLE_REMOTE" -C "$ROOT/missing-shared-account"
+  rm "$ROOT/missing-shared-account/accounts/acme-v02.api.letsencrypt.org/directory/account-id/private_key.json"
+  tar -czf "$LIFECYCLE_REMOTE" -C "$ROOT/missing-shared-account" .
+  cp "$LIFECYCLE_REMOTE" "$ROOT/two-no-account-baseline.tar.gz"
+  : >"$LIFECYCLE_CALLS"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  execute --cert-name example.com
+  [ "$status" -ne 0 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/two-no-account-baseline.tar.gz"
+}
+
+@test "failed selected renewal preserves both lineages and last S3 bytes" {
+  seed_two_unrelated_lineages
+  snapshot_shared_lineage failedrenew
+  cp "$LIFECYCLE_REMOTE" "$ROOT/two-before-renew-error.tar.gz"
+  export LIFECYCLE_MODE=certbot-failure
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  : >"$LIFECYCLE_CALLS"
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 74 ]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  ! grep -q '^aws:put-object:' "$LIFECYCLE_CALLS"
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/two-before-renew-error.tar.gz"
+  assert_shared_lineage_unchanged example.com failedrenew
+  assert_shared_lineage_unchanged other.org failedrenew
+}
+
+@test "two-lineage PutObject refusal preserves mocked remote but reports uncertainty" {
+  seed_two_unrelated_lineages
+  cp "$LIFECYCLE_REMOTE" "$ROOT/two-before-put-error.tar.gz"
+  export LIFECYCLE_EXPECTED_CERT_NAME=other.org
+  export LIFECYCLE_MODE=renew-changed
+  export LIFECYCLE_PUT_MODE=put-failure
+  : >"$LIFECYCLE_CALLS"
+  execute_domain other.org --cert-name other.org
+  [ "$status" -eq 74 ]
+  [[ "$output" != *"published=true"* ]]
+  [ "$(grep -c '^certbot:renew$' "$LIFECYCLE_CALLS")" -eq 1 ]
+  [ "$(grep -c '^aws:put-object:fixture-bucket:latest.tar.gz$' \
+    "$LIFECYCLE_CALLS")" -eq 1 ]
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/two-before-put-error.tar.gz"
+}
+
+@test "bad GetObject on two-lineage archive does not invoke provider or PutObject" {
+  seed_two_unrelated_lineages
+  cp "$LIFECYCLE_REMOTE" "$ROOT/two-before-corrupt-fetch.tar.gz"
+  export LIFECYCLE_EXPECTED_CERT_NAME=example.com
+  export LIFECYCLE_MODE=get-corrupt
+  : >"$LIFECYCLE_CALLS"
+  execute --cert-name example.com
+  [ "$status" -ne 0 ]
+  assert_no_certbot_or_put
+  cmp -s "$LIFECYCLE_REMOTE" "$ROOT/two-before-corrupt-fetch.tar.gz"
+}

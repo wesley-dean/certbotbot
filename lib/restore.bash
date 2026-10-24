@@ -49,8 +49,12 @@ certbotbot_workspace_create() {
 ## @details
 ## Accepts an owned, canonical, empty-target workspace with mode 0700.
 ## Copies the archive into a fresh 0700 child, validates that precise copy
-## before extraction, and extracts it under an inactive staging root using
-## GNU tar without stored owners or unmasked permissions. On success, a
+## before extraction, and extracts it under an inactive staging root with GNU
+## tar without stored ownership. Since archive validation has already rejected
+## group/world-writable and unsafe member modes, safe original file/directory
+## permissions are retained inside the private staging tree instead of being
+## silently narrowed by the caller's umask on each restore/republication. This
+## preserves unselected lineages' permission metadata under ADR-030. On success, a
 ## rename installs the staging directory at WORKSPACE/config; on any error
 ## only adapter-owned staging is removed. The workspace and unrelated files
 ## are preserved. No secret data or untrusted tar error text is printed.
@@ -127,7 +131,7 @@ certbotbot_archive_restore() {
     return 65
   fi
   if ! (umask 077; tar --extract --gzip --file "$staged" \
-    --directory "$root" --no-same-owner --no-same-permissions \
+    --directory "$root" --no-same-owner --same-permissions \
     --no-overwrite-dir >/dev/null 2>&1); then
     rm -rf -- "$temp"
     printf '%s\n' 'certbotbot: isolated archive extraction failed' >&2
