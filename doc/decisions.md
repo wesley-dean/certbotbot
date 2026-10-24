@@ -367,3 +367,19 @@ eligibility in ADR-027, retaining their other security obligations.
 
 See [ADR-030](adr/ADR-030-shared-archive-multiple-lineages.md).
 
+### ADR-031: Opt-In Authenticated GnuPG Encryption of the Shared Archive
+
+The one existing S3 archive may optionally be wrapped in a versioned,
+authenticated GnuPG AES-256/OCB ciphertext envelope; its decrypted gzip/tar
+contents and selected-only multi-lineage semantics remain unchanged.
+A nonempty `GPG_SYMMETRIC_KEY` exported secret enables encryption by default,
+while nonsecret mode and migration settings use established CLI > environment >
+literal file precedence. A plaintext-to-encrypted transition is deliberately
+one-way and requires explicit migration authorization plus operator attestation
+of a recoverable external backup; unknown formats, wrong keys and broken
+authentication never fall back or authorize publication. This narrowly extends
+ADRs 022/028's transport boundary, retaining their one-key, fail-closed
+validation and uncertainty guarantees.
+
+See [ADR-031](adr/ADR-031-opt-in-authenticated-gpg-archive-encryption.md).
+
