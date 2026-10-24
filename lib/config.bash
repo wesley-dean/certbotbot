@@ -55,7 +55,7 @@ certbotbot_read_env_file() {
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
     case "$key" in
-      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|UPLOAD_NO_RENEWAL) ;;
+      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|UPLOAD_NO_RENEWAL|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED) ;;
       *) certbotbot_error 'unknown configuration key'; return 64 ;;
     esac
     if [[ -n "${seen[$key]+x}" ]]; then
@@ -106,12 +106,12 @@ certbotbot_config_resolve() {
   while (( i < ${#args[@]} )); do
     arg="${args[i]}"
     case "$arg" in
-      --config|--domain|--san|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--upload-no-renewal)
+      --config|--domain|--san|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed)
         (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --config=*|--domain=*|--san=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--upload-no-renewal=*)
+      --config=*|--domain=*|--san=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -154,6 +154,9 @@ certbotbot_config_resolve() {
       --s3-bucket) key=S3_BUCKET ;;
       --s3-key) key=S3_KEY ;;
       --upload-no-renewal) key=UPLOAD_NO_RENEWAL ;;
+      --archive-encryption) key=ARCHIVE_ENCRYPTION ;;
+      --archive-migration) key=ARCHIVE_MIGRATION ;;
+      --archive-migration-backup-confirmed) key=ARCHIVE_MIGRATION_BACKUP_CONFIRMED ;;
     esac
     if [[ "$arg" != --config ]]; then
       [[ -z "${cli[$key]+x}" ]] || { certbotbot_error 'duplicate option'; return 64; }
@@ -167,8 +170,8 @@ certbotbot_config_resolve() {
     certbotbot_error 'configuration file is missing'
     return 64
   fi
-  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [S3_KEY]=latest.tar.gz [UPLOAD_NO_RENEWAL]=false)
-  for name in DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET S3_KEY UPLOAD_NO_RENEWAL; do
+  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [S3_KEY]=latest.tar.gz [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false)
+  for name in DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET S3_KEY UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     value="${defaults[$name]}"
     if [[ -n "${CERTBOTBOT_FILE_VALUES[$name]+x}" ]]; then value="${CERTBOTBOT_FILE_VALUES[$name]}"; fi
     if [[ -n "${!name+x}" ]]; then value="${!name}"; fi
@@ -199,10 +202,64 @@ certbotbot_config_resolve() {
     certbotbot_error 'too many additional DNS identities'
     return 64
   fi
-  for name in INCLUDE_SUBDOMAINS UPLOAD_NO_RENEWAL; do
+  for name in INCLUDE_SUBDOMAINS UPLOAD_NO_RENEWAL ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     key="CERTBOTBOT_$name"
     case "${!key}" in true|false) ;; *) certbotbot_error 'invalid boolean setting'; return 64 ;; esac
   done
+  # GPG_SYMMETRIC_KEY is never a CLI or .env value. It is captured and
+  # removed from the exported environment by the public entrypoint.
+  case "$CERTBOTBOT_ARCHIVE_ENCRYPTION" in
+    auto)
+      if [[ -n "${CERTBOTBOT_GPG_SECRET:-}" ]]; then
+        CERTBOTBOT_ARCHIVE_ENCRYPTION=gpg-ocb
+      else
+        CERTBOTBOT_ARCHIVE_ENCRYPTION=none
+      fi
+      ;;
+    none)
+      if [[ -n "${CERTBOTBOT_GPG_SECRET:-}" ]]; then
+        certbotbot_error 'encryption key supplied with plaintext mode'
+        return 64
+      fi
+      ;;
+    gpg-ocb)
+      if [[ -z "${CERTBOTBOT_GPG_SECRET:-}" ]]; then
+        certbotbot_error 'encrypted mode requires a key'
+        return 64
+      fi
+      ;;
+    *) certbotbot_error 'invalid archive encryption mode'; return 64 ;;
+  esac
+  case "$CERTBOTBOT_ARCHIVE_MIGRATION" in
+    none)
+      if [[ "$CERTBOTBOT_ARCHIVE_MIGRATION_BACKUP_CONFIRMED" == true ]]; then
+        certbotbot_error 'backup confirmation requires migration'
+        return 64
+      fi
+      ;;
+    plaintext-to-gpg-ocb)
+      if [[ "$CERTBOTBOT_ARCHIVE_ENCRYPTION" != gpg-ocb ||
+        "$CERTBOTBOT_ARCHIVE_MIGRATION_BACKUP_CONFIRMED" != true ]]; then
+        certbotbot_error 'encryption migration requires key and backup confirmation'
+        return 64
+      fi
+      ;;
+    *) certbotbot_error 'invalid archive migration mode'; return 64 ;;
+  esac
+  if [[ "$CERTBOTBOT_ARCHIVE_ENCRYPTION" == gpg-ocb &&
+    ( "$CERTBOTBOT_GPG_SECRET" == * { certbotbot_error 'DNS identity is required'; return 64; }
+  [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
+  [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* && "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
+}
+\n'* ||
+      "$CERTBOTBOT_GPG_SECRET" == * { certbotbot_error 'DNS identity is required'; return 64; }
+  [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
+  [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* && "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
+}
+\r'* ) ]]; then
+    certbotbot_error 'invalid encryption key'
+    return 64
+  fi
   [[ -n "$CERTBOTBOT_DOMAIN" ]] || { certbotbot_error 'DNS identity is required'; return 64; }
   [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] || { certbotbot_error 'S3 bucket and key are required'; return 64; }
   [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* && "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] || { certbotbot_error 'invalid S3 object key'; return 64; }
