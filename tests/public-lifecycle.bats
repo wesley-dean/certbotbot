@@ -2059,7 +2059,7 @@ require_gpg_ocb() {
   local version major minor patch
   command -v gpg >/dev/null 2>&1 || skip 'GnuPG not installed'
   version="$(gpg --version 2>/dev/null)"
-  if [[ ! "$version" =~ gpg\\ \\(GnuPG\\)\\ ([0-9]+)\\.([0-9]+)\\.([0-9]+) ]]; then
+  if [[ ! "$version" =~ gpg\ \(GnuPG\)\ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
     skip 'GnuPG version unavailable'
   fi
   major="${BASH_REMATCH[1]}"
