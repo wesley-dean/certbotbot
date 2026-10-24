@@ -119,7 +119,7 @@ certbotbot_backup_head_valid() {
   [[ "$etag" =~ ^\"[A-Za-z0-9_-]{1,128}\"$ &&
     "$size" =~ ^[1-9][0-9]*$ &&
     ( "$expected_size" == 0 || "$size" == "$expected_size" ) &&
-    "$schema" == v1 && "$utc" == "$CERTBOTBOT_FILENAME_DATE" &&
+    "$schema" == v1 && "$utc" == "$expected_date" &&
     "$hash" == "$CERTBOTBOT_BACKUP_KEY_HASH" &&
     "$format" == tar.gz &&
     "$encryption" == "$CERTBOTBOT_BACKUP_ENCRYPTION" ]] || return 1
