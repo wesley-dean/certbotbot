@@ -11,6 +11,8 @@
 ## other source's lower-tier alternative. Backup-key template configuration
 ## selects naming only, not publication or deletion. DATED_BACKUP_ENABLED
 ## independently opts into a guarded second S3 publication after success.
+## BACKUP_RETENTION_COUNT is a separate default-zero destructive opt-in;
+## it requires a verified current and dated backup publication (ADR-034).
 ## Additional SAN input follows ADR-029: repeated --san values select the
 ## entire CLI collection; exported ADDITIONAL_SANS replaces the literal
 ## file list, and file/default values are consulted only when higher sources
@@ -60,7 +62,7 @@ certbotbot_read_env_file() {
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
     case "$key" in
-      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|BACKUP_KEY_TEMPLATE|DATED_BACKUP_ENABLED|UPLOAD_NO_RENEWAL|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED) ;;
+      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|BACKUP_KEY_TEMPLATE|DATED_BACKUP_ENABLED|BACKUP_RETENTION_COUNT|UPLOAD_NO_RENEWAL|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED) ;;
       *) certbotbot_error 'unknown configuration key'; return 64 ;;
     esac
     if [[ -n "${seen[$key]+x}" ]]; then
@@ -111,12 +113,12 @@ certbotbot_config_resolve() {
   while (( i < ${#args[@]} )); do
     arg="${args[i]}"
     case "$arg" in
-      --config|--domain|--san|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed)
+      --config|--domain|--san|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed)
         (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --config=*|--domain=*|--san=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*)
+      --config=*|--domain=*|--san=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -161,6 +163,7 @@ certbotbot_config_resolve() {
       --s3-key-template) key=S3_KEY_TEMPLATE ;;
       --backup-key-template) key=BACKUP_KEY_TEMPLATE ;;
       --dated-backup-enabled) key=DATED_BACKUP_ENABLED ;;
+      --backup-retention-count) key=BACKUP_RETENTION_COUNT ;;
       --upload-no-renewal) key=UPLOAD_NO_RENEWAL ;;
       --archive-encryption) key=ARCHIVE_ENCRYPTION ;;
       --archive-migration) key=ARCHIVE_MIGRATION ;;
@@ -178,8 +181,8 @@ certbotbot_config_resolve() {
     certbotbot_error 'configuration file is missing'
     return 64
   fi
-  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false)
-  for name in DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
+  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [BACKUP_RETENTION_COUNT]=0 [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false)
+  for name in DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     value="${defaults[$name]}"
     if [[ -n "${CERTBOTBOT_FILE_VALUES[$name]+x}" ]]; then value="${CERTBOTBOT_FILE_VALUES[$name]}"; fi
     if [[ -n "${!name+x}" ]]; then value="${!name}"; fi
@@ -272,6 +275,23 @@ certbotbot_config_resolve() {
     key="CERTBOTBOT_$name"
     case "${!key}" in true|false) ;; *) certbotbot_error 'invalid boolean setting'; return 64 ;; esac
   done
+  # ADR-034: count is a canonical, bounded decimal, independent of
+  # dated publication. Nonzero requires separately enabled backup writes.
+  if [[ "$CERTBOTBOT_BACKUP_RETENTION_COUNT" != 0 ]]; then
+    if [[ ! "$CERTBOTBOT_BACKUP_RETENTION_COUNT" =~ ^[1-9][0-9]*$ ||
+      ${#CERTBOTBOT_BACKUP_RETENTION_COUNT} -gt 5 ]]; then
+      certbotbot_error 'invalid backup retention count'
+      return 64
+    fi
+    if (( 10#$CERTBOTBOT_BACKUP_RETENTION_COUNT > 10000 )); then
+      certbotbot_error 'invalid backup retention count'
+      return 64
+    fi
+    if [[ "$CERTBOTBOT_DATED_BACKUP_ENABLED" != true ]]; then
+      certbotbot_error 'backup retention requires dated publication'
+      return 64
+    fi
+  fi
   # GPG_SYMMETRIC_KEY is never a CLI or .env value. It is captured and
   # removed from the exported environment by the public entrypoint.
   case "$CERTBOTBOT_ARCHIVE_ENCRYPTION" in

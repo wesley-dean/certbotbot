@@ -79,6 +79,13 @@ certbotbot_s3_publish() {
   local workspace selected bucket key changed override config physical candidate
   CERTBOTBOT_S3_PUBLISHED=''
   CERTBOTBOT_S3_BACKUP_STATUS=disabled
+  CERTBOTBOT_RETENTION_STATUS=disabled
+  # Read by the separate public status reporter in src/main.bash.
+  # shellcheck disable=SC2034
+  CERTBOTBOT_RETENTION_DELETED=0
+  if [[ "${CERTBOTBOT_BACKUP_RETENTION_COUNT:-0}" != 0 ]]; then
+    CERTBOTBOT_RETENTION_STATUS=skipped
+  fi
   if [[ "${CERTBOTBOT_DATED_BACKUP_ENABLED:-false}" == true ]]; then
     CERTBOTBOT_S3_BACKUP_STATUS=pending
   fi
@@ -178,6 +185,12 @@ certbotbot_s3_publish() {
     # Consumed by the public CLI status reporter in src/main.bash.
     # shellcheck disable=SC2034
     CERTBOTBOT_S3_BACKUP_STATUS=confirmed
+    if [[ "${CERTBOTBOT_BACKUP_RETENTION_COUNT:-0}" != 0 ]]; then
+      certbotbot_retention_apply "$workspace" "$bucket" "$key" || return $?
+      # Consumed by the public status reporter in src/main.bash.
+      # shellcheck disable=SC2034
+      CERTBOTBOT_RETENTION_STATUS=completed
+    fi
   fi
   return 0
 }

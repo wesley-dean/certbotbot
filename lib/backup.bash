@@ -113,13 +113,13 @@ certbotbot_backup_head() {
 ## @retval 0 Identity, nonzero size, and safe ETag are confirmed.
 ## @retval 1 Unverified, mismatched or malformed fields.
 certbotbot_backup_head_valid() {
-  local row="$1" expected_size="$2"
+  local row="$1" expected_size="$2" expected_date="${3:-$CERTBOTBOT_FILENAME_DATE}"
   local etag size schema utc hash format encryption
   IFS=$'\t' read -r etag size schema utc hash format encryption <<< "$row"
   [[ "$etag" =~ ^\"[A-Za-z0-9_-]{1,128}\"$ &&
     "$size" =~ ^[1-9][0-9]*$ &&
     ( "$expected_size" == 0 || "$size" == "$expected_size" ) &&
-    "$schema" == v1 && "$utc" == "$CERTBOTBOT_FILENAME_DATE" &&
+    "$schema" == v1 && "$utc" == "$expected_date" &&
     "$hash" == "$CERTBOTBOT_BACKUP_KEY_HASH" &&
     "$format" == tar.gz &&
     "$encryption" == "$CERTBOTBOT_BACKUP_ENCRYPTION" ]] || return 1

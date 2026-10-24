@@ -141,6 +141,13 @@ jobs:
               --filter 'dated recovery object|fresh runner reads current|UTC date change|backup post-PUT HEAD|backup HEAD denial|foreign backup scope|unsupported ZIP|tampered downloaded|encrypted dated copy|wrong key cannot' \
               tests/public-lifecycle.bats
 
+      # Run destructive-contract mocks immediately after artifact generation
+      # so any failed no-delete or conditional-put assertion is visible in TAP.
+      - name: Verify guarded retention before full artifact matrix
+        run: |
+          BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
+            bats --formatter tap tests/retention.bats
+
       - name: Run Bats tests for every artifact flavor
         id: bats
         continue-on-error: true
