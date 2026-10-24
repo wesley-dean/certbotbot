@@ -194,3 +194,17 @@ teardown() {
   [ "$status" -eq 74 ]
   ! grep -q '^delete-object|' "$RETENTION_MOCK_CALLS"
 }
+
+@test "authoritative current key overlapping retention prefix is refused at preflight" {
+  run bash -c '
+    source "$BASH_STARTER_ARTIFACT" --help >/dev/null || exit $?
+    date() { printf "20261020\n"; }
+    certbotbot_config_resolve --s3-bucket bucket \
+      --s3-key archive-current.tar.gz \
+      --dated-backup-enabled true --backup-retention-count 2 example.com || exit $?
+    certbotbot_filename_resolve || exit $?
+    certbotbot_retention_preflight
+  '
+  [ "$status" -eq 64 ]
+  [ ! -e "$RETENTION_MOCK_CALLS" ]
+}
