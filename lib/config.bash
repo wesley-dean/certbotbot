@@ -6,6 +6,10 @@
 ## Configuration is never sourced or evaluated. Values are captured by literal
 ## assignment and overlaid according to the public MVP configuration contract.
 ## Invalid configuration fails before any cloud operation is attempted.
+## Legacy S3_KEY remains literal. S3_KEY_TEMPLATE and S3_KEY are mutually
+## exclusive at one precedence tier; a higher-tier selection masks the
+## other source's lower-tier alternative. Backup-key template configuration
+## selects naming only, not publication or deletion.
 ## Additional SAN input follows ADR-029: repeated --san values select the
 ## entire CLI collection; exported ADDITIONAL_SANS replaces the literal
 ## file list, and file/default values are consulted only when higher sources
@@ -55,7 +59,7 @@ certbotbot_read_env_file() {
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
     case "$key" in
-      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|UPLOAD_NO_RENEWAL|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED) ;;
+      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|BACKUP_KEY_TEMPLATE|UPLOAD_NO_RENEWAL|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED) ;;
       *) certbotbot_error 'unknown configuration key'; return 64 ;;
     esac
     if [[ -n "${seen[$key]+x}" ]]; then
@@ -106,12 +110,12 @@ certbotbot_config_resolve() {
   while (( i < ${#args[@]} )); do
     arg="${args[i]}"
     case "$arg" in
-      --config|--domain|--san|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed)
+      --config|--domain|--san|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed)
         (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --config=*|--domain=*|--san=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*)
+      --config=*|--domain=*|--san=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -153,6 +157,8 @@ certbotbot_config_resolve() {
       --cert-name) key=CERT_NAME ;;
       --s3-bucket) key=S3_BUCKET ;;
       --s3-key) key=S3_KEY ;;
+      --s3-key-template) key=S3_KEY_TEMPLATE ;;
+      --backup-key-template) key=BACKUP_KEY_TEMPLATE ;;
       --upload-no-renewal) key=UPLOAD_NO_RENEWAL ;;
       --archive-encryption) key=ARCHIVE_ENCRYPTION ;;
       --archive-migration) key=ARCHIVE_MIGRATION ;;
@@ -170,14 +176,72 @@ certbotbot_config_resolve() {
     certbotbot_error 'configuration file is missing'
     return 64
   fi
-  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [S3_KEY]=latest.tar.gz [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false)
-  for name in DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET S3_KEY UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
+  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false)
+  for name in DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     value="${defaults[$name]}"
     if [[ -n "${CERTBOTBOT_FILE_VALUES[$name]+x}" ]]; then value="${CERTBOTBOT_FILE_VALUES[$name]}"; fi
     if [[ -n "${!name+x}" ]]; then value="${!name}"; fi
     if [[ -n "${cli[$name]+x}" ]]; then value="${cli[$name]}"; fi
     printf -v "CERTBOTBOT_$name" '%s' "$value"
   done
+  # S3_KEY and S3_KEY_TEMPLATE are one logical choice. Do not resolve
+  # independently: a higher-tier literal must mask a lower-tier template.
+  CERTBOTBOT_S3_KEY_IS_TEMPLATE=false
+  CERTBOTBOT_S3_KEY=latest.tar.gz
+  if [[ -n "${cli[S3_KEY]+x}" || -n "${cli[S3_KEY_TEMPLATE]+x}" ]]; then
+    if [[ -n "${cli[S3_KEY]+x}" && -n "${cli[S3_KEY_TEMPLATE]+x}" ]]; then
+      certbotbot_error 'conflicting current archive key settings'
+      return 64
+    fi
+    if [[ -n "${cli[S3_KEY_TEMPLATE]+x}" ]]; then
+      CERTBOTBOT_S3_KEY="${cli[S3_KEY_TEMPLATE]}"
+      CERTBOTBOT_S3_KEY_IS_TEMPLATE=true
+    else
+      CERTBOTBOT_S3_KEY="${cli[S3_KEY]}"
+    fi
+  elif [[ -n "${S3_KEY+x}" || -n "${S3_KEY_TEMPLATE+x}" ]]; then
+    if [[ -n "${S3_KEY+x}" && -n "${S3_KEY_TEMPLATE+x}" ]]; then
+      certbotbot_error 'conflicting current archive key settings'
+      return 64
+    fi
+    if [[ -n "${S3_KEY_TEMPLATE+x}" ]]; then
+      CERTBOTBOT_S3_KEY="$S3_KEY_TEMPLATE"
+      CERTBOTBOT_S3_KEY_IS_TEMPLATE=true
+    else
+      CERTBOTBOT_S3_KEY="$S3_KEY"
+    fi
+  elif [[ -n "${CERTBOTBOT_FILE_VALUES[S3_KEY]+x}" ||
+    -n "${CERTBOTBOT_FILE_VALUES[S3_KEY_TEMPLATE]+x}" ]]; then
+    if [[ -n "${CERTBOTBOT_FILE_VALUES[S3_KEY]+x}" &&
+      -n "${CERTBOTBOT_FILE_VALUES[S3_KEY_TEMPLATE]+x}" ]]; then
+      certbotbot_error 'conflicting current archive key settings'
+      return 64
+    fi
+    if [[ -n "${CERTBOTBOT_FILE_VALUES[S3_KEY_TEMPLATE]+x}" ]]; then
+      CERTBOTBOT_S3_KEY="${CERTBOTBOT_FILE_VALUES[S3_KEY_TEMPLATE]}"
+      CERTBOTBOT_S3_KEY_IS_TEMPLATE=true
+    else
+      CERTBOTBOT_S3_KEY="${CERTBOTBOT_FILE_VALUES[S3_KEY]}"
+    fi
+  fi
+  CERTBOTBOT_BACKUP_KEY_TEMPLATE='archive-{YEAR}{MONTH}{DOM}.tar.gz'
+  CERTBOTBOT_BACKUP_KEY_TEMPLATE_EXPLICIT=false
+  if [[ -n "${CERTBOTBOT_FILE_VALUES[BACKUP_KEY_TEMPLATE]+x}" ]]; then
+    CERTBOTBOT_BACKUP_KEY_TEMPLATE="${CERTBOTBOT_FILE_VALUES[BACKUP_KEY_TEMPLATE]}"
+    CERTBOTBOT_BACKUP_KEY_TEMPLATE_EXPLICIT=true
+  fi
+  if [[ -n "${BACKUP_KEY_TEMPLATE+x}" ]]; then
+    CERTBOTBOT_BACKUP_KEY_TEMPLATE="$BACKUP_KEY_TEMPLATE"
+    CERTBOTBOT_BACKUP_KEY_TEMPLATE_EXPLICIT=true
+  fi
+  if [[ -n "${cli[BACKUP_KEY_TEMPLATE]+x}" ]]; then
+    CERTBOTBOT_BACKUP_KEY_TEMPLATE="${cli[BACKUP_KEY_TEMPLATE]}"
+    # Consumed by lib/filename.bash after config resolution.
+    # shellcheck disable=SC2034
+    CERTBOTBOT_BACKUP_KEY_TEMPLATE_EXPLICIT=true
+  fi
+  [[ -n "$CERTBOTBOT_S3_KEY" && -n "$CERTBOTBOT_BACKUP_KEY_TEMPLATE" ]] ||
+    { certbotbot_error 'archive object name cannot be empty'; return 64; }
   # The SAN list has collection-level, not element-level, precedence.
   # Reject empty comma fields before read -a, which otherwise drops some.
   CERTBOTBOT_ADDITIONAL_SANS=()
@@ -256,7 +320,9 @@ certbotbot_config_resolve() {
     { certbotbot_error 'DNS identity is required'; return 64; }
   [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] ||
     { certbotbot_error 'S3 bucket and key are required'; return 64; }
-  [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* &&
-    "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] ||
-    { certbotbot_error 'invalid S3 object key'; return 64; }
+  if [[ "$CERTBOTBOT_S3_KEY_IS_TEMPLATE" != true ]]; then
+    [[ "$CERTBOTBOT_S3_KEY" != -* && "$CERTBOTBOT_S3_KEY" != */* &&
+      "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] ||
+      { certbotbot_error 'invalid S3 object key'; return 64; }
+  fi
 }
