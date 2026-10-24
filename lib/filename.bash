@@ -76,6 +76,8 @@ certbotbot_filename_date() {
     certbotbot_filename_error 'invalid UTC calendar date'
     return 64
   fi
+  # This frozen snapshot is exposed to the later backup publisher.
+  # shellcheck disable=SC2034
   CERTBOTBOT_FILENAME_DATE="$snapshot"
 }
 
@@ -106,6 +108,8 @@ certbotbot_filename_render() {
   local -A certbotbot_filename_context=()
   certbotbot_filename_context[YEAR]="$CERTBOTBOT_FILENAME_YEAR"
   certbotbot_filename_context[MONTH]="$CERTBOTBOT_FILENAME_MONTH"
+  # mktext addresses this associative array by name using Bash dynamic scope.
+  # shellcheck disable=SC2034
   certbotbot_filename_context[DOM]="$CERTBOTBOT_FILENAME_DOM"
   safe="${template//\{YEAR\}/Y}"
   safe="${safe//\{MONTH\}/M}"
@@ -173,6 +177,8 @@ certbotbot_filename_resolve() {
       certbotbot_filename_error 'current and backup archive keys collide'
       return 64
     fi
+    # Backup publishing (task #82) consumes this resolved cross-module key.
+    # shellcheck disable=SC2034
     CERTBOTBOT_BACKUP_KEY="$REPLY"
   fi
   CERTBOTBOT_S3_KEY="$current"
