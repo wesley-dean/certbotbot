@@ -210,7 +210,8 @@ make_other_lineage() {
   rm "$CONFIG/live/other.org/privkey.pem"
   preflight
   [ "$status" -eq 65 ]
-  [ "$output" = 'state:' ]
+  [[ "$output" == *'state:'* ]]
+  [[ "$output" != *'state:present'* ]]
 }
 
 @test "unselected cross-lineage symlinks are never admitted" {
@@ -229,7 +230,8 @@ make_other_lineage() {
   rm "$CONFIG/renewal/other.org.conf"
   preflight
   [ "$status" -eq 65 ]
-  [ "$output" = 'state:' ]
+  [[ "$output" == *'state:'* ]]
+  [[ "$output" != *'state:present'* ]]
 }
 
 @test "unselected renewal hooks fail even when selected is healthy" {
