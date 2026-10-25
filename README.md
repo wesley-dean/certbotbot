@@ -20,6 +20,11 @@ checks. Container registries and downstream certificate installation have
 separate acceptance and responsibility boundaries. Docker and Podman are not
 required to run the standalone Bash executable.
 
+For the producer's complete flag, exported-environment and literal `.env`
+reference, see [configuration and CLI reference](doc/configuration-reference.md).
+The reference separates application inputs from external AWS/Certbot settings
+and documents encryption, backup and retention opt-ins.
+
 ## Adapt the Starter
 
 A new project should normally begin by changing `PROJECT_NAME` in the Makefile,
