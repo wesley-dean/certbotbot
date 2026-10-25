@@ -27,6 +27,7 @@ mktext() {
   printf '%s' "$value"
 }
 RENDERER
+    cat "$BATS_TEST_DIRNAME/../lib/client-crypto.bash"
     cat "$BATS_TEST_DIRNAME/../lib/client-s3.bash"
     cat "$BATS_TEST_DIRNAME/../lib/archive.bash"
     cat "$BATS_TEST_DIRNAME/../lib/restore.bash"
@@ -38,6 +39,9 @@ RENDERER
   cat > "$CASE_ROOT/bin/aws" <<'AWS'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${GPG_SYMMETRIC_KEY+x}" || -n "${CERTBOTBOT_CLIENT_GPG_SECRET+x}" ]]; then
+  exit 97
+fi
 if [[ "${1-}" == --version ]]; then
   printf 'aws-cli/2.22.0 Python/3.12\n'
   exit 0
@@ -82,6 +86,7 @@ teardown() {
 
 invoke() {
   run env -u S3_BUCKET -u S3_KEY -u S3_KEY_TEMPLATE \
+    -u GPG_SYMMETRIC_KEY -u ARCHIVE_ENCRYPTION \
     PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
     MOCK_S3_MODE="${MOCK_S3_MODE:-success}" \
     bash "$CLIENT" --destination "$CASE_ROOT/private/certs" "$@"
@@ -246,6 +251,124 @@ invoke() {
     S3_BUCKET=fixture-bucket S3_KEY=literal.tar.gz \
     S3_KEY_TEMPLATE='dated-{YEAR}.tar.gz' \
     bash "$CLIENT" --destination "$CASE_ROOT/private/certs"
+  [ "$status" -eq 64 ]
+  [ ! -e "$CASE_ROOT/aws.log" ]
+}
+
+make_gpg_mock() {
+  # This fake proves Bash control flow and FD/environment separation, NOT
+  # cryptographic support. Real GnuPG verification belongs to task #187.
+  cat >"$CASE_ROOT/bin/gpg" <<'GPG'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -z "${GPG_SYMMETRIC_KEY+x}" && -z "${CERTBOTBOT_CLIENT_GPG_SECRET+x}" ]] || exit 98
+printf 'gpg|%s\n' "$*" >>"$MOCK_CALLS"
+if [[ "${1-}" == --version ]]; then
+  printf 'gpg (GnuPG) 2.4.7\n'
+  exit 0
+fi
+[[ "${MOCK_GPG_MODE:-ok}" != incompatible ]] || exit 99
+operation='' output=''
+args=("$@")
+for (( i=0; i<${#args[@]}; i++ )); do
+  case "${args[i]}" in
+    --symmetric) operation=encrypt ;;
+    --decrypt) operation=decrypt ;;
+    --list-packets) operation=list ;;
+    --output) output="${args[i+1]}" ;;
+  esac
+done
+if [[ "$operation" == list ]]; then
+  printf '%s\n' ':symkey enc packet: version 5, cipher 9, aead 2, s2k 3, hash 10, count 16777216' \
+    ':aead encrypted packet: cipher=9 aead=2'
+  exit 0
+fi
+[[ "$operation" == encrypt || "$operation" == decrypt ]] || exit 99
+IFS= read -r secret <&3 || exit 99
+[[ "$secret" == MOCK_PRIVATE_GPG_KEY_SENTINEL ]] || exit 99
+[[ -n "$output" ]] || exit 99
+cp -- "${args[${#args[@]}-1]}" "$output"
+GPG
+  chmod 0755 "$CASE_ROOT/bin/gpg"
+}
+
+@test "client plaintext mode never runs GnuPG even if a failing mock is installed" {
+  make_gpg_mock
+  MOCK_GPG_MODE=incompatible invoke --s3-bucket fixture-bucket --archive-encryption=none
+  [ "$status" -eq 65 ]
+  ! grep -q '^gpg|' "$CASE_ROOT/aws.log"
+  [ ! -e "$CASE_ROOT/private/certs" ]
+}
+
+@test "client rejects unsupported encryption mode and missing or mismatched key before S3" {
+  invoke --s3-bucket fixture-bucket --archive-encryption=invalid
+  [ "$status" -eq 64 ]
+  invoke --s3-bucket fixture-bucket --archive-encryption=gpg-ocb
+  [ "$status" -eq 64 ]
+  run env GPG_SYMMETRIC_KEY=MOCK_PRIVATE_GPG_KEY_SENTINEL \
+    PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    bash "$CLIENT" --destination "$CASE_ROOT/private/certs" \
+      --s3-bucket fixture-bucket --archive-encryption=none
+  [ "$status" -eq 64 ]
+  [ ! -e "$CASE_ROOT/aws.log" ]
+  [[ "$output" != *MOCK_PRIVATE_GPG_KEY_SENTINEL* ]]
+}
+
+@test "client rejects newline secret without child invocation or secret output" {
+  run env GPG_SYMMETRIC_KEY=$'MOCK_PRIVATE_GPG_KEY_SENTINEL\nsecond-line' \
+    PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    bash "$CLIENT" --destination "$CASE_ROOT/private/certs" \
+      --s3-bucket fixture-bucket --archive-encryption=gpg-ocb
+  [ "$status" -eq 64 ]
+  [[ "$output" != *MOCK_PRIVATE_GPG_KEY_SENTINEL* ]]
+  [ ! -e "$CASE_ROOT/aws.log" ]
+}
+
+@test "client encrypted mode checks GnuPG functional capability before AWS" {
+  make_gpg_mock
+  run env GPG_SYMMETRIC_KEY=MOCK_PRIVATE_GPG_KEY_SENTINEL \
+    MOCK_GPG_MODE=incompatible PATH="$CASE_ROOT/bin:$PATH" \
+    MOCK_CALLS="$CASE_ROOT/aws.log" bash "$CLIENT" \
+      --destination "$CASE_ROOT/private/certs" --s3-bucket fixture-bucket
+  [ "$status" -eq 69 ]
+  [ ! -e "$CASE_ROOT/private/certs" ]
+  ! grep -q '^head-object|' "$CASE_ROOT/aws.log"
+  [[ "$output" != *MOCK_PRIVATE_GPG_KEY_SENTINEL* ]]
+}
+
+@test "client encrypted preflight clears child environment and refuses activation until task 186" {
+  make_gpg_mock
+  run env GPG_SYMMETRIC_KEY=MOCK_PRIVATE_GPG_KEY_SENTINEL \
+    PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    bash "$CLIENT" --destination "$CASE_ROOT/private/certs" --s3-bucket fixture-bucket
+  [ "$status" -eq 65 ]
+  grep -q '^gpg|' "$CASE_ROOT/aws.log"
+  [ "$(grep -c '^head-object|' "$CASE_ROOT/aws.log")" -eq 1 ]
+  [ "$(grep -c '^get-object|' "$CASE_ROOT/aws.log")" -eq 1 ]
+  [ ! -e "$CASE_ROOT/private/certs" ]
+  [ "$(find "$CASE_ROOT/private" -mindepth 1 | wc -l)" -eq 0 ]
+  [[ "$output" != *MOCK_PRIVATE_GPG_KEY_SENTINEL* ]]
+  [[ "$output" != *SENSITIVE_TOKEN* ]]
+}
+
+@test "client encryption mode resolves CLI over environment over literal file" {
+  printf 'S3_BUCKET=fixture-bucket\nARCHIVE_ENCRYPTION=gpg-ocb\n' >"$CASE_ROOT/client.env"
+  invoke --config "$CASE_ROOT/client.env" --archive-encryption=none
+  [ "$status" -eq 65 ]
+  grep -q '^get-object|' "$CASE_ROOT/aws.log"
+  rm -f "$CASE_ROOT/aws.log"
+  run env ARCHIVE_ENCRYPTION=gpg-ocb \
+    PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    bash "$CLIENT" --destination "$CASE_ROOT/private/certs" \
+      --s3-bucket fixture-bucket --config "$CASE_ROOT/client.env" \
+      --archive-encryption=none
+  [ "$status" -eq 65 ]
+  grep -q '^get-object|' "$CASE_ROOT/aws.log"
+  rm -f "$CASE_ROOT/aws.log"
+  run env ARCHIVE_ENCRYPTION=gpg-ocb \
+    PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    bash "$CLIENT" --destination "$CASE_ROOT/private/certs" \
+      --s3-bucket fixture-bucket --config "$CASE_ROOT/client.env"
   [ "$status" -eq 64 ]
   [ ! -e "$CASE_ROOT/aws.log" ]
 }

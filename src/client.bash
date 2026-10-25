@@ -5,8 +5,10 @@
 ## @details
 ## The consumer resolves and retrieves one current S3 object, verifies it
 ## with the shared bounded archive validator, and atomically activates only a
-## complete privately restored tree. Task #54 will integrate the independent
-## standalone release executable. This module does not invoke the issuer.
+## complete privately restored tree. ADR-037 adds mode/key capture and a
+## conditional crypto capability preflight. Task #186 will add actual
+## authenticated decryption; encrypted selections currently fail closed
+## after the single retrieval. This module does not invoke the issuer.
 ## Modules are concatenated at assembly time, not sourced from disk at runtime.
 
 ## @fn certbotbot_client_usage()
@@ -23,6 +25,7 @@ Options:
   --s3-bucket BUCKET            Existing S3 bucket (S3_BUCKET)
   --s3-key KEY                  Current literal archive key (default latest.tar.gz)
   --s3-key-template TEMPLATE    Current key template ({YEAR}, {MONTH}, {DOM})
+  --archive-encryption MODE     auto|none|gpg-ocb (default auto; key selects gpg-ocb)
   --config FILE                 Explicit literal .env-format config file
   --help                        Show this help
   --version                     Show client build provenance
@@ -107,15 +110,31 @@ certbotbot_client_cleanup() {
 ## @retval 64 Invalid configuration.
 ## @retval 65 Unsupported, malformed or unsafe downloaded archive.
 ## @retval 66 Confirmed missing S3 key.
-## @retval 69 Unavailable or uncertain AWS result.
+## @retval 69 Unavailable GnuPG capability or uncertain AWS result.
 ## @retval 73 Unsafe or occupied destination.
 ## @retval 74 Local staging failure.
 certbotbot_client_main() {
+  # Disable inherited xtrace before touching the exported secret.
+  set +x
+  local CERTBOTBOT_CLIENT_GPG_SECRET="${GPG_SYMMETRIC_KEY-}"
+  # Do not let a similarly named caller environment export the local secret.
+  export -n CERTBOTBOT_CLIENT_GPG_SECRET ||
+    { certbotbot_client_error 'cannot protect encryption key'; return 64; }
+  unset GPG_SYMMETRIC_KEY ||
+    { certbotbot_client_error 'cannot protect encryption key'; return 64; }
+
   if (( $# == 1 )); then
     case "$1" in
       --help) certbotbot_client_usage; return 0 ;;
       --version) certbotbot_client_version; return 0 ;;
     esac
+  fi
+  # Local help/version do not require a valid secret format, but any
+  # invocation that retrieves content rejects unrepresentable FD input.
+  if [[ "$CERTBOTBOT_CLIENT_GPG_SECRET" == *$'\n'* ||
+    "$CERTBOTBOT_CLIENT_GPG_SECRET" == *$'\r'* ]]; then
+    certbotbot_client_error 'invalid encryption key format'
+    return 64
   fi
   certbotbot_client_config_resolve "$@" || return $?
   certbotbot_client_destination_preflight "$CERTBOTBOT_CLIENT_DESTINATION" || return $?
@@ -124,8 +143,20 @@ certbotbot_client_main() {
   trap 'certbotbot_client_cleanup' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
+  # Plaintext mode does not inspect or require a GnuPG binary. Encrypted
+  # mode must prove working authenticated AES-256/OCB before any S3 read.
+  if [[ "$CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION" == gpg-ocb ]]; then
+    certbotbot_client_crypto_require "$CERTBOTBOT_CLIENT_WORKSPACE" || return $?
+  fi
   certbotbot_client_s3_fetch "$CERTBOTBOT_CLIENT_WORKSPACE" \
     "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" || return $?
+  # Task #185 establishes configuration and conditional preflight only.
+  # Even valid plaintext must not be activated under encrypted selection.
+  # Task #186 replaces this refusal with authenticated private staging.
+  if [[ "$CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION" == gpg-ocb ]]; then
+    certbotbot_client_error 'encrypted archive restore is not yet available' 65
+    return 65
+  fi
   certbotbot_client_extract_and_activate "$CERTBOTBOT_CLIENT_WORKSPACE" \
     "$CERTBOTBOT_CLIENT_FINAL_PATH" || return $?
   # The private downloaded bytes are removed by EXIT cleanup; only the

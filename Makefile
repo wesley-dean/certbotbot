@@ -20,13 +20,13 @@ LEGACY_CHECKSUMS := $(addsuffix .256,$(ALL_DIST_SCRIPTS))
 CORE_SOURCE_FILES := lib/config.bash lib/filename.bash lib/identity.bash lib/s3.bash lib/crypto.bash lib/archive.bash lib/restore.bash lib/state.bash lib/renewal.bash lib/certbot.bash lib/renew.bash lib/reconcile.bash lib/package.bash lib/backup.bash lib/retention.bash lib/publish.bash
 PLUGIN_SOURCE_FILES :=
 ENTRYPOINT_SOURCE := src/main.bash
-CLIENT_MAINTAINED_FILES := lib/client-config.bash lib/client-s3.bash lib/client-extract.bash src/client.bash
-CLIENT_SOURCE_FILES := lib/client-config.bash lib/filename.bash lib/client-s3.bash lib/archive.bash lib/restore.bash lib/client-extract.bash src/client.bash
+CLIENT_MAINTAINED_FILES := lib/client-config.bash lib/client-crypto.bash lib/client-s3.bash lib/client-extract.bash src/client.bash
+CLIENT_SOURCE_FILES := lib/client-config.bash lib/filename.bash lib/client-crypto.bash lib/client-s3.bash lib/archive.bash lib/restore.bash lib/client-extract.bash src/client.bash
 SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(ENTRYPOINT_SOURCE) $(CLIENT_MAINTAINED_FILES)
 # This pinned build-time library is assembled, never sourced from vendor at runtime.
 MKTEXT_LIBRARY := vendor/mktext.bash
 ASSEMBLED_SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(MKTEXT_LIBRARY) $(ENTRYPOINT_SOURCE)
-CLIENT_ASSEMBLED_SOURCE_FILES := lib/client-config.bash lib/filename.bash $(MKTEXT_LIBRARY) lib/client-s3.bash lib/archive.bash lib/restore.bash lib/client-extract.bash src/client.bash
+CLIENT_ASSEMBLED_SOURCE_FILES := lib/client-config.bash lib/filename.bash $(MKTEXT_LIBRARY) lib/client-crypto.bash lib/client-s3.bash lib/archive.bash lib/restore.bash lib/client-extract.bash src/client.bash
 TEST_SCRIPTS := $(sort $(wildcard tests/*.bats))
 TEST_RESULTS_DIR := test-results
 

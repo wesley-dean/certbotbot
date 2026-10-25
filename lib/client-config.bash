@@ -5,7 +5,9 @@
 ## @details
 ## CLI > exported environment > literal .env > defaults. The client accepts
 ## the producer's nonsecret file keys for file sharing, but activates only
-## S3 bucket and current key. It never executes config file content.
+## S3 bucket, current key and ADR-037 nonsecret encryption mode. The secret
+## comes only from an exported environment variable captured by the caller.
+## Literal configuration is data, never evaluated as shell code.
 
 ## @var CERTBOTBOT_CLIENT_FILE_VALUES
 ## @brief Parsed literal configuration.
@@ -76,7 +78,7 @@ certbotbot_client_read_file() {
 ## @param ... Client options; destination is CLI-only.
 ## @par STDIN
 ## Nothing is read from STDIN.
-## @returns CERTBOTBOT_CLIENT_DESTINATION and frozen CERTBOTBOT_S3_BUCKET/S3_KEY.
+## @returns Destination, frozen bucket/key and effective client crypto mode.
 ## @retval 0 All settings accepted.
 ## @retval 64 Invalid input.
 certbotbot_client_config_resolve() {
@@ -88,13 +90,13 @@ certbotbot_client_config_resolve() {
   while (( i < ${#args[@]} )); do
     arg="${args[i]}"
     case "$arg" in
-      --destination|--config|--s3-bucket|--s3-key|--s3-key-template)
+      --destination|--config|--s3-bucket|--s3-key|--s3-key-template|--archive-encryption)
         (( i + 1 < ${#args[@]} )) ||
           { certbotbot_client_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --destination=*|--config=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*)
+      --destination=*|--config=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--archive-encryption=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -110,6 +112,7 @@ certbotbot_client_config_resolve() {
       --s3-bucket) key=S3_BUCKET ;;
       --s3-key) key=S3_KEY ;;
       --s3-key-template) key=S3_KEY_TEMPLATE ;;
+      --archive-encryption) key=ARCHIVE_ENCRYPTION ;;
     esac
     [[ -z "${cli[$key]+x}" ]] ||
       { certbotbot_client_error 'duplicate option'; return 64; }
@@ -189,4 +192,42 @@ certbotbot_client_config_resolve() {
   # shellcheck disable=SC2034
   CERTBOTBOT_DATED_BACKUP_ENABLED=false
   certbotbot_filename_resolve || return 64
+
+  # Only the winning nonsecret source tier chooses the format. A supplied
+  # secret does not grant permission to ignore an explicit plaintext mode.
+  CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION=auto
+  if [[ -n "${CERTBOTBOT_CLIENT_FILE_VALUES[ARCHIVE_ENCRYPTION]+x}" ]]; then
+    CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION="${CERTBOTBOT_CLIENT_FILE_VALUES[ARCHIVE_ENCRYPTION]}"
+  fi
+  if [[ -n "${ARCHIVE_ENCRYPTION+x}" ]]; then
+    CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION="$ARCHIVE_ENCRYPTION"
+  fi
+  if [[ -n "${cli[ARCHIVE_ENCRYPTION]+x}" ]]; then
+    CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION="${cli[ARCHIVE_ENCRYPTION]}"
+  fi
+  case "$CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION" in
+    auto)
+      if [[ -n "${CERTBOTBOT_CLIENT_GPG_SECRET:-}" ]]; then
+        CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION=gpg-ocb
+      else
+        CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION=none
+      fi
+      ;;
+    none)
+      if [[ -n "${CERTBOTBOT_CLIENT_GPG_SECRET:-}" ]]; then
+        certbotbot_client_error 'encryption key conflicts with plaintext mode'
+        return 64
+      fi
+      ;;
+    gpg-ocb)
+      if [[ -z "${CERTBOTBOT_CLIENT_GPG_SECRET:-}" ]]; then
+        certbotbot_client_error 'authenticated encryption key required'
+        return 64
+      fi
+      ;;
+    *)
+      certbotbot_client_error 'unsupported archive encryption mode'
+      return 64
+      ;;
+  esac
 }
