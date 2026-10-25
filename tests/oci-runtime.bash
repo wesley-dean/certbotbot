@@ -84,11 +84,26 @@ host_capture() {
   printf '%s\n' "$status" >"$work/$label.host.status"
 }
 
+# Runtime tests supply no credentials, secrets, or application state. Report
+# only engine diagnostics from these known-safe synthetic invocations so a
+# container startup failure cannot masquerade as a public CLI regression.
+oci_report_runtime_failure() {
+  local label=$1
+  printf 'oci: %s host exit=%s container exit=%s\n' \
+    "$label" "$(cat "$work/$label.host.status")" \
+    "$(cat "$work/$label.status")" >&2
+  if [[ -s "$work/$label.err" ]]; then
+    printf 'oci: %s container stderr follows:\n' "$label" >&2
+    cat "$work/$label.err" >&2
+  fi
+}
+
 for pair in help version; do
   host_capture "$pair" "--$pair"
   run_capture "$pair" "--$pair"
   cmp -s "$work/$pair.host.status" "$work/$pair.status" || {
     printf 'oci: %s exit status differs from ordinary producer\n' "$pair" >&2
+    oci_report_runtime_failure "$pair"
     exit 1
   }
   cmp -s "$work/$pair.host.out" "$work/$pair.out" || {
@@ -137,6 +152,7 @@ for scenario in missing-domain invalid; do
   }
   cmp -s "$work/$scenario.host.status" "$work/$scenario.status" || {
     printf 'oci: %s failure exit status differs\n' "$scenario" >&2
+    oci_report_runtime_failure "$scenario"
     exit 1
   }
 done
