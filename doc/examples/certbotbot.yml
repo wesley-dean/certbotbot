@@ -1,0 +1,270 @@
+---
+# EXAMPLE ONLY: inert under doc/examples; never active on repository PRs.
+# Activate only in a protected main-branch workflow and protected environment.
+name: Example certbotbot manual certificate producer
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: Primary selected certificate DNS name (not example.com)
+        required: true
+        type: string
+      additional_sans:
+        description: Optional comma-separated additional SANs
+        required: false
+        type: string
+        default: ''
+      s3_bucket:
+        description: Existing S3 bucket with the seeded current archive
+        required: true
+        type: string
+      s3_key:
+        description: Exact current object key (not a historical backup)
+        required: true
+        type: string
+        default: latest.tar.gz
+      cert_name:
+        description: Optional stable nonwildcard lineage name
+        required: false
+        type: string
+        default: ''
+      include_subdomains:
+        description: Add complementary apex/wildcard SANs
+        required: true
+        type: choice
+        options: ['true', 'false']
+        default: 'true'
+      archive_encryption:
+        description: Existing archive mode; no migration is performed
+        required: true
+        type: choice
+        options: ['none', 'gpg-ocb']
+        default: none
+      dated_backup_enabled:
+        description: Opt into separately managed dated backup writes
+        required: true
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
+      backup_retention_count:
+        description: Retain newest N managed dated backups, 0 disables deletion
+        required: true
+        type: string
+        default: '0'
+
+permissions: {}
+
+# Serializes this workflow for one specified current bucket/key, not other
+# jobs, accounts or direct producer invocations. External locking is required.
+concurrency:
+  group: certbotbot-example-${{ inputs.s3_bucket }}-${{ inputs.s3_key }}
+  cancel-in-progress: false
+
+jobs:
+  producer:
+    name: Execute one selected certificate producer
+    runs-on: ubuntu-24.04
+    environment:
+      name: certbotbot-certificates
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      attestations: read
+      id-token: write
+    env:
+      DOMAIN: ${{ inputs.domain }}
+      ADDITIONAL_SANS: ${{ inputs.additional_sans }}
+      S3_BUCKET: ${{ inputs.s3_bucket }}
+      S3_KEY: ${{ inputs.s3_key }}
+      CERT_NAME: ${{ inputs.cert_name }}
+      INCLUDE_SUBDOMAINS: ${{ inputs.include_subdomains }}
+      ARCHIVE_ENCRYPTION: ${{ inputs.archive_encryption }}
+      DATED_BACKUP_ENABLED: ${{ inputs.dated_backup_enabled }}
+      BACKUP_RETENTION_COUNT: ${{ inputs.backup_retention_count }}
+      # Operator-reviewed values from the protected GitHub environment.
+      RELEASE_TAG: ${{ vars.CERTBOTBOT_RELEASE_TAG }}
+      RELEASE_SHA256: ${{ vars.CERTBOTBOT_PRODUCER_SHA256 }}
+      AWS_ROLE_ARN: ${{ vars.CERTBOTBOT_AWS_ROLE_ARN }}
+      AWS_REGION: ${{ vars.CERTBOTBOT_AWS_REGION }}
+
+    steps:
+      - name: Require reviewed manual main and input pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch &&
+            "$GITHUB_REF" == refs/heads/main ]] || {
+            printf '%s\n' 'Only manual protected main is authorized' >&2
+            exit 64
+          }
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ &&
+            "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+            printf '%s\n' 'Set a reviewed release tag and independent SHA256' >&2
+            exit 64
+          }
+          [[ "$AWS_ROLE_ARN" =~ ^arn:aws(-us-gov|-cn)?:iam::[0-9]{12}:role/.+ &&
+            "$AWS_REGION" =~ ^[a-z0-9-]+$ ]] || {
+            printf '%s\n' 'Configure a protected OIDC role ARN and region' >&2
+            exit 64
+          }
+          [[ -n "$DOMAIN" && "$DOMAIN" != example.com ]] || exit 64
+          [[ "$S3_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ &&
+            "$S3_BUCKET" != *..* ]] || exit 64
+          [[ -n "$S3_KEY" && "$S3_KEY" != -* && "$S3_KEY" != */* &&
+            "$S3_KEY" != *[[:space:]]* ]] || exit 64
+          [[ "$INCLUDE_SUBDOMAINS" == true || "$INCLUDE_SUBDOMAINS" == false ]]
+          [[ "$DATED_BACKUP_ENABLED" == true ||
+            "$DATED_BACKUP_ENABLED" == false ]]
+          [[ "$ARCHIVE_ENCRYPTION" == none ||
+            "$ARCHIVE_ENCRYPTION" == gpg-ocb ]]
+          if [[ "$BACKUP_RETENTION_COUNT" != 0 ]]; then
+            [[ "$BACKUP_RETENTION_COUNT" =~ ^[1-9][0-9]*$ &&
+              "${#BACKUP_RETENTION_COUNT}" -le 5 ]] || exit 64
+            (( 10#$BACKUP_RETENTION_COUNT <= 10000 )) || exit 64
+            [[ "$DATED_BACKUP_ENABLED" == true ]] || exit 64
+          fi
+          # Full SAN/name, S3-key and archive checks remain producer-owned.
+
+      - name: Install trusted Linux runtime prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          sudo apt-get update
+          sudo apt-get install --yes certbot python3-certbot-dns-route53
+          for tool in bash aws certbot openssl tar gzip sha256sum curl gh; do
+            command -v "$tool" >/dev/null || {
+              printf 'Missing required tool: %s\n' "$tool" >&2
+              exit 69
+            }
+          done
+          (( BASH_VERSINFO[0] > 4 ||
+            (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3) )) || exit 69
+          aws --version 2>&1 | grep -Eq '^aws-cli/2\.' || exit 69
+          certbot plugins --no-ansi 2>/dev/null | grep -q dns-route53 || {
+            printf '%s\n' 'Certbot Route53 plugin is unavailable' >&2
+            exit 69
+          }
+          if [[ "$ARCHIVE_ENCRYPTION" == gpg-ocb ]]; then
+            command -v gpg >/dev/null || exit 69
+            # The producer itself performs the required real OCB probe.
+            version="$(gpg --version | head -n 1 | awk '{print $3}')"
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 69
+            IFS=. read -r major minor patch <<< "$version"
+            (( major > 2 || (major == 2 &&
+              (minor > 4 || (minor == 4 && patch >= 7))) )) || {
+              printf '%s\n' 'Encrypted mode requires GnuPG 2.4.7+ and OCB' >&2
+              exit 69
+            }
+          fi
+
+      - name: Fetch attested release and check independent SHA256
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          dest="$RUNNER_TEMP/certbotbot-example"
+          [[ ! -e "$dest" && ! -L "$dest" ]] || exit 65
+          mkdir -m 0700 -- "$dest"
+          cd -- "$dest"
+          base="https://github.com/wesley-dean/certbotbot/releases/download/$RELEASE_TAG"
+          for item in certbotbot.bash certbotbot.bash.sha256; do
+            curl --fail --location --silent --show-error \
+              --proto '=https' --tlsv1.2 \
+              --output "$item" "$base/$item"
+            [[ -f "$item" && ! -L "$item" && -s "$item" ]] || exit 65
+          done
+          [[ "$(wc -l < certbotbot.bash.sha256)" == 1 ]] || exit 65
+          sha256sum --check --status certbotbot.bash.sha256 || exit 65
+          actual="$(sha256sum certbotbot.bash | awk '{print $1}')"
+          [[ "$actual" == "$RELEASE_SHA256" ]] || {
+            printf '%s\n' 'Reviewed producer SHA256 mismatch' >&2
+            exit 65
+          }
+          gh attestation verify certbotbot.bash \
+            --repo wesley-dean/certbotbot >/dev/null
+          gh attestation verify certbotbot.bash.sha256 \
+            --repo wesley-dean/certbotbot >/dev/null
+          bash -n certbotbot.bash
+          chmod 0700 certbotbot.bash
+
+      # No PR checkout, arbitrary source, or credentialed action before
+      # validating the independently reviewed release executable and sidecar.
+      - name: Assume scoped short-lived AWS role via GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: certbotbot-${{ github.run_id }}
+          unset-current-credentials: true
+
+      - name: Prepare strictly quoted, nonsecret invocation helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          helper="$RUNNER_TEMP/certbotbot-example/invoke.bash"
+          cat > "$helper" <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          set +x
+          umask 077
+          producer="$RUNNER_TEMP/certbotbot-example/certbotbot.bash"
+          [[ -f "$producer" && ! -L "$producer" ]] || exit 69
+          args=(--s3-bucket "$S3_BUCKET"
+            --s3-key "$S3_KEY"
+            --include-subdomains "$INCLUDE_SUBDOMAINS"
+            --dated-backup-enabled "$DATED_BACKUP_ENABLED"
+            --backup-retention-count "$BACKUP_RETENTION_COUNT"
+            --upload-no-renewal false
+            --archive-encryption "$ARCHIVE_ENCRYPTION")
+          [[ -z "$CERT_NAME" ]] || args+=(--cert-name "$CERT_NAME")
+          # ADDITIONAL_SANS is already in the inherited environment. The
+          # producer validates its literal list without shell evaluation.
+          args+=("$DOMAIN")
+          exec bash "$producer" "${args[@]}"
+          BASH
+          bash -n "$helper"
+          chmod 0700 "$helper"
+
+      - name: Execute plaintext producer without a GPG secret
+        if: ${{ inputs.archive_encryption == 'none' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          bash "$RUNNER_TEMP/certbotbot-example/invoke.bash"
+
+      - name: Execute encrypted producer with environment-scoped secret
+        if: ${{ inputs.archive_encryption == 'gpg-ocb' }}
+        shell: bash
+        env:
+          GPG_SYMMETRIC_KEY: ${{ secrets.CERTBOTBOT_GPG_SYMMETRIC_KEY }}
+        run: |
+          set -euo pipefail
+          set +x
+          [[ -n "$GPG_SYMMETRIC_KEY" ]] || {
+            printf '%s\n' 'Protected encrypted-archive secret is required' >&2
+            exit 64
+          }
+          bash "$RUNNER_TEMP/certbotbot-example/invoke.bash"
+
+      - name: Remove temporary executable and invocation helper
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          dest="$RUNNER_TEMP/certbotbot-example"
+          if [[ -d "$dest" && ! -L "$dest" &&
+            "$dest" == "$RUNNER_TEMP/certbotbot-example" ]]; then
+            rm -rf -- "$dest"
+          fi
