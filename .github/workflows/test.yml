@@ -266,40 +266,95 @@ jobs:
             fi
           done
 
-  bash43:
-    name: Bash 4.3 compatibility
+  # Keep each independent Bash 4.3 result inspectable. The stable historical
+  # "Bash 4.3 compatibility" check is a strict aggregate below.
+  bash43-flavor:
+    name: Bash 4.3 (${{ matrix.flavor }})
+    needs: prepare
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [development, ordinary, minified]
     steps:
-      - name: Check out repository
+      - name: Check out the same workflow source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install dependency bootstrap requirements
-        run: sudo apt-get update && sudo apt-get install --yes curl make
+      - name: Download verified producer handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
 
-      - name: Prepare dependencies and build
-        run: make all
-
-      - name: Validate every artifact under Bash 4.3
+      - name: Restore permissions and verify exact producer bytes
+        env:
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
         run: |
-          for artifact in dist/*.bash; do
-            docker run --rm \
-              --env BASH_STARTER_ARTIFACT="/work/${artifact}" \
-              --volume "${GITHUB_WORKSPACE}:/work:ro" \
-              --workdir /work \
-              bash:4.3 \
-              bash tests/compat-bash43.bash
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
           done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            0.0.0-dev "$EXPECTED_MANIFEST_SHA"
 
-  # ADR-031 requires real AES-256/OCB crypto evidence. The ordinary 24.04
-  # Bats matrix remains supported, but its GnuPG 2.4.4 cannot run these
-  # cases; the approved minimum is 2.4.7. 26.04 ships GnuPG 2.4.8.
-  encryption:
-    name: Authenticated archive interoperability
-    runs-on: ubuntu-26.04
+      - name: Verify selected producer artifact using Bash 4.3
+        env:
+          TEST_FLAVOR: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          case "$TEST_FLAVOR" in
+            development) artifact=dist/certbotbot.dev.bash ;;
+            ordinary) artifact=dist/certbotbot.bash ;;
+            minified) artifact=dist/certbotbot.min.bash ;;
+            *) printf '%s\n' 'Invalid producer flavor' >&2; exit 64 ;;
+          esac
+          docker run --rm \
+            --env BASH_STARTER_ARTIFACT="/work/$artifact" \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            --workdir /work \
+            bash:4.3 \
+            bash tests/compat-bash43.bash
+
+  # Preserve the preexisting required check name. This job succeeds only when
+  # preparation and every Bash 4.3 matrix leg have independently succeeded.
+  bash43:
+    name: Bash 4.3 compatibility
+    needs: [prepare, bash43-flavor]
+    if: always()
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - name: Check out repository
+      - name: Require all Bash 4.3 flavor checks
+        env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          FLAVORS_RESULT: ${{ needs['bash43-flavor'].result }}
+        run: |
+          set -euo pipefail
+          [[ "$PREPARE_RESULT" == success && "$FLAVORS_RESULT" == success ]] || {
+            printf '%s\n' 'Required Bash 4.3 preparation or flavor matrix did not succeed' >&2
+            exit 1
+          }
+
+  # ADR-031 requires real AES-256/OCB crypto evidence on supported GnuPG.
+  # Ubuntu 26.04 provides GnuPG >= 2.4.7. Each flavor retains the original
+  # filtered TAP inventory and rejects skips or absent positive coverage.
+  encryption-flavor:
+    name: Authenticated encryption (${{ matrix.flavor }})
+    needs: prepare
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [development, ordinary, minified]
+    steps:
+      - name: Check out the same workflow source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install distribution crypto and test tools
@@ -307,34 +362,79 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes bats curl gnupg make openssl
 
-      - name: Build verified portable artifacts
-        run: |
-          make all
-          make deps-check
-          (cd dist && for sum in *.bash.sha256; do sha256sum -c "$sum"; done)
+      - name: Download verified producer handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
 
-      - name: Require non-skipped authenticated encryption evidence for all variants
+      - name: Restore permissions and verify exact producer bytes
+        env:
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        run: |
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            0.0.0-dev "$EXPECTED_MANIFEST_SHA"
+
+      - name: Require non-skipped authenticated encryption for selected flavor
+        env:
+          TEST_FLAVOR: ${{ matrix.flavor }}
         run: |
           set -euo pipefail
           gpg --version | head -n 1
-          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
-            report="${RUNNER_TEMP}/$(basename "$artifact").tap"
-            if ! BASH_STARTER_ARTIFACT="${PWD}/${artifact}" bats \
-              --formatter tap \
-              --filter 'encryption|encrypted|ciphertext|migrat|decryption|GnuPG' \
-              tests/public-lifecycle.bats >"$report"; then
-              cat "$report"
-              printf '%s\n' 'Authenticated encryption acceptance tests failed' >&2
-              exit 1
-            fi
+          gpg_version="$(gpg --version | awk 'NR == 1 {print $3}')"
+          dpkg --compare-versions "$gpg_version" ge 2.4.7 || {
+            printf '%s\n' 'Authenticated encryption requires GnuPG >= 2.4.7' >&2
+            exit 1
+          }
+          case "$TEST_FLAVOR" in
+            development) artifact=dist/certbotbot.dev.bash ;;
+            ordinary) artifact=dist/certbotbot.bash ;;
+            minified) artifact=dist/certbotbot.min.bash ;;
+            *) printf '%s\n' 'Invalid producer flavor' >&2; exit 64 ;;
+          esac
+          report="$RUNNER_TEMP/$(basename "$artifact").tap"
+          if ! BASH_STARTER_ARTIFACT="$PWD/$artifact" bats \
+            --formatter tap \
+            --filter 'encryption|encrypted|ciphertext|migrat|decryption|GnuPG' \
+            tests/public-lifecycle.bats >"$report"; then
             cat "$report"
-            if grep -Eq '^ok [0-9]+ .*# skip' "$report"; then
-              printf '%s\n' 'Authenticated encryption tests cannot be skipped' >&2
-              exit 1
-            fi
-            count="$(grep -Ec '^ok [0-9]+ ' "$report" || :)"
-            if (( count < 20 )); then
-              printf '%s\n' 'Authenticated encryption test inventory incomplete' >&2
-              exit 1
-            fi
-          done
+            printf '%s\n' 'Authenticated encryption acceptance tests failed' >&2
+            exit 1
+          fi
+          cat "$report"
+          if grep -Eq '^ok [0-9]+ .*# skip' "$report"; then
+            printf '%s\n' 'Authenticated encryption tests cannot be skipped' >&2
+            exit 1
+          fi
+          count="$(grep -Ec '^ok [0-9]+ ' "$report" || :)"
+          if (( count < 20 )); then
+            printf '%s\n' 'Authenticated encryption test inventory incomplete' >&2
+            exit 1
+          fi
+
+  # Preserve the historical encryption required-check name, while requiring
+  # the entire concurrent flavor matrix to succeed, not any one passing leg.
+  encryption:
+    name: Authenticated archive interoperability
+    needs: [prepare, encryption-flavor]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Require all authenticated encryption flavor checks
+        env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          FLAVORS_RESULT: ${{ needs['encryption-flavor'].result }}
+        run: |
+          set -euo pipefail
+          [[ "$PREPARE_RESULT" == success && "$FLAVORS_RESULT" == success ]] || {
+            printf '%s\n' 'Required authenticated encryption preparation or flavor matrix did not succeed' >&2
+            exit 1
+          }

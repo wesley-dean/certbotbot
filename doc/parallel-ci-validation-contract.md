@@ -177,6 +177,40 @@ This documentation describes the intended merged behavior of PR
 implementing task #172.  It does not claim live GitHub matrix success
 before that PR's workflows complete.
 
+## Implementation checkpoint: compatibility and encryption matrices (task #173)
+
+The ordinary `Test` workflow now schedules three Bash 4.3 checks and three
+authenticated-encryption checks as independently runnable matrix legs, alongside
+the existing three full Bats checks.  All nine flavor jobs consume the **same**
+one-day, verified same-run producer handoff, with exact SHA-256/provenance checks
+before running any producer executable.
+
+The `bash43-flavor` jobs retain the existing `tests/compat-bash43.bash`
+contract in the `bash:4.3` container.  The `encryption-flavor` jobs retain
+the existing TAP-filtered `tests/public-lifecycle.bats` acceptance evidence on
+Ubuntu 26.04, explicitly require GnuPG 2.4.7 or newer, reject skipped
+authenticated-encryption tests, and require at least twenty passing selected
+cases per flavor.  The matrix has `fail-fast: false` in both suites, so
+independent results remain available even if one fails.
+
+To preserve existing protected-branch check identities, the historical
+`Bash 4.3 compatibility` and `Authenticated archive interoperability`
+job names now belong to **strict suite-aggregate jobs**, each requiring
+success from preparation *and every member* of the respective matrix.
+The overall `Check, build, and test` aggregate continues to require both
+of those suite aggregates and the full Bats matrix.  A failed, skipped,
+or cancelled required flavor cannot produce a successful suite gate; a
+workflow cancelled altogether is not green.
+
+This checkpoint changes only ordinary PR/push validation. The
+`semver.yml` release pipeline remains unchanged until task #174; no
+release attestation, publication credentials, or tags are touched here.
+
+Verification distinguishes structural checks and focused negative tests
+from live GitHub-run evidence.  The matrix topology is implemented by
+this task's PR; claims that all nine jobs succeeded require the actual
+GitHub Actions results for the corresponding commit.
+
 ## Result and failure-injection matrix
 
 | Injected condition | Expected required workflow result |
