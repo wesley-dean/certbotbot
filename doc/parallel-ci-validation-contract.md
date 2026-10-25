@@ -132,6 +132,51 @@ redistribute them between jobs.  No row may be removed because
 it seems slow.  Task #54 under the separate-client story may
 extend the inventory and require client-specific tests independently.
 
+## Implementation checkpoint: full Bats matrix (task #172)
+
+The ordinary Test workflow now uses the existing
+`Check, build, and test` check name for its final **strict aggregate**
+job.  The original source/build/dependency/documentation, targeted TAP,
+deterministic rebuild and standalone-without-vendor checks run in
+`prepare`, which produces one verified producer artifact handoff.  The
+three `bats[development|ordinary|minified]` matrix jobs consume those
+same scripts and checksum companions, each running `make test-report-one`
+against its own selected executable and publishing a distinct JUnit
+report.  `fail-fast: false` preserves sibling test evidence.
+
+The handoff contains only the six current producer release files and
+`producer-handoff.manifest`.  The preparation job publishes its
+SHA-256 digest through a GitHub job output.  The verifier requires
+the exact source SHA, run ID, attempt, build version and checked-out
+commit metadata, correct executable and companion inventories, and
+unchanged script bytes before running tests.  The upload is retained
+for one day; it does not include `vendor/`, the source checkout,
+credentials or certificate fixtures.  Downloaded scripts regain
+executable mode after refusing symlinks, before their content and
+manifest are verified.
+
+The final `Check, build, and test` job requires `success` from
+`prepare`, the **entire** Bats matrix, and the existing Bash 4.3 and
+encryption jobs.  Any failure, skip or cancellation prevents success.
+This preserves the historical required-check name even though the
+actual tests execute in other jobs, avoiding a branch-protection
+bypass when an administrator cannot inspect or change protected
+check names through the available integration.  Dedicated Bash 4.3
+and encryption matrices remain task #173; release-workflow changes
+remain task #174.  These two legacy suites continue to run serially
+within their respective independent jobs until their tasks merge.
+
+The reusable `ci/producer-handoff.bash` utility has bounded
+`create`/`verify` inputs and is covered by deterministic Bats
+negative fixtures.  Its trust contract is a same-workflow/run/attempt
+handoff with an independent manifest digest from the preparation-job
+output.  It is **not** a provenance signature for externally supplied
+releases or an alternative to release attestation.
+
+This documentation describes the intended merged behavior of PR
+implementing task #172.  It does not claim live GitHub matrix success
+before that PR's workflows complete.
+
 ## Result and failure-injection matrix
 
 | Injected condition | Expected required workflow result |
