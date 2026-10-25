@@ -60,7 +60,7 @@ done
 [[ -d "$root" && ! -L "$root" ]] || oci_error 'handoff directory unavailable'
 [[ -f Dockerfile && ! -L Dockerfile &&
   -f .dockerignore && ! -L .dockerignore &&
-  -f oci/debian.sources && ! -L oci/debian.sources &&
+  -f oci/alpine-repositories && ! -L oci/alpine-repositories &&
   -f ci/producer-handoff.bash && ! -L ci/producer-handoff.bash ]] ||
   oci_error 'reviewed OCI sources unavailable'
 
@@ -149,8 +149,8 @@ install -m 0644 Dockerfile "$output/Dockerfile" ||
   oci_error 'cannot stage Dockerfile' 74
 install -m 0644 .dockerignore "$output/.dockerignore" ||
   oci_error 'cannot stage Docker ignore rules' 74
-install -m 0644 oci/debian.sources "$output/oci/debian.sources" ||
-  oci_error 'cannot stage pinned Debian sources' 74
+install -m 0644 oci/alpine-repositories "$output/oci/alpine-repositories" ||
+  oci_error 'cannot stage bounded Alpine repositories' 74
 install -m 0644 "$root/certbotbot.bash" "$output/oci/producer/certbotbot.bash" ||
   oci_error 'cannot stage verified executable' 74
 install -m 0644 "$root/certbotbot.bash.sha256" \
