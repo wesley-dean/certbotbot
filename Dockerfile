@@ -1,7 +1,7 @@
 # OCI producer only. See ADR-038 and ci/prepare-oci-context.bash.
 # Debian 13.7 slim, linux/amd64 manifest published 2026-10-20.
 # https://github.com/docker-library/repo-info/blob/master/repos/debian/remote/13-slim.md
-FROM --platform=linux/amd64 debian:13.7-slim@sha256:4876fdea29cac1a33a3195f1eb1952feb1fca7dd6dd00be3e2f1879cf20d34d2
+FROM debian:13.7-slim@sha256:4876fdea29cac1a33a3195f1eb1952feb1fca7dd6dd00be3e2f1879cf20d34d2
 
 ARG SOURCE_COMMIT
 ARG RELEASE_VERSION
