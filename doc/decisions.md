@@ -477,11 +477,11 @@ and [the parallel CI validation contract](parallel-ci-validation-contract.md).
 ### ADR-038: Verified OCI Producer Images for Docker and Podman
 
 The producer will be distributed in a separately tested, least-privilege
-Debian 13 OCI image whose entrypoint invokes the already verified ordinary
+Alpine 3.24 OCI image (per ADR-039) whose entrypoint invokes the verified ordinary
 certbotbot executable without changing its public CLI or S3/ACME behavior.
 Docker and rootless Podman share the same image, with an initial
 linux/amd64-only contract, nonroot execution, ephemeral private state,
-digest-pinned base and reviewed package dependencies, and no baked secrets.
+digest-pinned base, bounded stable-branch package versions and recorded transitive dependencies, and no baked secrets.
 Image publishing follows the already attested eight-file GitHub release
 through a separately gated trusted event and the reviewed publish_image
 action; both GHCR and operator-confirmed Docker Hub must show matching
@@ -490,3 +490,19 @@ The image is a producer distribution rather than a ninth Bash asset, and
 runtime, engine and registry support are not claimed before tests.
 
 See [ADR-038](adr/ADR-038-verified-oci-producer-images.md).
+
+### ADR-039: Alpine 3.24 Runtime and Bounded Package Updates
+
+Alpine 3.24 replaces the Debian 13 and dated-APT-snapshot assumption for
+the OCI producer, with an explicitly pinned Alpine 3.24.3 linux/amd64
+base manifest and only the supported v3.24 main/community APK repositories.
+AWS CLI v2, Certbot/Route53 and GnuPG dependencies use fuzzy package-version
+constraints so compatible patch updates remain possible, while every built
+image preserves its complete installed package/version inventory and must
+pass the actual toolchain and Docker/Podman acceptance gates. This does
+not guarantee byte-identical rebuilds; changed dependencies require a
+new reviewed image identity. The decision **partially supersedes ADR-038**
+only for the base distribution and OS package update policy; its verified
+producer, security, runtime and release contracts remain authoritative.
+
+See [ADR-039](adr/ADR-039-alpine-oci-runtime.md).
