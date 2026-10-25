@@ -211,6 +211,43 @@ from live GitHub-run evidence.  The matrix topology is implemented by
 this task's PR; claims that all nine jobs succeeded require the actual
 GitHub Actions results for the corresponding commit.
 
+## Implementation checkpoint: parallel release verification (task #174)
+
+The `Versioning` workflow retains one
+`bitshifted/git-auto-semver` calculation with `create_tag: false`, one
+verified, versioned build and a single short-lived handoff of the
+**exact intended release files**. Three `release-bats` and three
+`release-bash43` matrix jobs consume that same protected
+run/attempt/commit/version identity and verify the independent
+manifest digest and all checksum companions before executing
+their selected producer artifact. The matrices have
+`fail-fast: false`, and neither receives publication credentials.
+
+A separate unprivileged `gate` job requires successful version,
+preparation, complete Bats matrix, and complete Bash 4.3 matrix
+results. Only a successful gate on `main` permits the
+privileged `publish` job to re-verify the exact same files,
+attest them, and then create the tag/release. The final
+`versioning` check (preserving the historical required-check
+name) also requires the **publisher** to succeed, so an
+attestation or release failure cannot appear as a green
+versioning result.
+
+The release artifact inventory is still exactly the three
+**producer** executables plus their three `.sha256` companions.
+When approved task #54 delivers the distinct client executable,
+its release and standalone acceptance must be added explicitly.
+The producer-only matrix must **not** silently treat the client
+as a fourth flavor or publish it untested.
+
+See [Release Verification](release-verification.md) for the
+detailed DAG and [CI Parallelization Performance and Cost](ci-parallelization-benchmark.md)
+for a transparent baseline, the intermediate Bats comparison
+and the post-merge evaluation protocol. Measured **post-#174**
+release outcomes cannot be established before that PR merges
+and its `main`-triggered release workflow completes; neither
+this contract nor local tests claim that evidence exists.
+
 ## Result and failure-injection matrix
 
 | Injected condition | Expected required workflow result |
