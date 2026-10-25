@@ -1,0 +1,11 @@
+# Default deny. Only explicit, verified producer image context inputs.
+# The normal Git checkout is NOT a valid production build context.
+**
+!Dockerfile
+!.dockerignore
+!oci/
+!oci/alpine-repositories
+!oci/producer/
+!oci/producer/certbotbot.bash
+!oci/producer/certbotbot.bash.sha256
+!oci/producer/provenance.txt
