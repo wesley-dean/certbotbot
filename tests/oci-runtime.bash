@@ -141,7 +141,7 @@ done
       command -v "$tool" >/dev/null
     done
     aws --version 2>&1 | grep -Eq "^aws-cli/2\\."
-    certbot plugins --text 2>&1 | grep -Fq dns-route53
+    certbot --config-dir "$TMPDIR/config" --work-dir "$TMPDIR/work" --logs-dir "$TMPDIR/logs" plugins --text 2>&1 | grep -Fq dns-route53
     test -s /usr/local/share/certbotbot/packages.lock
     test ! -e /var/run/docker.sock
   ' >"$work/inspect.out" 2>"$work/inspect.err" || {
