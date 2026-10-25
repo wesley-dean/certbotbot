@@ -1,373 +1,408 @@
-# Bash Starter Repository
+# certbotbot
 
-This repository is a starter for maintainable, documented, tested, and
-releasable Bash projects.  It consolidates engineering patterns proven across
-adrctl, bashdeps, Bootstrap, mktext, and bashlog while keeping the starter small
-enough to adapt rather than turning it into a framework.
+**certbotbot** is a noninteractive certificate-management producer for
+existing Let's Encrypt/Certbot accounts. It uses **Route53 DNS-01** to
+issue or renew a selected certificate, persists the complete validated
+Certbot account and certificate state in an **existing Amazon S3 object**,
+and can resume on a fresh Linux runner without relying on that runner's
+previous `/etc/letsencrypt` directory.
 
-The maintained source is modular.  `make build` assembles that source into three
-standalone consumer representations.  The starter also demonstrates deterministic
-plugin discovery and runtime registration, but that plugin model is an example to
-evaluate rather than a requirement every derived project should preserve.
+It is designed for scheduled or manually initiated, **one-shot Bash**
+execution. Docker and rootless Podman are optional ways to run the same
+producer; neither is required.
 
-## certbotbot container deployment
+**[Releases](https://github.com/wesley-dean/certbotbot/releases) ·
+[Complete lifecycle](doc/how-it-works.md) ·
+[Configuration and CLI](doc/configuration-reference.md) ·
+[Operator examples](#operator-examples) ·
+[Architectural decisions](doc/decisions.md) ·
+[Issues](https://github.com/wesley-dean/certbotbot/issues)**
 
-The optional [Docker and rootless Podman producer](doc/container-deployment.md)
-runs a verified one-shot certbotbot executable with private ephemeral state;
-the existing S3 archive and Let's Encrypt account remain operator-provided.
-See the [quick-start commands](doc/examples/docker-podman.md) for local smoke
-checks. Container registries and downstream certificate installation have
-separate acceptance and responsibility boundaries. Docker and Podman are not
-required to run the standalone Bash executable.
+## Why use certbotbot?
 
-For the producer's complete flag, exported-environment and literal `.env`
-reference, see [configuration and CLI reference](doc/configuration-reference.md).
-The reference separates application inputs from external AWS/Certbot settings
-and documents encryption, backup and retention opt-ins.
+- **Ephemeral runners:** A new trusted machine can restore the existing
+  registered account and certificate lineages from one configured S3 object.
+  Only the S3 archive, not the runner's local workspace, is durable.
+- **Explicit, bounded certificate selection:** One invocation targets **one
+  named certificate lineage** with a validated set of DNS Subject Alternative
+  Names (SANs), including unrelated domains. The same archive may preserve
+  multiple independent lineages, but other lineages are not implicitly
+  renewed or removed.
+- **Verification before publication:** Downloaded archives, restored account
+  state, selected certificate material, canonical renewal metadata, and
+  candidate output pass separate checks. A verified unchanged no-op does
+  **not** rewrite S3 by default.
+- **Optional confidentiality and recovery copies:** Authenticated
+  GnuPG AES-256/OCB encryption, a deliberately authorized
+  plaintext-to-encrypted migration, dated recovery copies, and
+  narrowly scoped backup retention are available as opt-ins. Backup
+  publication defaults **off**; retention defaults to **zero deletes**.
+- **Separation of concerns:** The producer owns certificate maintenance.
+  A separately shipped **read-only client** can retrieve and validate the
+  current archive; the operator owns installation and service reloads.
+  A certificate-serving host does **not** need Certbot merely to consume
+  validated certificate files.
 
-## Adapt the Starter
+### Supported boundaries
 
-A new project should normally begin by changing `PROJECT_NAME` in the Makefile,
-replacing the example CLI and noop behavior as appropriate, and reviewing the
-starter ADRs to decide which decisions remain applicable.  `PROJECT_NAME` must
-be one non-empty whitespace-free word; conventional names such as `my-tool`,
-`my_tool`, or `my.tool` keep generated filenames and Make targets predictable.
-Maintained Bash source filenames, including plugin filenames under
-`lib/plugins/`, must also be whitespace-free as documented by ADR-004.
+The current producer supports **S3 storage**, **gzip-compressed GNU tar**
+state archives (optionally inside an authenticated GPG envelope), and
+**Certbot with Route53 DNS-01**. It relies on a **previously registered
+Let's Encrypt production account** and an **already seeded S3 archive**.
 
-The CI and release workflows discover generated Bash artifacts from `dist/`
-rather than hard-code `template-bash`, so changing `PROJECT_NAME` does not
-require corresponding artifact-name edits in those workflows.
+The tool does **not** create Let's Encrypt accounts, S3 buckets, IAM roles,
+hosted zones, or the initial archive; provision a web server; install or
+reload certificates on target hosts; automatically renew all stored
+lineages; delete orphaned lineages; provide distributed locking; or
+implicitly migrate encrypted/plaintext formats. Other storage backends,
+DNS providers and archive formats are not supported by the current
+producer. A container image is a distribution choice, not additional
+account-provisioning or certificate-serving functionality.
 
-Delete starter behavior that does not belong in the derived project; do not
-preserve it merely because it came from the template.  The template intentionally
-provides starter files rather than placeholder-only empty directories.
+See [How certbotbot works](doc/how-it-works.md) for the complete lifecycle
+and [the threat model](doc/mvp-certificate-state-threat-model.md) for
+specific trust boundaries and failure assumptions.
 
-Before a derived project's first release, review repository-facing files such as
-`README.md`, `CONTRIBUTING.md`, `SUPPORT.md`, `SECURITY.md`, issue templates, and
-the pull-request template.  These are part of the project surface and should not
-retain stale template names, unrelated links, or policies copied from another
-repository.
+## How the pieces fit
 
-## Engineering Posture
+```mermaid
+flowchart LR
+    operator[Operator-managed scheduler, AWS IAM and secrets]
 
-The reusable engineering philosophy is documented in
-[`doc/engineering-philosophy.md`](doc/engineering-philosophy.md).  It is guidance
-for areas where a more specific Accepted ADR does not already govern.
+    subgraph runner[Trusted ephemeral Linux, Docker or Podman runner]
+        cli[certbotbot Bash producer]
+        private[Private temporary Certbot config, work and logs]
+        verify[Archive, lineage, SAN, key and candidate verification]
+        cli --> private
+        private --> verify
+        verify --> cli
+    end
 
-Recurring principles include:
+    subgraph aws[Operator-provisioned AWS resources]
+        current[(Existing S3 current archive)]
+        backups[(Optional dated S3 recovery copies)]
+        route53[Existing Route53 hosted zones]
+    end
 
-- respect developer agency and make important policy choices explicit;
-- prefer bounded contracts and explicit APIs over hidden inference;
-- state both promises and non-promises for consequential behavior;
-- apply UNIX composition principles deliberately rather than ceremonially;
-- keep stdout, stderr, files, exit status, and side effects intentional;
-- treat readability and auditability as correctness properties;
-- distinguish modular maintained source from product-specific runtime plugin
-  architecture;
-- keep public surfaces conservative;
-- treat every dependency as an expansion of the trusted computing base and a new
-  attack surface;
-- make network and external-command boundaries visible; and
-- avoid claiming boundaries the Bash runtime does not actually provide.
+    acme[Existing Let's Encrypt account and ACME service]
+    consumer[Separate read-only client or operator download]
+    service[Operator-managed certificate installation and TLS reload]
 
-These principles are not substitutes for project-specific decisions.  When a
-derived project needs a different contract, record the divergence rather than
-preserving a starter convention by inertia.
-
-## Threat Modeling
-
-[`doc/threat-modeling.md`](doc/threat-modeling.md) provides a reusable exercise for
-projects that handle sensitive data, untrusted input, destructive operations,
-privileged files, network access, release credentials, dynamic loading, or other
-security-relevant authority.
-
-The exercise asks projects to identify assets, trusted computing base, trust
-boundaries, data and authority flows, threat actors and failure sources,
-mitigations, evidence, residual risk, and review triggers.  It includes a Mermaid
-trust-boundary diagram template so maintained Markdown can keep architecture and
-security reasoning reviewable as text.
-
-Threat modeling is not a blanket declaration that a project is secure.  Its value
-is making assumptions and changes in trust or authority visible before they are
-normalized as ordinary implementation details.
-
-## Build Lifecycle
-
-The canonical orchestration interface is Make:
-
-- `make deps` synchronizes repository dependencies and may use the network.
-- `make deps-check` verifies prepared dependency state offline.
-- `make build` creates release artifacts from maintained source and prepared
-  dependencies without synchronizing dependencies.
-- `make all` runs `deps` and then `build`, so it may use the network.
-- `make check` runs Bash syntax validation and ShellCheck.
-- `make format` runs shfmt with `-i 2 -bn -ci -sr -kp`.
-- `make test` runs Bats against every artifact flavor.
-- `make test-report` writes JUnit reports under `test-results/`.
-- `make adr-index` generates linked ADR navigation from prepared adrctl state.
-- `make docs` generates Doxygen HTML under `doc/reference/` from prepared
-  dependency state.
-- `make clean` removes build, test-report, generated ADR-navigation, and
-  reference-documentation output.
-- `make distclean` additionally removes prepared repository dependencies.
-
-Repository dependencies are scripts, libraries, filters, and assets.  bashdeps
-does not install system tools or operating-system packages.  The Makefile
-bootstraps only bashdeps directly; bashdeps manages Bash-Minifier, the
-bash-doxygen filter, and adrctl through `dependencies.txt`.
-
-Dependency acquisition and dependency trust are distinct questions.  Pinning and
-checksums help establish that expected bytes were acquired; they do not establish
-that those bytes are behaviorally safe or appropriately trusted with project data
-and authority.  See ADR-005 and ADR-015.
-
-## Source Modularity
-
-The starter demonstrates an explicit core source order plus deterministic
-additive discovery under `lib/plugins/`.  The more general architectural lesson is
-that maintained implementation should be split into responsibility-focused
-modules, semantically important ordering should remain explicit, and assembled
-consumer artifacts should remain deterministic and standalone.
-
-The runtime registry and noop plugin are teaching material for projects that need
-name-to-implementation dispatch.  A derived project may remove the registry,
-reinterpret additive modules, enumerate every module explicitly, or eliminate
-plugin discovery when direct functions are clearer.  Modularity does not imply a
-runtime extension system.
-
-See ADR-004 and ADR-014.
-
-## Release Artifacts
-
-For the default project name, `make build` creates **eight** files:
-
-```text
-dist/certbotbot.dev.bash
-dist/certbotbot.dev.bash.sha256
-dist/certbotbot.bash
-dist/certbotbot.bash.sha256
-dist/certbotbot.min.bash
-dist/certbotbot.min.bash.sha256
-dist/certbotbot-client.bash
-dist/certbotbot-client.bash.sha256
+    operator --> cli
+    current -->|Restore existing account and lineages| cli
+    cli -->|Selected DNS-01 challenge| route53
+    route53 <--> acme
+    cli -->|Verified, conditional current publication| current
+    cli -.->|Opt-in dated backup and retention| backups
+    current -->|Independent read| consumer
+    consumer -->|Operator-controlled installation| service
 ```
 
-The producer retains its three existing representations: documented development,
-ordinary/comment-stripped and minified. The consumer is a **separate, single
-ordinary-style executable**, not a fourth producer flavor. Each script ships
-with a conventional, independently verified SHA-256 checksum companion.
-Generated version/build-date/commit metadata remains deterministic for the
-same source and chosen version. Only the selected release files (not `vendor/`
-or the checkout) are attested and published after all release checks pass.
+An archive is the **contents of the Certbot configuration root**
+(`/etc/letsencrypt`) using validated relative members and canonical
+renewal metadata. The exact configured **current S3 bucket/key**
+(default `latest.tar.gz`) is authoritative. A successful certificate
+run does not imply downstream deployment. A failed or interrupted
+S3 PutObject may have changed the remote object even if the
+producer returns nonzero: the operation is **not** a transaction.
 
-Historical `.256` checksum companions remain supported only for older
-releases confirmed to lack a `.sha256` companion. New releases contain only
-`.sha256` companions.
+## Quick start: existing account and seeded archive
 
-### Standalone certificate client quick start
+This is a **production-adjacent example, not an unattended setup
+script or evidence of a live service test**. Prepare the prerequisites
+before executing any credentialed command:
 
-A certificate-consumer host can download the standalone
-`certbotbot-client.bash` and its `.sha256` companion from the
-[project releases](https://github.com/wesley-dean/certbotbot/releases)
-without installing Certbot, its Route53 plugin, or the issuer. On a trusted
-Linux host, first install **Bash 4.3+**, **AWS CLI v2**, **GNU tar**, **gzip**,
-and standard GNU core utilities. Configure an existing AWS identity with
-read access to the selected bucket/object; credentials and IAM policy remain
-the operator's responsibility. Verify the downloaded files *before*
-execution:
+1. **Account and archive:** Register a suitable production
+   Let's Encrypt account **outside certbotbot**. Populate an existing
+   S3 bucket and current object with a valid full Certbot-state
+   `tar.gz` containing that account, including its registration
+   metadata and private key. An account-only archive is allowed
+   for the initial certificate issuance; a missing archive or
+   missing account is **not**.
+2. **DNS and AWS identity:** Provision a Route53 hosted zone for
+   the requested DNS-01 challenges and a trusted AWS CLI identity
+   with narrowly scoped S3 reads/writes and necessary Route53
+   TXT-change and status-check permissions. Configure AWS region,
+   network access and credential delivery separately. If dated
+   backups or retention are enabled, review their additional
+   conditional-write/list/delete permissions first.
+3. **Trusted Linux toolchain:** Install Bash **4.3+**, AWS CLI
+   **v2**, Certbot with the `dns-route53` plugin,
+   OpenSSL, GNU tar/gzip and standard file/hash utilities.
+   GnuPG **2.4.7+ with working AES-256/OCB support** is
+   additionally required for encrypted archives. The runner
+   must keep its temporary Certbot workspace private.
+4. **Reviewed release artifact:** Choose an immutable reviewed
+   release tag, verify the [release checks and provenance](doc/release-verification.md),
+   and obtain an **independently verified** SHA-256 for the
+   ordinary `certbotbot.bash` executable. Never treat the
+   downloaded executable and its same-origin checksum alone as
+   sufficient proof of release trust.
+5. **Only one writer per current key:** Schedule and coordinate
+   certificate jobs so that two producers cannot concurrently
+   modify the same authoritative bucket/key, even across
+   Jenkins, GitHub Actions, containers and other hosts.
+
+With the GitHub CLI, a trusted `sha256sum` implementation and
+the expected digest obtained **out-of-band from your review**,
+the following shell example fails closed until its placeholders
+are replaced:
 
 ```bash
-sha256sum -c certbotbot-client.bash.sha256
-chmod 0755 certbotbot-client.bash
-mkdir -m 700 "$HOME/certificate-states"
+set -euo pipefail
+umask 077
+
+RELEASE_TAG='vREPLACE_WITH_REVIEWED_TAG'
+EXPECTED_SHA256='REPLACE_WITH_INDEPENDENTLY_REVIEWED_64_HEX_DIGEST'
+
+[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+[[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+mkdir -m 0700 ./certbotbot-release
+cd ./certbotbot-release
+gh release download "$RELEASE_TAG" \
+  --repo wesley-dean/certbotbot \
+  --pattern certbotbot.bash \
+  --pattern certbotbot.bash.sha256
+
+sha256sum --check certbotbot.bash.sha256
+actual="$(sha256sum certbotbot.bash | awk '{print $1}')"
+[[ "$actual" == "$EXPECTED_SHA256" ]]
+gh attestation verify certbotbot.bash \
+  --repo wesley-dean/certbotbot >/dev/null
+gh attestation verify certbotbot.bash.sha256 \
+  --repo wesley-dean/certbotbot >/dev/null
+
+bash -n certbotbot.bash
+chmod 0700 certbotbot.bash
+./certbotbot.bash --help
+./certbotbot.bash --version
+```
+
+The download commands intentionally do **not** contact S3, Route53
+or ACME. Once the real account, archive, permissions and selected
+domain have been **independently prepared**, an ordinary invocation
+from that private directory looks like:
+
+```bash
+./certbotbot.bash \
+  --s3-bucket my-existing-certificates \
+  --s3-key latest.tar.gz \
+  example.com
+```
+
+Here `my-existing-certificates` and `example.com` are **illustrative
+values**, not provisioned resources. The default
+`INCLUDE_SUBDOMAINS=true` also requests the complementary wildcard
+SAN, so `example.com` normally requests both `example.com`
+and `*.example.com`. Use `--include-subdomains false`
+when only the literal name is desired. For a stable lineage
+across SAN changes, use an explicit `--cert-name`.
+
+A successful run prints a nonsecret selected-lineage and
+`s3://bucket/key` status containing `published=true`
+or `published=false`. An unchanged, validated no-op is still
+success and normally skips the remote write. A failed provider,
+unsafe archive, mismatched certificate/key or incomplete candidate
+must not authorize publication; after an attempted remote write,
+the remote state can be **uncertain**. Inspect the current object
+independently rather than blindly retrying a failed or partial
+publication. See [failure and recovery details](doc/how-it-works.md).
+
+## Common configuration
+
+Settings resolve **CLI > explicitly exported environment >
+literal selected `.env` > built-in defaults**. Without an
+explicit `--config FILE`, the optional `./.env` file is read
+as strict **data**, never sourced as shell code. Unknown or
+duplicate entries and shell expansion are rejected. The
+[full configuration reference](doc/configuration-reference.md)
+is authoritative for values, edge cases, precedence and all
+public flags.
+
+| CLI | Environment / literal `.env` | Default or purpose |
+| --- | --- | --- |
+| `DNS_NAME` or `--domain` | `DOMAIN` | **Required** primary DNS name |
+| `--san` (repeatable) | `ADDITIONAL_SANS` | Optional additional names; CLI replaces lower-tier SAN collection |
+| `--include-subdomains` | `INCLUDE_SUBDOMAINS` | `true`; add complementary apex/wildcard for each name |
+| `--cert-name` | `CERT_NAME` | Derive shortest valid SAN name unless explicitly set |
+| `--s3-bucket` | `S3_BUCKET` | **Required** existing bucket |
+| `--s3-key` or `--s3-key-template` | `S3_KEY` or `S3_KEY_TEMPLATE` | Current object; default literal `latest.tar.gz` |
+| `--upload-no-renewal` | `UPLOAD_NO_RENEWAL` | `false`; do not republish an unchanged verified no-op |
+| `--dated-backup-enabled` | `DATED_BACKUP_ENABLED` | `false`; opt in to an additional dated recovery object |
+| `--backup-key-template` | `BACKUP_KEY_TEMPLATE` | `archive-{YEAR}{MONTH}{DOM}.tar.gz`; naming alone does not enable publishing |
+| `--backup-retention-count` | `BACKUP_RETENTION_COUNT` | `0`; **no deletion** unless positive and dated backups enabled |
+| `--archive-encryption` | `ARCHIVE_ENCRYPTION` | `auto`: plaintext without key, GPG OCB with exported key |
+| `--archive-migration` | `ARCHIVE_MIGRATION` | `none`; explicit one-way migration only |
+| `--archive-migration-backup-confirmed` | `ARCHIVE_MIGRATION_BACKUP_CONFIRMED` | `false`; independent recoverable-backup acknowledgment |
+
+The **secret** `GPG_SYMMETRIC_KEY` is accepted **only as an
+exported process-environment variable**, never as a CLI option
+or literal `.env` key. Use a trusted secret manager and ensure
+it is absent from command arguments, build inputs, files and
+logs. Selecting `ARCHIVE_ENCRYPTION=none` while supplying a
+nonempty key fails closed; migration requires explicit mode,
+key and independently confirmed backup.
+
+The current key and a separately selected date-derived
+current-key template conflict **only when both are set at the
+winning precedence tier**. Templates use a frozen UTC date
+and the supported `{YEAR}`, `{MONTH}`, `{DOM}` tokens.
+Positive retention additionally requires stricter managed
+date-shaped backup keys and can delete eligible older
+objects. No option automatically creates a recovery backup
+or restores it on failure.
+
+Run `./certbotbot.bash --help` or
+`./certbotbot.bash --version` without cloud access.
+The full reference covers exact Boolean syntax, SAN limits,
+status codes, invalid combinations and encryption migration
+safety.
+
+## Standalone read-only client
+
+The separate `certbotbot-client.bash` release artifact retrieves
+**one current** selected S3 object, validates it, and extracts
+the complete supported Certbot state into a **new, absent
+operator-selected destination**. It does not issue or renew
+certificates, write to S3, delete backups, install certificate
+files into a service or reload that service. A target system
+does not need Certbot to use previously issued material.
+
+Download its matching `.sha256` companion, independently
+verify the release and attestations as above, then invoke
+the client with an existing read-only AWS identity and
+a fresh private destination:
+
+```bash
 ./certbotbot-client.bash \
   --s3-bucket my-existing-certificates \
   --s3-key latest.tar.gz \
-  --destination "$HOME/certificate-states/current-2026-10-25"
+  --destination "$HOME/certificate-states/current"
 ```
 
-The chosen destination **must not already exist**. Its parent must exist,
-be owned by the invoking user, and not be group/world-writable or
-symlink-ambiguous. The example destination uses an arbitrary new
-operator-chosen name, not an automatic rotation scheme. On success, the
-command prints only the absolute destination pathname and leaves a private
-complete Certbot archive tree (including accounts, renewal files, preserved
-relative PEM links and all supported lineages).
+The destination **must not already exist**, and its parent
+must satisfy the client's private-directory requirements.
+For encrypted objects, the client also needs compatible GnuPG
+and a matching exported secret. See
+[client settings](doc/client-settings.md),
+[client examples](doc/examples/certbotbot-client.md) and
+[the separate-client contract](doc/separate-client-contract.md)
+before adoption. The client is shipped **separately** and
+is not embedded in the producer's OCI image.
 
-The term **"latest" means exactly the object currently stored under the
-configured S3 key**. The client does not list backups, compare timestamps,
-select lineages, choose S3 versions, upload, renew, install or execute hooks.
-For a date-derived key, use `--s3-key-template 'archive-{YEAR}{MONTH}{DOM}.tar.gz'`;
-the template uses one frozen UTC date. The default literal key is
-`latest.tar.gz`. The shared nonsecret `.env` file, environment settings,
-and CLI flags follow CLI > environment > literal file > defaults. An
-explicit `--config FILE` replaces the implicit `./.env` source.
+## Containers and operator examples
 
-The client supports either **plaintext gzip-compressed tar**, or the
-producer's exact versioned **GnuPG AES-256/OCB authenticated archive**.
-Decoded content is limited to 32 MiB and 2,048 members, including
-full-state and symlink safety checks. Encrypted restoration additionally
-requires trusted **GnuPG 2.4.7+ with actual OCB support** and an
-operator-provided exported `GPG_SYMMETRIC_KEY`. The key must never
-be placed in a literal `.env`, a CLI argument, a checked-in file,
-or a log. Use `--archive-encryption gpg-ocb` to explicitly require
-encrypted input, or `auto` (default) to select it when an exported key
-is present. Without a key, `auto` uses plaintext and needs no GnuPG.
-There is **no format, key, alternate S3 object or legacy OpenPGP
-fallback**, and plaintext mode plus an exported key is rejected.
+The optional [Alpine OCI producer](Dockerfile) executes the
+same one-shot CLI in Docker or rootless Podman. Its reviewed
+scope is **linux/amd64**, nonroot UID/GID **65532**, a private
+ephemeral state directory, a read-only root filesystem and
+no baked credentials or ACME material. The image does **not**
+schedule itself or automatically deploy certificates. AWS
+workload identity or securely injected runtime credentials
+must be provided by the operator.
 
-For example, after injecting the secret securely into the environment,
-use a fresh absent destination:
+See the [Docker/rootless Podman quick start](doc/examples/docker-podman.md)
+and the [full container deployment guide](doc/container-deployment.md).
+Local image build/runtime tests are **not** proof that a
+registry image has been published or that the running image
+can issue real certificates in the operator's environment.
+The intended registries are
+`ghcr.io/wesley-dean/certbotbot` and
+`docker.io/wesleydean/certbotbot`; **do not assume
+they contain accepted release images** until the distinct
+[registry publication and verification tasks](https://github.com/wesley-dean/certbotbot/issues/165)
+and [#166](https://github.com/wesley-dean/certbotbot/issues/166)
+have passed.
+
+### Operator examples
+
+Examples under `doc/examples/` are **references, not active
+production automation**:
+
+- [Jenkins Pipeline and adoption guide](doc/examples/jenkins.md)
+  with an [example-only Jenkinsfile](doc/examples/Jenkinsfile)
+- [GitHub Actions workflow and OIDC guide](doc/examples/github-actions.md)
+  with an [inert workflow example](doc/examples/certbotbot.yml)
+- [Docker and rootless Podman runtime](doc/examples/docker-podman.md)
+- [Standalone certificate client](doc/examples/certbotbot-client.md)
+
+In particular, the GitHub Actions example is deliberately
+**outside `.github/workflows/`**. An operator must separately
+review and activate a protected workflow, credentials, IAM
+trust policy, release pin and schedule. Examples do not
+provision accounts or buckets, run live cloud operations on
+PRs, or deploy certificates to consumer servers.
+
+## Building, testing and contributing
+
+The maintained Bash source lives in `src/` and `lib/`.
+GNU Make is the canonical build and test entrypoint.
+Bash dependencies (including the pinned `mktext`
+library used for safe filename templates) are prepared
+before building; the resulting standalone scripts have
+no runtime dependency on the repository's `vendor/` tree.
 
 ```bash
-./certbotbot-client.bash \
-  --s3-bucket my-existing-certificates \
-  --s3-key latest.tar.gz \
-  --archive-encryption gpg-ocb \
-  --destination "$HOME/certificate-states/authenticated-restore"
+make deps
+make deps-check
+make build
+make check
+make test
 ```
 
-The operator must configure AWS read-only permissions and obtain the
-matching key independently. Coordinate producer-format changes and key
-rotation with all consumers; the client cannot migrate, re-encrypt,
-or discover old versions. On success it restores **all** validated
-account and lineage state to a private, new destination; it never
-overwrites an existing destination or independently verifies
-certificate-chain trust, installs certificates or restarts services.
+`make deps` can access the network; `make deps-check`
+and `make build` are network-free once dependencies
+are prepared. `make test-report` writes JUnit output.
+`make format` applies the repository's shfmt profile,
+`make adr-index` generates temporary ADR navigation,
+and `make docs` generates Doxygen reference output
+without committing generated files.
 
-The **encrypted client is release-qualified** only when a separate
-real-GnuPG shipped-client suite passes without skips against the
-exact eight verified release files, alongside the existing three
-producer suites, Bash 4.3 checks, attestation and late publication.
-A normal runner that skips cryptographic fixtures is not proof of
-successful encrypted restoration.
+The eight release assets comprise the three producer
+flavors (`certbotbot.dev.bash`, `certbotbot.bash`,
+`certbotbot.min.bash`) plus the distinct
+`certbotbot-client.bash`, each with its `.sha256`
+companion. Release CI independently verifies the
+producer variants, required Bash compatibility and
+authenticated standalone client, then attests the
+exact files before releasing them. Read
+[release verification](doc/release-verification.md)
+before pinning executable versions or adopting a
+production runner.
 
-See the [complete client settings reference](doc/client-settings.md),
-[secure encrypted and plaintext examples](doc/examples/certbotbot-client.md),
-[separate-client contract](doc/separate-client-contract.md),
-[retrieval](doc/client-retrieval.md),
-[archive activation and threat boundary](doc/client-extraction.md),
-[release verification](doc/release-verification.md),
-and [ADRs 035 and 037](doc/decisions.md) for detailed options,
-failure codes, runtime limits, security assumptions and tests.
+For contributor onboarding, start with
+[AGENTS.md](AGENTS.md),
+[testing guidance](doc/testing.md),
+[the engineering philosophy](doc/engineering-philosophy.md),
+[the architecture decision map](doc/decisions.md),
+[accepted ADRs](doc/adr/README.intro.md),
+[the Bash documentation standard](doc/documentation-standard.md),
+[CONTRIBUTING.md](CONTRIBUTING.md),
+and [the security disclosure policy](SECURITY.md).
+The generated ADR index and Doxygen reference output
+are not maintained source.
 
-## Documentation and Architectural Decisions
+This repository uses an opt-in,
+[three-phase approved development workflow](doc/standards/general/three-phase-development-governance.md).
+A current issue's `approved` label records its own
+authorization, not blanket permission for related
+tasks; substantive architecture changes must respect
+Accepted ADRs. Issues and PRs are reviewed separately
+from CI success.
 
-This project deliberately treats documentation as part of the engineering
-architecture.  Different documents have different jobs:
+For support and project status, use
+[SUPPORT.md](SUPPORT.md),
+[GitHub Issues](https://github.com/wesley-dean/certbotbot/issues),
+and [GitHub Actions](https://github.com/wesley-dean/certbotbot/actions).
+The historical research record is in
+[doc/research/](doc/research/README.md).
+The project adopts a pinned released snapshot of
+[coding standards](https://github.com/wesley-dean/coding_standards)
+through [`.codingstandardrc`](.codingstandardrc).
 
-- `README.md` provides public orientation and starter lifecycle guidance;
-- `doc/engineering-philosophy.md` summarizes reusable engineering posture;
-- `doc/decisions.md` provides a concise architectural discovery map;
-- ADRs under `doc/adr/` preserve durable reasoning, alternatives, tradeoffs,
-  consequences, and operational constraints;
-- a project specification describes normative observable behavior when a derived
-  project needs one;
-- `doc/threat-modeling.md` provides a reusable security-analysis exercise;
-- `AGENTS.md` is the concise contributor-oriented operational map;
-- maintained Bash follows the normative Doxygen standard in
-  `doc/documentation-standard.md`; and
-- tests provide executable evidence for documented contracts.
+## License
 
-Generated Doxygen output is written to `doc/reference/` and is not committed.  The
-Doxygen landing page at `doc/adr/README.md` is also generated state: maintained
-framing lives in `doc/adr/README.intro.md` and `doc/adr/README.outro.md`, while the
-linked ADR list is derived from the current corpus by the pinned adrctl release.
-The generated README may therefore be absent from a fresh checkout.
-
-ADR-012 defines the current `.sha256` checksum companion naming and historical
-`.256` read-compatibility policy.  ADR-013 treats repository-facing documentation
-as maintained product surface.  ADR-014 separates modular source assembly from
-runtime plugin architecture.  ADR-015 treats dependencies as explicit attack
-surface.  ADR-016 establishes threat-modeling expectations for security-relevant
-changes.  ADR-017 governs the ephemeral ADR landing-page model.
-
-Use `doc/decisions.md` as the always-present concise ADR map.  `make adr-index` or
-`make docs` generates the linked `doc/adr/README.md` used by the published
-reference site.
-
-## Testing
-
-Bats tests live under `tests/` and are intentionally behavior-oriented.  The
-starter tests its example help/version interface, plugin discovery and dispatch,
-artifact executability, checksum companions, and invalid input behavior.  A
-derived project should add focused tests for its real contracts rather than grow
-a few oversized fixtures.
-
-The default compatibility floor is Bash 4.3.  Release CI should validate
-representative behavior under that version in addition to the primary runner.
-
-Security-sensitive behavior should use negative assertions where appropriate.
-Proving that an expected value appears is not enough when the contract also
-requires that sensitive, unsafe, or forbidden output never appears elsewhere.
-
-## Releases and Conventional Commits
-
-The release workflow uses Conventional Commits with
-`bitshifted/git-auto-semver`.  `feat` increments the minor version,
-`BREAKING CHANGE` increments the major version, and supported maintenance commit
-types increment the patch version.  The workflow calculates the version without
-creating a tag, validates and attests the exact release artifacts, and creates
-the release/tag only after validation succeeds.
-
-## Existing Repository Tooling
-
-The upstream template's MegaLinter, CodeQL, Scorecard, Dependabot, issue
-management, and related configuration is intentionally retained unless it
-conflicts with the Bash build architecture.  Projects may tune those controls to
-match repository visibility and available GitHub features.
-
-## License and Contributions
-
-This project is dedicated to the public domain under CC0 1.0 Universal.  See
-`LICENSE` and `CONTRIBUTING.md` for details, `SUPPORT.md` for ordinary support,
-`SECURITY.md` for vulnerability reporting, and `CODE_OF_CONDUCT.md` for the
-project's expectations for respectful collaboration.
-
-## Project Planning Research and Adopted Standards
-
-The research record from the earlier rebuild lives under
-[`doc/research/`](doc/research/README.md). The previous implementation
-is preserved in [certbotbot-research](https://github.com/wesley-dean/certbotbot-research).
-This new repository is the planning destination for an intentionally small
-one-domain, one-archive Phase 1. The research documents are **draft or
-historical**, not independent implementation authorization. Product scope and
-issue backlog are being finalized separately.
-
-The repository adopts a concrete released snapshot of
-[wesley-dean/coding_standards](https://github.com/wesley-dean/coding_standards)
-under [`doc/standards/`](doc/standards/). The project-root
-[`.codingstandardrc`](.codingstandardrc) pins the release version,
-source, and archive SHA-256 digest. Applicable general, cross-cutting,
-and language-specific standards are governing requirements unless an
-Accepted project-specific ADR or explicit local policy refines them.
-The bundled examples are illustrative. Imported files must not be edited
-locally; project exceptions belong in local governance (ADR-018).
-
-### Opt-In Three-Phase Development
-
-This repository **explicitly opts in** to the three-phase development
-governance introduced in coding standards v2.2.0, as recorded by
-`three_phase_development = true` in `.codingstandardrc`. The
-[governing standard](doc/standards/general/three-phase-development-governance.md)
-defines separately approved stages:
-
-1. **Project planning:** Product Owner-approved user stories, measurable
-   acceptance criteria, scope, and priorities; Project Manager support.
-2. **Technical planning:** Linked engineering tasks, reviewed ADRs,
-   dependencies, and Technical Architect approval for development.
-3. **Development:** Implement approved tasks, link PRs, and independently
-   verify acceptance criteria before marking stories complete.
-
-GitHub Issues, issue links, milestones, and labels record the backlog
-and handoff between phases. No GitHub Projects board is required.
-The current `approved` label is the authoritative and sufficient workflow
-approval record for an individual issue's scope and phase. The Product
-Owner decides story approval, and the Technical Architect decides task
-approval; authorized humans may apply labels or direct agents to do so
-for identified issues. A separate approval comment is not required.
-Approvals do not transfer between issues or phases, and materially changed
-scope must lose its label until reapproved. Agents cannot self-approve.
-Labels do not replace security, ADR, or PR review controls (ADR-019).
-Research drafts do not constitute such approval.
+Dedicated to the public domain under **CC0 1.0 Universal**.
+See [LICENSE](LICENSE), [CONTRIBUTING.md](CONTRIBUTING.md),
+and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
