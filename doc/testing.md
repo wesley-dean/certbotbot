@@ -113,6 +113,43 @@ adding another producer matrix flavor. The standalone client is also tested
 from a copied directory after `vendor/` has been removed.
 
 
+## Real-GnuPG Shipped-Client Encryption Acceptance
+
+The standalone certificate client has an independent
+`tests/client-authenticated-shipped.bats` black-box suite. It copies the
+already-built client and its conventional SHA-256 companion into a private
+runtime directory, checks the digest and release provenance, and exercises
+that **same executable** without repository `src/`, `lib/`, `vendor/` or
+issuer files. The mock AWS CLI accepts only HeadObject and one GetObject for
+one expected current bucket/key and rejects unexpected S3 operations; GnuPG
+is **not mocked** for positive encryption cases. The GnuPG subprocess
+wrapper forwards to the real executable but checks that the symmetric
+key was not exported to helpers and that its value never appears in
+command-line arguments or captured logs.
+
+The test suite creates fresh AES-256/OCB encrypted archives with GnuPG's
+producer-compatible SHA-512 iterated/salted S2K settings and verifies
+account-only and multi-lineage restoration, byte-equivalent plaintext
+contents, PEM links and restrictive file modes. Negative cases include
+wrong/missing key, invalid mode, malformed/future envelope, tampered or
+truncated ciphertext, trailing packet data, legacy CFB/MDC or unexpected
+S2K, malicious authenticated tar contents, size/member limits, no
+fallback reads, and no-clobber destination protections. Each failed
+restore must leave no activated state or owned private staging, and
+none of the private-key sentinels or passphrases may be emitted.
+
+**A skipped cryptographic fixture is not proof that encryption works.**
+On a runner without a real compatible GnuPG 2.4.7+ executable, Bats
+reports an explicit `SKIP: ... NOT crypto evidence` rather than
+substituting fake-crypto success. This is acceptable for the general
+Bats matrices while test infrastructure is being prepared, but **not**
+for encrypted-client release qualification. Task #188 must run a
+separate required job with proven OCB capability and reject a skipped,
+canceled, missing or failing crypto suite before tagging or publication.
+These source and shipped-client tests do not replace the existing
+three producer flavors, Bash 4.3 tests, eight-file provenance checks
+or attestation gates.
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful
