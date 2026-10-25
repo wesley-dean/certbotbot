@@ -151,6 +151,6 @@ teardown() {
   grep -Fq 'platforms: linux/amd64' "$workflow"
   grep -Fq 'name: verified-oci-gate-' "$gate"
   grep -Fq 'retention-days: 1' "$gate"
-  ! grep -Eq '(push:|pull_request:|schedule:|tags:)' "$workflow"
+  ! grep -Eq '^  (push|pull_request|schedule|workflow_dispatch):' "$workflow"
   ! grep -Eq 'packages: write|publish_image@' "$gate"
 }
