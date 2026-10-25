@@ -21,6 +21,13 @@ RUN set -eu; \
       coreutils findutils tar gzip gawk sed grep; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb
 
+# Record the complete actually installed transitive Debian package inventory.
+# It is nonsecret image provenance, not a promise that all packages are safe.
+RUN set -eu; \
+    install -d -m 0755 /usr/local/share/certbotbot; \
+    dpkg-query -W -f='${Package}=${Version}\n' | LC_ALL=C sort \
+      > /usr/local/share/certbotbot/packages.lock
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Verify the real dependencies, including authenticated OCB operation.
