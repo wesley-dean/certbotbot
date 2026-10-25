@@ -55,7 +55,7 @@ registry_read_manifest() {
     if result="$(docker buildx imagetools inspect "$reference" 2>&1)"; then
       actual="$(awk '$1 == "Digest:" {print $2; exit}' <<< "$result")"
       [[ "$actual" == "$DIGEST" ]] ||
-        registry_fail "digest mismatch for $reference (expected $DIGEST; found \${actual:-none})"
+        registry_fail "digest mismatch for $reference (expected $DIGEST; found ${actual:-none})"
       return 0
     else
       rc=$?
@@ -114,7 +114,7 @@ registry_pull_image() {
 
 for required in DIGEST GHCR_REF DOCKERHUB_REF IMAGE_TAGS SOURCE_SHA \
   RELEASE_VERSION PRODUCER_SHA REPORTED_SOURCE REPORTED_REF; do
-  [[ -n "\${!required:-}" ]] ||
+  [[ -n "${!required:-}" ]] ||
     registry_fail "missing nonsecret publisher identity: $required"
 done
 
