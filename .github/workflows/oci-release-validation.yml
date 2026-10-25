@@ -15,7 +15,6 @@ permissions:
 jobs:
   preflight:
     name: Verify trusted completed Versioning
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
