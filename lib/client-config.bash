@@ -119,6 +119,8 @@ certbotbot_client_config_resolve() {
   done
   [[ -n "${cli[DESTINATION]+x}" ]] ||
     { certbotbot_client_error 'destination is required'; return 64; }
+  # The entrypoint consumes this global after build-time module assembly.
+  # shellcheck disable=SC2034
   CERTBOTBOT_CLIENT_DESTINATION="${cli[DESTINATION]}"
   if [[ -n "${cli[CONFIG]+x}" ]]; then
     config_file="${cli[CONFIG]}"
@@ -180,7 +182,11 @@ certbotbot_client_config_resolve() {
       "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] ||
       { certbotbot_client_error 'invalid S3 object key'; return 64; }
   fi
+  # Shared filename resolver reads these via Bash dynamic scope from the
+  # assembled executable, not this standalone module.
+  # shellcheck disable=SC2034
   CERTBOTBOT_BACKUP_KEY_TEMPLATE_EXPLICIT=false
+  # shellcheck disable=SC2034
   CERTBOTBOT_DATED_BACKUP_ENABLED=false
   certbotbot_filename_resolve || return 64
 }
