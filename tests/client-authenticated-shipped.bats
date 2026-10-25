@@ -269,6 +269,20 @@ assert_rejected_encrypted() {
   ! grep -Ev '^(head-object|get-object)\|fixture-bucket\|current-client\.tar\.gz$' "$AWS_LOG"
 }
 
+@test "real OCB restoration accepts larger incompressible state within archive bounds" {
+  dd if=/dev/urandom of="$SOURCE/accounts/incompressible-state" \
+    bs=1024 count=256 status=none
+  make_archive
+  encrypt_archive
+  run_encrypted
+  [ "$status" -eq 0 ]
+  [ "$output" = "$DESTINATION" ]
+  cmp "$SOURCE/accounts/incompressible-state" \
+    "$DESTINATION/accounts/incompressible-state"
+  [ "$(stat -c %a "$DESTINATION/accounts/incompressible-state")" = 600 ]
+  assert_one_read
+}
+
 @test "missing key and incompatible GnuPG fail before any S3 lookup" {
   make_archive
   invoke "$DESTINATION" --archive-encryption gpg-ocb
