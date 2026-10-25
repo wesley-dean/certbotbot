@@ -113,3 +113,39 @@ jobs:
           docker save -o "$RUNNER_TEMP/producer-image.tar" certbotbot:release-acceptance
           podman load -i "$RUNNER_TEMP/producer-image.tar"
           bash tests/oci-runtime.bash podman certbotbot:release-acceptance dist/certbotbot.bash
+
+      # Proof exists only if the *same* validated image passed both engines.
+      # The distinct workflow_run publisher must revalidate release artifacts.
+      - name: Record bounded successful OCI gate identity
+        env:
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          TRUSTED_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          provenance="$RUNNER_TEMP/release-context/oci/producer/provenance.txt"
+          test -s "$provenance" && test ! -L "$provenance"
+          version="$(sed -n 's/^version=//p' "$provenance")"
+          producer_sha="$(sed -n 's/^producer_sha256=//p' "$provenance")"
+          handoff_sha="$(sed -n 's/^handoff_manifest_sha256=//p' "$provenance")"
+          test "$(sed -n 's/^source_sha=//p' "$provenance")" = "$TRUSTED_SOURCE_SHA"
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$producer_sha" =~ ^[a-f0-9]{64}$ && "$handoff_sha" =~ ^[a-f0-9]{64}$ ]]
+          {
+            printf 'gate_run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'gate_run_attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+            printf 'source_run_id=%s\n' "$SOURCE_RUN_ID"
+            printf 'source_attempt=%s\n' "$SOURCE_ATTEMPT"
+            printf 'source_sha=%s\n' "$TRUSTED_SOURCE_SHA"
+            printf 'release_version=%s\n' "$version"
+            printf 'handoff_manifest_sha256=%s\n' "$handoff_sha"
+            printf 'producer_sha256=%s\n' "$producer_sha"
+          } > "$RUNNER_TEMP/verified-oci-gate.txt"
+
+      - name: Publish one-day nonsecret same-attempt gate proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verified-oci-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/verified-oci-gate.txt
+          if-no-files-found: error
+          retention-days: 1
