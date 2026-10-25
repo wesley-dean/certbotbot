@@ -36,7 +36,6 @@ The task #54 test runner sets `BASH_STARTER_CLIENT_ARTIFACT` to the verified, st
 
 Further changes to plaintext member-dialect support, encrypted envelope versions or algorithms, destination replacement, client selection/installation or concurrency guarantees require a new, explicitly approved design review.
 
-
 ## Authenticated restoration of the current encrypted object (task #186)
 
 ADR-037 extends the standalone client with producer-compatible authenticated
