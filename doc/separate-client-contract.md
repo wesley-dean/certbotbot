@@ -73,7 +73,7 @@ No client error permits a remote write.  Caller-visible diagnostics must not inc
 
 ## Runtime and release distribution
 
-The client is an independent executable that runs with Bash 4.3+, AWS CLI v2, GNU tar/gzip and ordinary documented local utilities.  It does not require Certbot, the Route53 plugin, GnuPG, a Git checkout, `vendor/` or in-repository `src/` and `lib/` at runtime.  Pure implementation may be assembled from reviewed code at build time, including digest-verified mktext for template rendering where needed.  Build inputs and dependency trust remain governed by existing ADRs.
+The client is an independent executable that runs with Bash 4.3+, AWS CLI v2, GNU tar/gzip and ordinary documented local utilities.  It does not require Certbot, the Route53 plugin, a Git checkout, `vendor/` or in-repository `src/` and `lib/` at runtime. GnuPG is required only for the future ADR-037 encrypted path.  Pure implementation may be assembled from reviewed code at build time, including digest-verified mktext for template rendering where needed.  Build inputs and dependency trust remain governed by existing ADRs.
 
 Following integration of task #54, `make build` and verified releases contain exactly:
 
@@ -135,7 +135,7 @@ Task #54 adds these checks to the test/release workflows. A source-level or PR c
 
 ## Explicitly deferred
 
-Client GPG decryption (including GnuPG version/key delivery), selectively extracting one lineage, installing state into system paths, invoking service reloads or deployment hooks, fetching dated backups or S3 versions, replacement-in-place or rollback, alternate archive formats, other object stores, and distribution of client-specific OCI images all require separate approved contracts.
+Client GPG decryption remains unshipped pending tasks #185-#188 (governed by ADR-037); selectively extracting one lineage, installing state into system paths, invoking service reloads or deployment hooks, fetching dated backups or S3 versions, replacement-in-place or rollback, alternate archive formats, other object stores, and distribution of client-specific OCI images all require separate approved contracts.
 
 ## Traceability
 
