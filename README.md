@@ -10,6 +10,16 @@ standalone consumer representations.  The starter also demonstrates deterministi
 plugin discovery and runtime registration, but that plugin model is an example to
 evaluate rather than a requirement every derived project should preserve.
 
+## certbotbot container deployment
+
+The optional [Docker and rootless Podman producer](doc/container-deployment.md)
+runs a verified one-shot certbotbot executable with private ephemeral state;
+the existing S3 archive and Let's Encrypt account remain operator-provided.
+See the [quick-start commands](doc/examples/docker-podman.md) for local smoke
+checks. Container registries and downstream certificate installation have
+separate acceptance and responsibility boundaries. Docker and Podman are not
+required to run the standalone Bash executable.
+
 ## Adapt the Starter
 
 A new project should normally begin by changing `PROJECT_NAME` in the Makefile,
