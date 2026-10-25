@@ -1,0 +1,104 @@
+---
+name: OCI release validation
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_run:
+    workflows: [Versioning]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  attestations: read
+
+jobs:
+  preflight:
+    name: Verify trusted completed Versioning
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted validator from protected default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate completed upstream workflow identity
+        env:
+          TRUSTED_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRUSTED_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRUSTED_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: bash ci/verify-oci-release-event.bash
+
+  # No publisher depends on an event preflight alone. This job independently
+  # validates GitHub's release/tag and the exact public artifacts, then builds
+  # and exercises the image without any registry token or production secret.
+  image:
+    name: Verify release OCI image without push
+    needs: preflight
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: Checkout exact completed source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install rootless Podman and verification dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes podman uidmap slirp4netns fuse-overlayfs jq
+
+      - name: Verify release identity and download exact eight public assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          GH_REPO: wesley-dean/certbotbot
+        run: |
+          set -euo pipefail
+          bash ci/verify-oci-public-release.bash \
+            "$EXPECTED_SHA" "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT" dist
+
+      - name: Prepare strictly verified release build context
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' dist/producer-handoff.manifest)"
+          manifest_sha="$(sha256sum dist/producer-handoff.manifest | awk '{print $1}')"
+          bash ci/prepare-oci-context.bash release dist \
+            "$RUNNER_TEMP/release-context" "$EXPECTED_SHA" \
+            "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT" "$version" "$manifest_sha"
+
+      - name: Build once, validate image labels and run both engines
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          context="$RUNNER_TEMP/release-context"
+          source "$context/oci/producer/provenance.txt"
+          docker build --platform linux/amd64 --pull=false \
+            --build-arg "SOURCE_COMMIT=$source_sha" \
+            --build-arg "RELEASE_VERSION=$version" \
+            --build-arg "PRODUCER_SHA256=$producer_sha256" \
+            --build-arg "HANDOFF_MANIFEST_SHA256=$handoff_manifest_sha256" \
+            --build-arg BUILD_KIND=release \
+            -t certbotbot:release-acceptance "$context"
+          test "$(docker image inspect certbotbot:release-acceptance \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$EXPECTED_SHA"
+          test "$(docker image inspect certbotbot:release-acceptance \
+            --format '{{index .Config.Labels "io.certbotbot.producer.sha256"}}')" = "$producer_sha256"
+          bash tests/oci-runtime.bash docker certbotbot:release-acceptance dist/certbotbot.bash
+          docker save -o "$RUNNER_TEMP/producer-image.tar" certbotbot:release-acceptance
+          podman load -i "$RUNNER_TEMP/producer-image.tar"
+          bash tests/oci-runtime.bash podman certbotbot:release-acceptance dist/certbotbot.bash
