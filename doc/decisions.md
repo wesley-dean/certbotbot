@@ -512,10 +512,11 @@ See [ADR-039](adr/ADR-039-alpine-oci-runtime.md).
 The privileged certbotbot image publisher is triggered only by a successful
 OCI release-validation workflow, whose short-lived same-attempt proof is
 independently cross-checked against the original successful Versioning run,
-the signed stable release and all eight attested Bash assets. The repository
-must explicitly enable publishing, and a separate protected environment
-contains the only GHCR and Docker Hub authority; the reviewed publish_image
-action is pinned to an immutable merge commit and receives exact v0-safe
+the signed stable release and all eight attested Bash assets. An enabled
+publisher workflow automatically attempts publication after successful
+release validation, with no additional repository flag; a protected
+environment contains the only GHCR and Docker Hub authority. The reviewed
+publish_image action is pinned to an immutable merge commit with exact v0-safe
 source/tag identity, allowlisted build context and nonsecret provenance.
 Both registry manifests and pulled source/producer identities must match
 the reported digest or publication fails, without claiming transactional
