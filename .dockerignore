@@ -4,7 +4,7 @@
 !Dockerfile
 !.dockerignore
 !oci/
-!oci/debian.sources
+!oci/alpine-repositories
 !oci/producer/
 !oci/producer/certbotbot.bash
 !oci/producer/certbotbot.bash.sha256
