@@ -207,20 +207,20 @@ certbotbot_client_config_resolve() {
   fi
   case "$CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION" in
     auto)
-      if [[ -n "$CERTBOTBOT_CLIENT_GPG_SECRET" ]]; then
+      if [[ -n "${CERTBOTBOT_CLIENT_GPG_SECRET:-}" ]]; then
         CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION=gpg-ocb
       else
         CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION=none
       fi
       ;;
     none)
-      if [[ -n "$CERTBOTBOT_CLIENT_GPG_SECRET" ]]; then
+      if [[ -n "${CERTBOTBOT_CLIENT_GPG_SECRET:-}" ]]; then
         certbotbot_client_error 'encryption key conflicts with plaintext mode'
         return 64
       fi
       ;;
     gpg-ocb)
-      if [[ -z "$CERTBOTBOT_CLIENT_GPG_SECRET" ]]; then
+      if [[ -z "${CERTBOTBOT_CLIENT_GPG_SECRET:-}" ]]; then
         certbotbot_client_error 'authenticated encryption key required'
         return 64
       fi
