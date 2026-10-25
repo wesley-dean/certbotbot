@@ -111,7 +111,7 @@ safety fixtures in `tests/client-extract.bats`. Task #54 adds the one standalone
 independent black-box suite coverage, and explicit eight-file
 CI/release artifact verification.
 
-## Approved encryption preflight (task #185; decryption remains deferred)
+## Approved encryption preflight (#185) and authenticated restore (#186)
 
 ADR-037 adds one nonsecret `--archive-encryption auto|none|gpg-ocb`
 setting with CLI > exported `ARCHIVE_ENCRYPTION` > literal file >
