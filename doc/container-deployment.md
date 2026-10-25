@@ -276,24 +276,43 @@ issuance merely because its CLI returns zero.
 
 ## Production distribution and upgrade boundaries
 
-The reviewed targets for a future dual-registry release are
-`ghcr.io/wesley-dean/certbotbot` and
-`docker.io/wesleydean/certbotbot`. **Do not assume either contains an
-accepted published image yet.** Task [#165](https://github.com/wesley-dean/certbotbot/issues/165)
-must publish only after successful source, attestation, release, no-push
-image and security gates. Task [#166](https://github.com/wesley-dean/certbotbot/issues/166)
-must verify both registry images, labels, digests, SBOM/provenance and
-runtime parity. The currently pending upstream action compatibility work
-is tracked in [publish_image #99](https://github.com/wesley-dean/publish_image/issues/99).
+The release-gated publisher uses the reviewed
+[`publish_image` action](https://github.com/wesley-dean/publish_image/pull/100)
+(merged issue #99) to target **both** registries:
 
-For production, retrieve a **reviewed immutable digest**
-(`registry.example/namespace/certbotbot@sha256:<verified-digest>` is
-a format placeholder), inspect `org.opencontainers.image.revision`,
-`org.opencontainers.image.version`, producer SHA and supported platform,
-and keep a known-good prior digest for rollback. Do not upgrade by
-implicitly following a mutable `latest` tag. A new OCI image may
-include updated Alpine packages even when its embedded Bash producer
-is unchanged; track image revision and package inventory separately.
+- GHCR: `ghcr.io/wesley-dean/certbotbot`
+- Docker Hub: `docker.io/wesleydean/certbotbot`
+
+After a fully verified stable GitHub release and successful no-push
+Docker/rootless Podman acceptance, the publishing workflow attempts both
+registry pushes. The published image is the **producer only**. It does
+not contain the read-only certificate client. Automatic publication and
+per-registry post-push checks are specified in the
+[OCI publication contract](oci-publication-contract.md) and implemented
+by [task #165](https://github.com/wesley-dean/certbotbot/issues/165).
+[Task #166](https://github.com/wesley-dean/certbotbot/issues/166)
+owns comprehensive pulled-image runtime parity, SBOM and provenance
+acceptance. A successful local image build or merged workflow **does not**
+prove an image has been published or accepted in either registry.
+
+For production, first determine the **complete reviewed immutable
+`sha256:` digest for the actual image in the chosen registry**, then
+select an exact `repository@sha256:digest` reference. The
+[quick start](examples/docker-podman.md#use-an-independently-verified-published-image)
+provides explicit Docker and Podman pull and non-networked smoke-check
+commands for both registry names. Confirm the supported
+`linux/amd64` platform, nonroot UID/GID, source revision in
+`org.opencontainers.image.revision`, release version in
+`org.opencontainers.image.version` and
+`io.certbotbot.producer.sha256` against the attested ordinary producer
+from the same release. Compare the registries independently; a push to
+one destination is not evidence of success at the other.
+
+Use the verified digest rather than implicitly following the mutable
+`latest`, version or major/minor tags; retain a known-good prior digest
+for rollback. An image may contain updated Alpine packages even when
+its embedded Bash producer is unchanged. Track both image revision
+and installed package inventory separately.
 
 The image never provisions credentials, schedules itself, registers an ACME
 account, starts a network service, or changes how the separately shipped
