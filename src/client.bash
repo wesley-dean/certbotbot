@@ -3,9 +3,10 @@
 ## @file src/client.bash
 ## @brief Read-only standalone certificate consumer's public entrypoint.
 ## @details
-## This task's client can select and stage one S3 object but intentionally
-## never activates it. Task #53 will validate/extract and activate its contents,
-## and #54 will integrate the independent standalone release executable.
+## The consumer resolves and retrieves one current S3 object, verifies it
+## with the shared bounded archive validator, and atomically activates only a
+## complete privately restored tree. Task #54 will integrate the independent
+## standalone release executable. This module does not invoke the issuer.
 ## Modules are concatenated at assembly time, not sourced from disk at runtime.
 
 ## @fn certbotbot_client_usage()
@@ -70,8 +71,9 @@ certbotbot_client_destination_preflight() {
     { certbotbot_client_error 'cannot inspect destination parent' 73; return 73; }
   mode="$(stat -c %a -- "$physical" 2>/dev/null)" ||
     { certbotbot_client_error 'cannot inspect destination parent' 73; return 73; }
-  [[ "$owner" == "$EUID" && "$mode" =~ ^[0-7]{3,4}$ ]] ||
-    { certbotbot_client_error 'destination parent not owned by caller' 73; return 73; }
+  [[ "$owner" == "$EUID" && "$mode" =~ ^[0-7]{3,4}$ &&
+    -w "$physical" && -x "$physical" ]] ||
+    { certbotbot_client_error 'destination parent not writable by caller' 73; return 73; }
   if (( (8#$mode & 8#022) != 0 )); then
     certbotbot_client_error 'destination parent is group/other writable' 73
     return 73
@@ -96,14 +98,14 @@ certbotbot_client_cleanup() {
 }
 
 ## @fn certbotbot_client_main()
-## @brief Resolves current object, retrieves it privately and fails closed.
+## @brief Retrieves, validates and activates one complete current S3 object.
 ## @param ... Public CLI arguments.
 ## @par STDIN
 ## Nothing is read from STDIN.
-## @returns Only --help/--version write STDOUT until task #53.
-## @retval 0 Help/version only; never reports extraction success yet.
+## @returns On success, only the canonical absolute destination on STDOUT.
+## @retval 0 Help/version printed or validated destination fully activated.
 ## @retval 64 Invalid configuration.
-## @retval 65 Archive activation unavailable until task #53.
+## @retval 65 Unsupported, malformed or unsafe downloaded archive.
 ## @retval 66 Confirmed missing S3 key.
 ## @retval 69 Unavailable or uncertain AWS result.
 ## @retval 73 Unsafe or occupied destination.
@@ -124,10 +126,12 @@ certbotbot_client_main() {
   trap 'exit 143' TERM
   certbotbot_client_s3_fetch "$CERTBOTBOT_CLIENT_WORKSPACE" \
     "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" || return $?
-  # No successful command until task #53 validates and activates the archive.
-  # Staged bytes are destroyed by EXIT cleanup in this implementation.
-  certbotbot_client_error 'archive extraction not yet implemented' 65
-  return 65
+  certbotbot_client_extract_and_activate "$CERTBOTBOT_CLIENT_WORKSPACE" \
+    "$CERTBOTBOT_CLIENT_FINAL_PATH" || return $?
+  # The private downloaded bytes are removed by EXIT cleanup; only the
+  # complete validated tree is activated in the caller's destination.
+  printf '%s\n' "$CERTBOTBOT_CLIENT_FINAL_PATH"
+  return 0
 }
 
 certbotbot_client_main "$@"

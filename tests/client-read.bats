@@ -22,6 +22,9 @@ mktext() {
 }
 RENDERER
     cat "$BATS_TEST_DIRNAME/../lib/client-s3.bash"
+    cat "$BATS_TEST_DIRNAME/../lib/archive.bash"
+    cat "$BATS_TEST_DIRNAME/../lib/restore.bash"
+    cat "$BATS_TEST_DIRNAME/../lib/client-extract.bash"
     cat "$BATS_TEST_DIRNAME/../src/client.bash"
   } > "$CLIENT"
   chmod 0755 "$CLIENT"
@@ -86,7 +89,7 @@ invoke() {
   [ ! -e "$CASE_ROOT/aws.log" ]
 }
 
-@test "read-only success stages private bytes then fails closed until extraction exists" {
+@test "unsupported downloaded bytes never activate certificate state" {
   invoke --s3-bucket fixture-bucket
   [ "$status" -eq 65 ]
   [[ "$output" != *PRIVATE_KEY_SENTINEL* ]]
