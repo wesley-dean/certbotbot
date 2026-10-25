@@ -49,12 +49,15 @@ unchanged.
 
 The initial image is **linux/amd64**, and its reviewed base is
 `alpine:3.24.3@sha256:c26612752c78b18faacd63c7d50f4592c2e7b0f25e0e20e82bd74e465c57ab0d`,
-the verified Alpine 3.24.3 amd64 platform manifest. This is **not** the
+the verified [Alpine 3.24.3 amd64 platform manifest](https://github.com/docker-library/repo-info/blob/master/repos/alpine/remote/3.24.3.md). This is **not** the
 multi-platform index digest. All builds and publication gates must explicitly
 select linux/amd64 until other platforms pass their own acceptance tests.
 
-Alpine 3.24's `community` repository currently lists AWS CLI 2.34.63,
-Certbot 5.6, and the Route53 plugin 5.6; `main` lists GnuPG 2.4.9.
+Alpine 3.24's `community` repository currently lists
+[AWS CLI 2.34.63](https://pkgs.alpinelinux.org/packages?branch=v3.24&name=aws-cli),
+[Certbot 5.6](https://pkgs.alpinelinux.org/packages?branch=v3.24&name=certbot),
+and the [Route53 plugin 5.6](https://pkgs.alpinelinux.org/packages?branch=v3.24&name=certbot-dns-route53);
+`main` lists [GnuPG 2.4.9](https://pkgs.alpinelinux.org/packages?branch=v3.24&name=gnupg).
 Package existence is not evidence that musl libc, Python bindings,
 Certbot plugins or GnuPG's OCB backend actually function in this image.
 Task #161 must fail closed on runtime capability checks; #162 must
