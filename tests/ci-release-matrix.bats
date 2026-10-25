@@ -125,7 +125,7 @@ extract_release_gate() {
 
 @test "release consumer gate is an explicit prerequisite before publish" {
   grep -Fq 'needs: [version, prepare, release-bats, release-bash43, release-client-encryption]' "$RELEASE_WORKFLOW"
-  grep -Fq 'CLIENT_CRYPTO_RESULT: ${{ needs['\''release-client-encryption'\''].result }}' "$RELEASE_WORKFLOW"
+  grep -Fq "CLIENT_CRYPTO_RESULT: \${{ needs['release-client-encryption'].result }}" "$RELEASE_WORKFLOW"
   grep -Fq 'VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT CLIENT_CRYPTO_RESULT' "$RELEASE_WORKFLOW"
   grep -Fq "if: github.ref == 'refs/heads/main' && needs.gate.result == 'success'" "$RELEASE_WORKFLOW"
 }
