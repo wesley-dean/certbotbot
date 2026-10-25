@@ -99,9 +99,16 @@ extract_release_gate() {
   done
 }
 
-@test "release inventory remains three producer variants and excludes unimplemented client" {
-  grep -Fq 'test ! -e dist/certbotbot-client.bash' "$RELEASE_WORKFLOW"
-  grep -Fq 'dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash' "$RELEASE_WORKFLOW"
+@test "release inventory includes client as one independent executable with SHA-256" {
+  grep -Fq 'dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash' "$RELEASE_WORKFLOW"
   grep -Fq 'dist/*.bash.sha256' "$RELEASE_WORKFLOW"
   grep -Fq 'bash ci/producer-handoff.bash create dist' "$RELEASE_WORKFLOW"
+  ! grep -Fq 'test ! -e dist/certbotbot-client.bash' "$RELEASE_WORKFLOW"
+}
+
+@test "release tests exercise shipped client and Bash 4.3 without adding producer flavors" {
+  grep -Fq 'BASH_STARTER_CLIENT_ARTIFACT="/work/dist/certbotbot-client.bash"' "$RELEASE_WORKFLOW"
+  grep -Fq 'bash tests/compat-bash43.bash' "$RELEASE_WORKFLOW"
+  grep -Fq 'make test-one "TEST_FLAVOR=$TEST_FLAVOR"' "$RELEASE_WORKFLOW"
+  [ "$(grep -Fc 'flavor: [development, ordinary, minified]' "$RELEASE_WORKFLOW")" -eq 2 ]
 }

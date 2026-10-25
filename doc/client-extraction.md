@@ -1,6 +1,6 @@
 # Separate Client: Safe Plaintext Extraction and Activation
 
-Status: maintained-source implementation for approved [task #53](https://github.com/wesley-dean/certbotbot/issues/53). The standalone distributable and release/CI integration remain task [#54](https://github.com/wesley-dean/certbotbot/issues/54). The design is governed by [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md), [ADR-022](adr/ADR-022-portable-certbot-state-archives.md), and the [separate-client contract](separate-client-contract.md). There is no claim of a shipped client yet.
+Status: maintained-source implementation for approved [task #53](https://github.com/wesley-dean/certbotbot/issues/53). Task [#54](https://github.com/wesley-dean/certbotbot/issues/54) adds the standalone distributable and release/CI integration. The design is governed by [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md), [ADR-022](adr/ADR-022-portable-certbot-state-archives.md), and the [separate-client contract](separate-client-contract.md). A client release must pass separate black-box tests and attestation before publication.
 
 ## Observable behavior
 
@@ -12,7 +12,7 @@ After all checks, the client narrows ordinary-file modes to **0600** and directo
 
 The destination is an **absent immediate child** of a preexisting canonical, owned, non-group/world-writable parent. The parent must also permit the caller to create files. The client revalidates the parent and destination immediately before activation. A GNU same-filesystem `mv -n -T` transfers only a complete, validated directory into the still-absent location. A newly occupied destination causes nonzero exit rather than replacing it; the client checks whether the staged root actually moved because GNU `mv -n` may report success when skipping an occupied target. POSIX rename is not a universal no-replace primitive, and ADR-035 explicitly excludes hostile same-UID races. Such cooperating processes must be externally serialized.
 
-On success, **stdout contains only the canonical absolute destination path followed by a newline**. On any failure, no success path is printed, and the EXIT trap removes only client-owned staging (not the destination or caller files). The current source is not yet a published `dist/certbotbot-client.bash`.
+On success, **stdout contains only the canonical absolute destination path followed by a newline**. On any failure, no success path is printed, and the EXIT trap removes only client-owned staging (not the destination or caller files). The task #54 build assembles `dist/certbotbot-client.bash` and verifies its SHA-256 sidecar before release.
 
 ## Trust boundaries and failure handling
 
@@ -32,6 +32,6 @@ The client documents stable status classes: 0 for successful activation or local
 
 `tests/client-extract.bats` assembles maintained client source with its real tar validator and restore adapter, uses a controlled local AWS read-only mock and **real GNU tar/gzip fixtures**. It checks account-only success, complete multi-lineage restoration, relative symlinks, private key modes, canonical renewal bytes, no-op staging cleanup, damaged and encrypted formats, traversal, malformed symlinks, unsupported filesystem members, duplicate/hardlinked members, size limits, occupied/untrusted destinations, and denied/uncertain S3 results. Existing `tests/client-read.bats` retains the original read/error precedence checks against an intentionally invalid downloaded body.
 
-These tests are source-level acceptance until task #54 produces the actual shipped client, checks its SHA-256 companion and runs black-box fixtures without `src/`, `lib/` or `vendor/` on the consumer. In the absence of a shipped artifact, a claim of end-to-end released-client acceptance would be premature.
+The task #54 test runner sets `BASH_STARTER_CLIENT_ARTIFACT` to the verified, standalone client and reruns both client fixture suites against an isolated copy, without needing `src/`, `lib/`, or `vendor/` at runtime. A green source-level test alone does not prove release readiness; publication must also pass the eight-file handoff, Bash 4.3 checks, attestation, and late-tagging gates.
 
 Further changes to plaintext member-dialect support, encrypted archives, destination replacement, client selection/installation or concurrency guarantees require a new, explicitly approved design review.

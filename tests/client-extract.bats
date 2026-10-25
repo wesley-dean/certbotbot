@@ -15,7 +15,13 @@ setup() {
   chmod 600 "$TEST_ROOT/source/accounts/acme-v02.api.letsencrypt.org/directory/account-001/private_key.json"
   OBJECT="$TEST_ROOT/current.tar.gz"
   CLIENT="$TEST_ROOT/client.bash"
-  {
+  if [[ -n "${BASH_STARTER_CLIENT_ARTIFACT:-}" ]]; then
+    # The shipped executable was assembled and checksum-verified by Make/CI.
+    # Copy it outside the source checkout for black-box invocation.
+    [[ -f "$BASH_STARTER_CLIENT_ARTIFACT" && -x "$BASH_STARTER_CLIENT_ARTIFACT" ]] || return 1
+    cp -- "$BASH_STARTER_CLIENT_ARTIFACT" "$CLIENT"
+  else
+    {
     cat "$BATS_TEST_DIRNAME/../lib/client-config.bash"
     cat "$BATS_TEST_DIRNAME/../lib/filename.bash"
     # Replaced by digest-verified embedded mktext in task #54.
@@ -36,7 +42,8 @@ RENDERER
     cat "$BATS_TEST_DIRNAME/../lib/restore.bash"
     cat "$BATS_TEST_DIRNAME/../lib/client-extract.bash"
     cat "$BATS_TEST_DIRNAME/../src/client.bash"
-  } >"$CLIENT"
+    } >"$CLIENT"
+  fi
   chmod 700 "$CLIENT"
   cat >"$TEST_ROOT/bin/aws" <<'AWS'
 #!/usr/bin/env bash

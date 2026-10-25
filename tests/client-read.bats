@@ -4,7 +4,13 @@ setup() {
   CASE_ROOT="$(mktemp -d)"
   mkdir -p "$CASE_ROOT/private" "$CASE_ROOT/bin"
   CLIENT="$CASE_ROOT/client.bash"
-  {
+  if [[ -n "${BASH_STARTER_CLIENT_ARTIFACT:-}" ]]; then
+    # The shipped executable was assembled and checksum-verified by Make/CI.
+    # Copy it outside the source checkout for black-box invocation.
+    [[ -f "$BASH_STARTER_CLIENT_ARTIFACT" && -x "$BASH_STARTER_CLIENT_ARTIFACT" ]] || return 1
+    cp -- "$BASH_STARTER_CLIENT_ARTIFACT" "$CLIENT"
+  else
+    {
     cat "$BATS_TEST_DIRNAME/../lib/client-config.bash"
     cat "$BATS_TEST_DIRNAME/../lib/filename.bash"
     # Test-only one-pass renderer. The released mktext is embedded at build
@@ -26,7 +32,8 @@ RENDERER
     cat "$BATS_TEST_DIRNAME/../lib/restore.bash"
     cat "$BATS_TEST_DIRNAME/../lib/client-extract.bash"
     cat "$BATS_TEST_DIRNAME/../src/client.bash"
-  } > "$CLIENT"
+    } > "$CLIENT"
+  fi
   chmod 0755 "$CLIENT"
   cat > "$CASE_ROOT/bin/aws" <<'AWS'
 #!/usr/bin/env bash

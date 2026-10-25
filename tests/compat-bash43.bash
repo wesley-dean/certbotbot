@@ -29,3 +29,22 @@ if [[ "$CERTBOTBOT_S3_KEY" != archive-20261020.tar.gz ||
   printf '%s\n' 'Bash 4.3 filename-template compatibility failed' >&2
   exit 1
 fi
+
+# ADR-035: the separate client is an independent product, not a fourth
+# producer flavor. Validate its exact handed-off bytes on the Bash 4.3 floor.
+if [[ -n "${BASH_STARTER_CLIENT_ARTIFACT:-}" ]]; then
+  bash -n "$BASH_STARTER_CLIENT_ARTIFACT"
+  "$BASH_STARTER_CLIENT_ARTIFACT" --help >/dev/null
+  "$BASH_STARTER_CLIENT_ARTIFACT" --version >/dev/null
+  # The source-independent executable includes the pinned mktext library.
+  # Exercise its single-date renderer and narrow CLI parser, not just help.
+  source "$BASH_STARTER_CLIENT_ARTIFACT" --help >/dev/null
+  certbotbot_client_config_resolve \
+    --destination /work/new-client-destination \
+    --s3-bucket fixture-bucket \
+    --s3-key-template 'cert-state-{YEAR}{MONTH}{DOM}.tar.gz'
+  [[ "$CERTBOTBOT_S3_KEY" == cert-state-20261020.tar.gz ]] || {
+    printf '%s\n' 'Bash 4.3 standalone-client key rendering failed' >&2
+    exit 1
+  }
+fi

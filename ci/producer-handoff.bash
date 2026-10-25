@@ -3,7 +3,7 @@
 ## @file ci/producer-handoff.bash
 ## @brief Prepare or verify a same-run producer artifact handoff.
 ## @details
-## This build-side utility validates the exact three producer scripts and their
+## This build-side utility validates the three producer scripts, the separate client, and their
 ## checksum companions. It does not download dependencies, rebuild executables,
 ## access a network, or authorize cross-run artifact reuse. The caller supplies
 ## the expected GitHub workflow run identity and, for verify, the digest of the
@@ -52,13 +52,17 @@ build_commit=$(git rev-parse --short=12 HEAD)
 build_date=$(git show -s --format=%cI HEAD)
 [[ -n "$build_date" && "$build_date" != *$'\n'* ]] || handoff_error 'invalid build date'
 
-names=(certbotbot.dev.bash certbotbot.bash certbotbot.min.bash)
+names=(certbotbot.dev.bash certbotbot.bash certbotbot.min.bash certbotbot-client.bash)
 [[ -f "$root/certbotbot.dev.bash" && ! -L "$root/certbotbot.dev.bash" ]] || handoff_error 'missing development artifact'
 grep -Fqx -- "# Version: $version" "$root/certbotbot.dev.bash" || handoff_error 'artifact version does not match expected build'
 grep -Fqx -- "# Build commit: $build_commit" "$root/certbotbot.dev.bash" || handoff_error 'artifact source commit does not match checkout'
 grep -Fqx -- "# Build date: $build_date" "$root/certbotbot.dev.bash" || handoff_error 'artifact build date does not match checkout'
-expected_count=6
-[[ "$mode" == verify ]] && expected_count=7
+grep -Fqx -- "BASH_STARTER_PROJECT_NAME=certbotbot-client" "$root/certbotbot-client.bash" || handoff_error 'client identity mismatch'
+grep -Fqx -- "BASH_STARTER_VERSION=$version" "$root/certbotbot-client.bash" || handoff_error 'client version mismatch'
+grep -Fqx -- "BASH_STARTER_BUILD_COMMIT=$build_commit" "$root/certbotbot-client.bash" || handoff_error 'client source commit mismatch'
+grep -Fqx -- "BASH_STARTER_BUILD_DATE=$build_date" "$root/certbotbot-client.bash" || handoff_error 'client build date mismatch'
+expected_count=8
+[[ "$mode" == verify ]] && expected_count=9
 actual_count=0
 shopt -s dotglob nullglob
 for f in "$root"/*; do
@@ -66,7 +70,7 @@ for f in "$root"/*; do
   (( actual_count += 1 ))
   filename=${f##*/}
   case "$filename" in
-    certbotbot.dev.bash|certbotbot.dev.bash.sha256|certbotbot.bash|certbotbot.bash.sha256|certbotbot.min.bash|certbotbot.min.bash.sha256) ;;
+    certbotbot.dev.bash|certbotbot.dev.bash.sha256|certbotbot.bash|certbotbot.bash.sha256|certbotbot.min.bash|certbotbot.min.bash.sha256|certbotbot-client.bash|certbotbot-client.bash.sha256) ;;
     producer-handoff.manifest) [[ "$mode" == verify ]] || handoff_error 'unexpected handoff manifest' ;;
     *) handoff_error 'unexpected handoff file' ;;
   esac
@@ -74,7 +78,7 @@ for f in "$root"/*; do
 done
 [[ "$actual_count" -eq "$expected_count" ]] || handoff_error 'incomplete handoff inventory'
 
-manifest=$(printf 'format=certbotbot-producer-handoff-v1\nsource_sha=%s\nrun_id=%s\nrun_attempt=%s\nversion=%s\nbuild_commit=%s\nbuild_date=%s\nfile_count=6\n' \
+manifest=$(printf 'format=certbotbot-producer-client-handoff-v2\nsource_sha=%s\nrun_id=%s\nrun_attempt=%s\nversion=%s\nbuild_commit=%s\nbuild_date=%s\nfile_count=8\n' \
   "$source_sha" "$run_id" "$run_attempt" "$version" "$build_commit" "$build_date")
 for name in "${names[@]}"; do
   script="$root/$name"

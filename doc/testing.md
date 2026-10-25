@@ -102,6 +102,17 @@ single-flavor names use `ordinary` for the stripped representation;
 the older local report name is retained for backward compatibility.
 The standalone certificate client is not a fourth producer flavor.
 
+Each complete producer test suite also invokes the **one verified shipped
+client executable** using `BASH_STARTER_CLIENT_ARTIFACT`. The two client
+Bats fixture suites copy the built binary into an isolated temporary
+runtime path, create real gzip/tar archives and mock AWS reads. The client
+is never rebuilt in a matrix test job; its SHA-256 and immutable handoff
+manifest must match the exact tested bytes. Bash 4.3 compatibility checks
+exercise the client's help, version and frozen-UTC filename renderer without
+adding another producer matrix flavor. The standalone client is also tested
+from a copied directory after `vendor/` has been removed.
+
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful

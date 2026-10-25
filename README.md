@@ -125,34 +125,84 @@ See ADR-004 and ADR-014.
 
 ## Release Artifacts
 
-For the default project name, `make build` produces:
+For the default project name, `make build` creates **eight** files:
 
 ```text
-dist/template-bash.dev.bash
-dist/template-bash.dev.bash.sha256
-dist/template-bash.bash
-dist/template-bash.bash.sha256
-dist/template-bash.min.bash
-dist/template-bash.min.bash.sha256
+dist/certbotbot.dev.bash
+dist/certbotbot.dev.bash.sha256
+dist/certbotbot.bash
+dist/certbotbot.bash.sha256
+dist/certbotbot.min.bash
+dist/certbotbot.min.bash.sha256
+dist/certbotbot-client.bash
+dist/certbotbot-client.bash.sha256
 ```
 
-The `.sha256` files use conventional SHA-256 checksum-file syntax.  New builds
-and releases publish only `.sha256` checksum companions.  Historical releases
-that contain `.256` companions remain valid for those release versions; consumers
-that automate across release generations should prefer `.sha256` and use `.256`
-only when the preferred companion is confirmed absent.
+The producer retains its three existing representations: documented development,
+ordinary/comment-stripped and minified. The consumer is a **separate, single
+ordinary-style executable**, not a fourth producer flavor. Each script ships
+with a conventional, independently verified SHA-256 checksum companion.
+Generated version/build-date/commit metadata remains deterministic for the
+same source and chosen version. Only the selected release files (not `vendor/`
+or the checkout) are attested and published after all release checks pass.
 
-The development artifact retains the verbose Doxygen commentary used for
-maintenance.  The ordinary artifact removes full-line comments while preserving
-the shebang and behavior.  The minified artifact is derived from the ordinary
-artifact with the pinned Bash-Minifier dependency.  All three include executable
-version, build-date, and build-commit provenance and are expected to satisfy the
-same behavior tests.
+Historical `.256` checksum companions remain supported only for older
+releases confirmed to lack a `.sha256` companion. New releases contain only
+`.sha256` companions.
 
-For reproducibility, the default build date comes from the current Git commit
-rather than the wall clock.  Local builds made while maintained source is dirty
-mark the build commit with a `-dirty` suffix so generated provenance does not
-imply that modified bytes came solely from the named commit.
+### Standalone certificate client quick start
+
+A certificate-consumer host can download the standalone
+`certbotbot-client.bash` and its `.sha256` companion from the
+[project releases](https://github.com/wesley-dean/certbotbot/releases)
+without installing Certbot, its Route53 plugin, or the issuer. On a trusted
+Linux host, first install **Bash 4.3+**, **AWS CLI v2**, **GNU tar**, **gzip**,
+and standard GNU core utilities. Configure an existing AWS identity with
+read access to the selected bucket/object; credentials and IAM policy remain
+the operator's responsibility. Verify the downloaded files *before*
+execution:
+
+```bash
+sha256sum -c certbotbot-client.bash.sha256
+chmod 0755 certbotbot-client.bash
+mkdir -m 700 "$HOME/certificate-states"
+./certbotbot-client.bash \
+  --s3-bucket my-existing-certificates \
+  --s3-key latest.tar.gz \
+  --destination "$HOME/certificate-states/current-2026-10-25"
+```
+
+The chosen destination **must not already exist**. Its parent must exist,
+be owned by the invoking user, and not be group/world-writable or
+symlink-ambiguous. The example destination uses an arbitrary new
+operator-chosen name, not an automatic rotation scheme. On success, the
+command prints only the absolute destination pathname and leaves a private
+complete Certbot archive tree (including accounts, renewal files, preserved
+relative PEM links and all supported lineages).
+
+The term **"latest" means exactly the object currently stored under the
+configured S3 key**. The client does not list backups, compare timestamps,
+select lineages, choose S3 versions, upload, renew, install or execute hooks.
+For a date-derived key, use `--s3-key-template 'archive-{YEAR}{MONTH}{DOM}.tar.gz'`;
+the template uses one frozen UTC date. The default literal key is
+`latest.tar.gz`. The shared nonsecret `.env` file, environment settings,
+and CLI flags follow CLI > environment > literal file > defaults. An
+explicit `--config FILE` replaces the implicit `./.env` source.
+
+The initial client accepts **only plaintext gzip-compressed tar** using
+the producer's restrictive format, with at most 32 MiB expanded content
+and 2,048 members. Encrypted archives (including the producer's
+authenticated GnuPG mode) are **deliberately rejected**; the client does
+not decrypt or silently fall back to another object. The client never
+overwrites an existing destination. It does not validate remote
+certificate-chain trust or install certificates into services.
+
+See the [separate-client contract](doc/separate-client-contract.md),
+[retrieval](doc/client-retrieval.md),
+[archive activation and threat boundary](doc/client-extraction.md),
+[release verification](doc/release-verification.md), and
+[Accepted ADR-035](doc/adr/ADR-035-standalone-read-only-certificate-client.md)
+for detailed behavior, failure codes, security limitations, and tests.
 
 ## Documentation and Architectural Decisions
 

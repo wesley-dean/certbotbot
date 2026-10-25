@@ -1,6 +1,6 @@
 # Separate Read-Only Certificate Client Contract
 
-Status: [task #51](https://github.com/wesley-dean/certbotbot/issues/51) accepted this design for [story #50](https://github.com/wesley-dean/certbotbot/issues/50). Task #52 implemented read-only source retrieval and task #53 implements archive validation, safe extraction, and private late activation in maintained source. Task #54 remains responsible for shipped-artifact assembly and release integration. **There is no shipped client executable yet.** See [retrieval](client-retrieval.md) and [extraction](client-extraction.md) implementation contracts.
+Status: [task #51](https://github.com/wesley-dean/certbotbot/issues/51) accepted this design for [story #50](https://github.com/wesley-dean/certbotbot/issues/50). Task #52 implemented read-only source retrieval and task #53 implements archive validation, safe extraction, and private late activation in maintained source. Task #54 implements shipped-artifact assembly, black-box CI, and release integration, subject to PR review and a passing main-branch release. See [retrieval](client-retrieval.md) and [extraction](client-extraction.md) implementation contracts.
 
 Governing decision: [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md).
 
@@ -75,7 +75,7 @@ No client error permits a remote write.  Caller-visible diagnostics must not inc
 
 The client is an independent executable that runs with Bash 4.3+, AWS CLI v2, GNU tar/gzip and ordinary documented local utilities.  It does not require Certbot, the Route53 plugin, GnuPG, a Git checkout, `vendor/` or in-repository `src/` and `lib/` at runtime.  Pure implementation may be assembled from reviewed code at build time, including digest-verified mktext for template rendering where needed.  Build inputs and dependency trust remain governed by existing ADRs.
 
-After task #54, `make build` and verified releases must contain exactly:
+Following integration of task #54, `make build` and verified releases contain exactly:
 
 `dist/certbotbot.dev.bash`  
 `dist/certbotbot.dev.bash.sha256`  
@@ -112,7 +112,7 @@ Each `.sha256` is conventional SHA-256 digest plus executable basename.  Produce
 | Bash 4.3, checksum and release suite | Client tested independently; all three producer flavors remain covered |
 | Secret-output sentinel | No key bytes, AWS credential value, archive member payload or raw tool error on stdout/stderr |
 
-These are **future acceptance checks**, not tests executed or passed by task #51.  Use controlled AWS CLI mocks for S3 behavior, actual local GNU tar/gzip for archive fixtures, and a separate clean runtime workspace.  Do not run real S3, Route53, ACME, or registry operations as an implicit test.
+Task #54 adds these checks to the test/release workflows. A source-level or PR check does not establish completed release publication.  Use controlled AWS CLI mocks for S3 behavior, actual local GNU tar/gzip for archive fixtures, and a separate clean runtime workspace.  Do not run real S3, Route53, ACME, or registry operations as an implicit test.
 
 ## Explicitly deferred
 
