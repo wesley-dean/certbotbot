@@ -50,7 +50,7 @@ exported environment > literal `.env` file > default.
 `--config FILE` selects a mandatory explicit literal file
 instead of the optional implicit `./.env`.
 
-The only client CLI settings are the five documented options,
+The only client CLI settings are the documented nonsecret options (including `--archive-encryption`),
 plus standalone `--help` and `--version`. No positional DNS
 identity, certificate selector, archive encryption secret or
 backup search is accepted. Values are parsed as data, not shell
@@ -80,7 +80,7 @@ local staging and empty-body failures are status 74.
 
 **Current maintained-source behavior:** a successful download is
 validated against the shared, bounded tar/gzip contract and extracted
-privately before any activation. Invalid plaintext or GnuPG envelopes
+privately before any activation. Invalid plaintext, unsupported encrypted objects or failed authentication
 return status **65**, removing staged bytes without creating a destination.
 Only a complete validated tree is renamed to the absent destination
 and reported on stdout. See [client extraction](client-extraction.md).
@@ -109,7 +109,8 @@ the client is not one of its three producer flavors. Task
 #53 provides shared validation/extraction and real-tar archive
 safety fixtures in `tests/client-extract.bats`. Task #54 adds the one standalone `certbotbot-client.bash` and `.sha256`,
 independent black-box suite coverage, and explicit eight-file
-CI/release artifact verification.
+CI/release artifact verification. The authenticated-client extension
+requires the additional real-GnuPG gate documented under task #188.
 
 ## Approved encryption preflight (#185) and authenticated restore (#186)
 
@@ -157,3 +158,13 @@ trailing packets, wrong keys, and failed authentication; temporary
 plaintext remains quarantined until the authentication result is known.
 The existing destination no-clobber policy and private cleanup remain
 in force. See [the client extraction contract](client-extraction.md).
+
+## Mandatory authenticated-client verification
+
+The ordinary source and shipped-client tests are supplemented by a
+**distinct** required real-GnuPG black-box job in Test and Versioning.
+It verifies the same eight-file immutable handoff and rejects skips,
+failures, and missing fixture inventory. A plaintext green result does
+not substitute for encrypted client acceptance. See
+[release verification](release-verification.md) and
+[full client settings](client-settings.md).
