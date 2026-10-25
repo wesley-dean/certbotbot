@@ -18,7 +18,7 @@
 ## @retval 69 Required verification tools are unavailable.
 set -euo pipefail
 fail() { printf 'oci release gate: %s\n' "$1" >&2; exit 65; }
-for tool in jq; do command -v "$tool" >/dev/null || exit 69; done
+command -v jq >/dev/null 2>&1 || exit 69
 [[ "${GITHUB_EVENT_NAME-}" == workflow_run ]] || fail 'not a workflow_run event'
 [[ -f "${GITHUB_EVENT_PATH-}" && ! -L "${GITHUB_EVENT_PATH-}" ]] || fail 'event document unavailable'
 jq -e --arg repo 'wesley-dean/certbotbot' --arg sha "${TRUSTED_SOURCE_SHA-}" '
