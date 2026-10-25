@@ -39,6 +39,8 @@ jq -e --arg repo "$GH_REPO" '
   .action == "completed" and
   .repository.full_name == $repo and
   .workflow_run.name == "OCI release validation" and
+  (.workflow_run.path | type == "string" and
+    startswith(".github/workflows/oci-release-validation.yml")) and
   .workflow_run.event == "workflow_run" and
   .workflow_run.head_branch == "main" and
   .workflow_run.head_repository.full_name == $repo and
