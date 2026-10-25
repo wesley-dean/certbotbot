@@ -64,9 +64,18 @@ trap 'rm -rf -- "$work"' EXIT
 
 # Disallow runtime network traffic even for negative paths. The only writable
 # filesystem is an explicitly scoped, UID-owned tmpfs. Do not mount host state.
+# Docker accepts uid/gid directly in --tmpfs. Rootless Podman rejects
+# those kernel-style options; its supported --mount U=true option instead
+# assigns tmpfs ownership to the container image's UID/GID. Never use a
+# world-writable mount or run the application as root to bypass this check.
+if [[ "$engine" == podman ]]; then
+  private_tmpfs=(--mount type=tmpfs,destination=/run/certbotbot,tmpfs-mode=0700,U=true)
+else
+  private_tmpfs=(--tmpfs /run/certbotbot:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700)
+fi
 run=("$engine" run --rm --pull=never --network=none --read-only
   --cap-drop=ALL --security-opt=no-new-privileges
-  --tmpfs /run/certbotbot:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700
+  "${private_tmpfs[@]}"
   "$image")
 
 run_capture() {
@@ -161,7 +170,7 @@ done
 # invocation above always uses the real exec-form ENTRYPOINT.
 "$engine" run --rm --pull=never --network=none --read-only \
   --cap-drop=ALL --security-opt=no-new-privileges \
-  --tmpfs /run/certbotbot:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700 \
+  "${private_tmpfs[@]}" \
   --entrypoint /bin/bash "$image" -c '
     set -euo pipefail
     [[ "$(id -u)" == 65532 && "$(id -g)" == 65532 ]]
