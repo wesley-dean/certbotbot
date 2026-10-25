@@ -1,6 +1,6 @@
 # Separate Read-Only Certificate Client Contract
 
-Status: design contract for approved [task #51](https://github.com/wesley-dean/certbotbot/issues/51), implementing approved [story #50](https://github.com/wesley-dean/certbotbot/issues/50) in tasks #52-#54.  **The executable is not implemented by this document.**
+Status: [task #51](https://github.com/wesley-dean/certbotbot/issues/51) accepted this design for [story #50](https://github.com/wesley-dean/certbotbot/issues/50). Task #52 adds the read-only CLI/retrieval source, which still fails closed before extraction. Tasks #53 and #54 will complete safe activation and release integration. **There is no shipped client executable yet.** See [retrieval implementation status](client-retrieval.md).
 
 Governing decision: [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md).
 
