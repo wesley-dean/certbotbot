@@ -103,7 +103,6 @@ else
   done
   umask 077
   temp="$(mktemp -d)" || oci_error 'cannot create verifier workspace' 74
-  trap 'rm -rf -- "$temp"' EXIT
   for name in "${names[@]}"; do
     [[ -f "$root/$name" && -f "$root/$name.sha256" &&
       ! -L "$root/$name" && ! -L "$root/$name.sha256" ]] ||
@@ -133,6 +132,9 @@ completed=false
 oci_cleanup() {
   if [[ "$completed" != true ]]; then
     rm -rf -- "$output"
+  fi
+  if [[ -n "${temp:-}" ]]; then
+    rm -rf -- "$temp"
   fi
 }
 trap oci_cleanup EXIT
