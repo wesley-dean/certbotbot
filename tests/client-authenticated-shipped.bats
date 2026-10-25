@@ -158,7 +158,10 @@ encrypt_archive() {
 invoke() {
   local destination="${1:-$DESTINATION}"
   shift || :
-  run bash "$CLIENT" --destination "$destination" \
+  # Change the actual working directory, not only the executable path.
+  # This prevents the test checkout from supplying .env, src, lib or vendor.
+  run bash -c 'cd "$1" && shift && exec "$@"' _ "$RUNTIME" \
+    bash "$CLIENT" --destination "$destination" \
     --s3-bucket fixture-bucket --s3-key current-client.tar.gz "$@"
 }
 
