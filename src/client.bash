@@ -6,9 +6,8 @@
 ## The consumer resolves and retrieves one current S3 object, verifies it
 ## with the shared bounded archive validator, and atomically activates only a
 ## complete privately restored tree. ADR-037 adds mode/key capture and a
-## conditional crypto capability preflight. Task #186 will add actual
-## authenticated decryption; encrypted selections currently fail closed
-## after the single retrieval. This module does not invoke the issuer.
+## conditional crypto capability preflight and complete authenticated
+## decryption in private staging before the existing archive validator. This module does not invoke the issuer.
 ## Modules are concatenated at assembly time, not sourced from disk at runtime.
 
 ## @fn certbotbot_client_usage()
@@ -150,12 +149,11 @@ certbotbot_client_main() {
   fi
   certbotbot_client_s3_fetch "$CERTBOTBOT_CLIENT_WORKSPACE" \
     "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" || return $?
-  # Task #185 establishes configuration and conditional preflight only.
-  # Even valid plaintext must not be activated under encrypted selection.
-  # Task #186 replaces this refusal with authenticated private staging.
+  # The encrypted branch never reaches tar or destination activation until
+  # exact packet framing and complete authenticated GnuPG decryption succeed.
+  # Plaintext mode bypasses GnuPG and retains its original extraction path.
   if [[ "$CERTBOTBOT_CLIENT_ARCHIVE_ENCRYPTION" == gpg-ocb ]]; then
-    certbotbot_client_error 'encrypted archive restore is not yet available' 65
-    return 65
+    certbotbot_client_crypto_unwrap "$CERTBOTBOT_CLIENT_WORKSPACE" || return $?
   fi
   certbotbot_client_extract_and_activate "$CERTBOTBOT_CLIENT_WORKSPACE" \
     "$CERTBOTBOT_CLIENT_FINAL_PATH" || return $?

@@ -336,7 +336,7 @@ GPG
   [[ "$output" != *MOCK_PRIVATE_GPG_KEY_SENTINEL* ]]
 }
 
-@test "client encrypted preflight clears child environment and refuses activation until task 186" {
+@test "client encrypted preflight clears child environment and refuses unframed ciphertext" {
   make_gpg_mock
   run env GPG_SYMMETRIC_KEY=MOCK_PRIVATE_GPG_KEY_SENTINEL \
     PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \

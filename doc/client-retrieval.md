@@ -28,10 +28,13 @@ and [the separate-client contract](separate-client-contract.md).
   configured key. It does not list backups, enumerate versions,
   read Certbot state or issue remote writes.
 - `src/client.bash` owns CLI help/version, destination-parent
-  safety validation, sibling private staging and cleanup. These
-  sources are not yet added to the producer's three-flavor
-  assembly, and the client does not depend on Certbot, Route53,
-  GnuPG or issuer orchestration.
+  safety validation, sibling private staging, conditional GnuPG
+  preflight and cleanup. The client has no Certbot, Route53 or issuer
+  orchestration dependency; GnuPG is required only in encrypted mode.
+- `lib/client-crypto.bash` verifies the v1 OpenPGP framing and required
+  AES-256/OCB packet form, authenticates the complete ciphertext using
+  GnuPG and only then supplies the original bounded tar validator with
+  the decrypted candidate.
 
 This separation is intentional: the eventual distribution
 executable must contain only its reviewed client and pure shared
@@ -108,7 +111,7 @@ safety fixtures in `tests/client-extract.bats`. Task #54 adds the one standalone
 independent black-box suite coverage, and explicit eight-file
 CI/release artifact verification.
 
-## Approved encryption preflight (task #185; decryption remains deferred)
+## Approved encryption preflight (#185) and authenticated restore (#186)
 
 ADR-037 adds one nonsecret `--archive-encryption auto|none|gpg-ocb`
 setting with CLI > exported `ARCHIVE_ENCRYPTION` > literal file >
@@ -130,13 +133,27 @@ Missing/incompatible tools fail 69 before the selected S3 fetch.
 Plaintext operation requires no GnuPG. The original selected-key,
 read-only AWS, private staging and existing destination rules remain.
 
-**Task #185 does not activate encrypted archives.** After a successful
-encrypted-mode capability preflight and one selected-object retrieval,
-the current implementation deliberately rejects encrypted-mode
-restoration with status 65, removing private staging without a destination.
-Task #186 adds the actual authenticated envelope decryption, before
-the existing tar validator and extraction. No raw key, ciphertext or
+Task #186 follows the conditional preflight with strict v1 envelope
+and OpenPGP packet checks, complete authenticated decryption into
+private quarantined storage, and the existing tar validator and
+extraction. Any failure removes owned staging without activating the
+destination. The original plaintext path remains independent of GnuPG. No raw key, ciphertext or
 tool diagnostics are user-facing. Shell process memory and the
 inherited initial environment are not isolated from privileged or
 same-user host inspection. See
 [client encryption threat model](client-encryption-threat-model.md).
+
+## Authenticated encrypted-object retrieval (task #186)
+
+Following ADR-037 and task #185, the encrypted mode now performs
+client-only GnuPG AES-256/OCB decryption and the existing bounded
+archive validation before private extraction and destination activation.
+The literal authoritative bucket/key selection, read-only S3 requests,
+and configuration precedence remain unchanged. No additional S3 read,
+migration, Certbot, Route53, retention, or issuer behavior is added.
+
+The client refuses unrecognized envelopes, legacy crypto, malformed or
+trailing packets, wrong keys, and failed authentication; temporary
+plaintext remains quarantined until the authentication result is known.
+The existing destination no-clobber policy and private cleanup remain
+in force. See [the client extraction contract](client-extraction.md).
