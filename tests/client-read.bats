@@ -239,5 +239,3 @@ invoke() {
   [ "$status" -eq 64 ]
   [ ! -e "$CASE_ROOT/aws.log" ]
 }
- "$CASE_ROOT/aws.log"
-}
