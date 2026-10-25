@@ -10,32 +10,45 @@ name: Versioning
 permissions:
   contents: read
 
+# Preserve established per-ref release serialization and cancellation.
 concurrency:
   group: "${{ github.ref }}-${{ github.workflow }}"
   cancel-in-progress: true
 
 jobs:
-  versioning:
+  version:
+    name: Calculate candidate release version
     runs-on: ubuntu-24.04
     permissions:
-      artifact-metadata: write
-      attestations: write
-      contents: write
-      id-token: write
+      contents: read
+    outputs:
+      release_version: ${{ steps.calculate-version.outputs.version-string }}
     steps:
-      - name: Checkout code
+      - name: Checkout source history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Calculate version
+      - name: Calculate version without early tag
         id: calculate-version
         uses: bitshifted/git-auto-semver@c4e8f005e839f822325356f141939cf6c76b5701 # v1
         with:
           create_tag: false
           initial_version: 0.0.1
           tag_prefix: v
+
+  prepare:
+    name: Build and verify release artifacts
+    needs: version
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      manifest_sha: ${{ steps.handoff.outputs.manifest_sha }}
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install system release tools
         run: |
@@ -50,50 +63,221 @@ jobs:
           make deps
           make deps-check
 
-      - name: Build release artifacts and checksums
+      - name: Build exactly one release artifact set
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
         run: |
-          make build VERSION="${{ steps.calculate-version.outputs.version-string }}"
-
-      - name: Validate exact release artifacts
-        run: |
-          make test VERSION="${{ steps.calculate-version.outputs.version-string }}"
-          mapfile -t artifacts < <(find dist -maxdepth 1 -type f -name '*.bash' -perm -u+x -print | sort)
-          test "${#artifacts[@]}" -eq 3
-          for artifact in "${artifacts[@]}"; do
-            bash -n "${artifact}"
+          set -euo pipefail
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || {
+            printf '%s\n' 'Invalid calculated release version' >&2
+            exit 1
+          }
+          make build "VERSION=$RELEASE_VERSION"
+          test ! -e dist/certbotbot-client.bash
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+            bash -n "$artifact"
+            test -f "$artifact.sha256"
+            (cd dist && sha256sum -c "$(basename "$artifact").sha256")
           done
 
-      - name: Validate exact release artifacts with Bash 4.3
+      # Bind the build to the workflow commit, run/attempt and calculated
+      # SemVer. The helper rejects missing/extra release files and stale sums.
+      - name: Prepare verified immutable release handoff
+        id: handoff
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
         run: |
-          for artifact in dist/*.bash; do
-            docker run --rm \
-              --env BASH_STARTER_ARTIFACT="/work/${artifact}" \
-              --volume "${GITHUB_WORKSPACE}:/work:ro" \
-              --workdir /work \
-              bash:4.3 \
-              bash tests/compat-bash43.bash
+          set -euo pipefail
+          digest="$(bash ci/producer-handoff.bash create dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$RELEASE_VERSION")"
+          printf 'manifest_sha=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Upload one-day release handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  release-bats:
+    name: Release Bats (${{ matrix.flavor }})
+    needs: [version, prepare]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [development, ordinary, minified]
+    steps:
+      - name: Checkout exact tested source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install full Bats test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats make
+
+      - name: Download release candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      - name: Verify immutable candidate before test execution
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        run: |
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "$RELEASE_VERSION" "$EXPECTED_MANIFEST_SHA"
+
+      - name: Run complete Bats contract for one release flavor
+        env:
+          TEST_FLAVOR: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          make test-one "TEST_FLAVOR=$TEST_FLAVOR"
+
+  release-bash43:
+    name: Release Bash 4.3 (${{ matrix.flavor }})
+    needs: [version, prepare]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [development, ordinary, minified]
+    steps:
+      - name: Checkout exact tested source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download release candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      - name: Verify immutable candidate before compatibility test
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        run: |
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "$RELEASE_VERSION" "$EXPECTED_MANIFEST_SHA"
+
+      - name: Check exact selected artifact under Bash 4.3
+        env:
+          TEST_FLAVOR: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          case "$TEST_FLAVOR" in
+            development) artifact=dist/certbotbot.dev.bash ;;
+            ordinary) artifact=dist/certbotbot.bash ;;
+            minified) artifact=dist/certbotbot.min.bash ;;
+            *) printf '%s\n' 'Invalid release producer flavor' >&2; exit 64 ;;
+          esac
+          docker run --rm \
+            --env BASH_STARTER_ARTIFACT="/work/$artifact" \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            --workdir /work \
+            bash:4.3 \
+            bash tests/compat-bash43.bash
+
+  # This job uses no publisher authority. A single failed, skipped or cancelled
+  # matrix member prevents any release, even if other members passed.
+  gate:
+    name: Require all release verification jobs
+    needs: [version, prepare, release-bats, release-bash43]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Reject any incomplete release gate
+        env:
+          VERSION_RESULT: ${{ needs.version.result }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          BATS_RESULT: ${{ needs['release-bats'].result }}
+          BASH43_RESULT: ${{ needs['release-bash43'].result }}
+        run: |
+          set -euo pipefail
+          for gate in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT; do
+            if [[ "${!gate}" != success ]]; then
+              printf 'Release gate %s did not succeed (%s)\n' "$gate" "${!gate}" >&2
+              exit 1
+            fi
           done
 
-      - name: Verify checksums
-        run: |
-          cd dist
-          for checksum in *.bash.sha256; do
-            sha256sum -c "${checksum}"
-          done
+  # Only the final publication operation has release/attestation authority.
+  # It re-verifies the same tested bytes, attests them, then creates the tag.
+  publish:
+    name: Attest and publish verified release
+    needs: [version, prepare, gate]
+    if: github.ref == 'refs/heads/main' && needs.gate.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      artifact-metadata: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout exact verified release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Attest release artifacts
+      - name: Download exact verified release bytes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      - name: Require unchanged version, commit, checksums and inventory
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "$RELEASE_VERSION" "$EXPECTED_MANIFEST_SHA"
+          # Sidecars were verified against the exact six files above.
+          # The handoff manifest is not a public release asset.
+
+      - name: Attest exact release artifacts
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
             dist/*.bash
             dist/*.bash.sha256
 
-      - name: Create release
+      - name: Create release and tag only after attestation
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
-          name: "v${{ steps.calculate-version.outputs.version-string }}"
-          tag_name: "v${{ steps.calculate-version.outputs.version-string }}"
+          name: "v${{ needs.version.outputs.release_version }}"
+          tag_name: "v${{ needs.version.outputs.release_version }}"
           target_commitish: "${{ github.sha }}"
           draft: false
           prerelease: false
@@ -101,3 +285,30 @@ jobs:
           files: |
             dist/*.bash
             dist/*.bash.sha256
+
+  # Keep the original "versioning" required check identity, but make it
+  # depend on successful publication as well as every quality gate.
+  versioning:
+    name: versioning
+    needs: [version, prepare, release-bats, release-bash43, gate, publish]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Require fully published and verified release
+        env:
+          VERSION_RESULT: ${{ needs.version.result }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          BATS_RESULT: ${{ needs['release-bats'].result }}
+          BASH43_RESULT: ${{ needs['release-bash43'].result }}
+          GATE_RESULT: ${{ needs.gate.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+        run: |
+          set -euo pipefail
+          for gate in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT GATE_RESULT PUBLISH_RESULT; do
+            if [[ "${!gate}" != success ]]; then
+              printf 'Versioning completion gate %s did not succeed (%s)\n' "$gate" "${!gate}" >&2
+              exit 1
+            fi
+          done
