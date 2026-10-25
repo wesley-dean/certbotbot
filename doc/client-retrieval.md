@@ -107,3 +107,36 @@ the client is not one of its three producer flavors. Task
 safety fixtures in `tests/client-extract.bats`. Task #54 adds the one standalone `certbotbot-client.bash` and `.sha256`,
 independent black-box suite coverage, and explicit eight-file
 CI/release artifact verification.
+
+## Approved encryption preflight (task #185; decryption remains deferred)
+
+ADR-037 adds one nonsecret `--archive-encryption auto|none|gpg-ocb`
+setting with CLI > exported `ARCHIVE_ENCRYPTION` > literal file >
+default `auto` precedence. With no exported secret, `auto` keeps the
+existing plaintext path; with a nonempty exported
+`GPG_SYMMETRIC_KEY`, `auto` selects authenticated decryption.
+Explicit `none` plus a key, explicit `gpg-ocb` without a key,
+invalid modes and line-broken keys are rejected as configuration errors
+(64). Local help/version do not require a usable key or GnuPG.
+
+Before running external tools, the entrypoint disables inherited
+xtrace, captures the environment-provided secret in an unexported
+Bash-local variable and removes `GPG_SYMMETRIC_KEY` from child
+environments. Encrypted mode probes GnuPG >= 2.4.7 through the actual
+issuer-compatible AES-256/OCB packet generation, SHA-512 iterated/salted
+S2K parameters, authenticated decryption and exact roundtrip. It uses
+a private isolated home and sends the key only on GnuPG FD 3.
+Missing/incompatible tools fail 69 before the selected S3 fetch.
+Plaintext operation requires no GnuPG. The original selected-key,
+read-only AWS, private staging and existing destination rules remain.
+
+**Task #185 does not activate encrypted archives.** After a successful
+encrypted-mode capability preflight and one selected-object retrieval,
+the current implementation deliberately rejects encrypted-mode
+restoration with status 65, removing private staging without a destination.
+Task #186 adds the actual authenticated envelope decryption, before
+the existing tar validator and extraction. No raw key, ciphertext or
+tool diagnostics are user-facing. Shell process memory and the
+inherited initial environment are not isolated from privileged or
+same-user host inspection. See
+[client encryption threat model](client-encryption-threat-model.md).
