@@ -124,6 +124,9 @@ certbotbot_client_crypto_framing_valid() {
   # The bounded decoded archive is 32 MiB. Permit compression/packet
   # overhead, but do not consume unbounded memory or disk while inspecting.
   (( size > 32 && size <= 50331648 )) || return 1
+  # The awk program deliberately uses its own $i fields in a literal,
+  # not shell expansions.
+  # shellcheck disable=SC2016
   (set -o pipefail
     LC_ALL=C od -An -tu1 -v -- "$packet" 2>/dev/null |
       LC_ALL=C awk '
