@@ -201,3 +201,39 @@ invoke() {
   [ "$status" -eq 64 ]
   [ ! -e "$CASE_ROOT/aws.log" ]
 }
+
+@test "exported environment settings override file while CLI overrides environment" {
+  printf 'S3_BUCKET=file-bucket\nS3_KEY=file.tar.gz\n' > "$CASE_ROOT/client.env"
+  run env PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    S3_BUCKET=env-bucket S3_KEY=env.tar.gz \
+    bash "$CLIENT" --destination "$CASE_ROOT/private/certs" \
+      --config "$CASE_ROOT/client.env"
+  [ "$status" -eq 65 ]
+  grep -Fq -- '--bucket env-bucket --key env.tar.gz' "$CASE_ROOT/aws.log"
+  rm "$CASE_ROOT/aws.log"
+  run env PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    S3_BUCKET=env-bucket S3_KEY=env.tar.gz \
+    bash "$CLIENT" --destination "$CASE_ROOT/private/certs" \
+      --config "$CASE_ROOT/client.env" --s3-bucket cli-bucket --s3-key cli.tar.gz
+  [ "$status" -eq 65 ]
+  grep -Fq -- '--bucket cli-bucket --key cli.tar.gz' "$CASE_ROOT/aws.log"
+}
+
+@test "implicit caller-working-directory .env selects bucket and current key" {
+  printf 'S3_BUCKET=implicit-bucket\nS3_KEY=implicit.tar.gz\n' > "$CASE_ROOT/.env"
+  run env -u S3_BUCKET -u S3_KEY -u S3_KEY_TEMPLATE \
+    PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    bash -c 'cd "$1" && exec bash "$2" --destination "$3"' -- \
+      "$CASE_ROOT" "$CLIENT" "$CASE_ROOT/private/certs"
+  [ "$status" -eq 65 ]
+  grep -Fq -- '--bucket implicit-bucket --key implicit.tar.gz' "$CASE_ROOT/aws.log"
+}
+
+@test "same winning-tier environment key and template conflict fails closed" {
+  run env PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
+    S3_BUCKET=fixture-bucket S3_KEY=literal.tar.gz \
+    S3_KEY_TEMPLATE='dated-{YEAR}.tar.gz' \
+    bash "$CLIENT" --destination "$CASE_ROOT/private/certs"
+  [ "$status" -eq 64 ]
+  [ ! -e "$CASE_ROOT/aws.log" ]
+}
