@@ -83,8 +83,8 @@ or a transient alternate package manager.
 
 Use `apk add --no-cache` to install the runtime dependencies. Constrain
 selected packages to the approved API/behavior family, including:
-`aws-cli~2`, `certbot~5`, `certbot-dns-route53~5`, and
-`gnupg~2.4`, while retaining functional verification of the specific
+`aws-cli=~2`, `certbot=~5`, `certbot-dns-route53=~5`, and
+`gnupg=~2.4`, while retaining functional verification of the specific
 installed versions. Install GNU coreutils, GNU tar, findutils, gawk,
 gzip, sed and grep explicitly rather than assuming BusyBox-compatible
 tools satisfy the Bash producer's GNU-specific options.
