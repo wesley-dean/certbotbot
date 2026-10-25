@@ -1,10 +1,10 @@
-# Separate Client: Safe Plaintext Extraction and Activation
+# Separate Client: Safe Plaintext and Authenticated Extraction
 
 Status: maintained-source implementation for approved [task #53](https://github.com/wesley-dean/certbotbot/issues/53). Task [#54](https://github.com/wesley-dean/certbotbot/issues/54) adds the standalone distributable and release/CI integration. The design is governed by [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md), [ADR-022](adr/ADR-022-portable-certbot-state-archives.md), and the [separate-client contract](separate-client-contract.md). A client release must pass separate black-box tests and attestation before publication.
 
 ## Observable behavior
 
-The client reads exactly the operator-selected current S3 object through the approved read-only adapter. It accepts a **plaintext gzip tar** whose member paths, header types, size, member count, symlink relationships, permissions and structure pass the existing shared `certbotbot_archive_validate` implementation. The decoded size limit is 32 MiB and the member-count limit is 2,048. GnuPG OCB envelopes, unsupported formats, corrupted/truncated archives, traversal and absolute paths, hardlinks, devices, sparse and unsupported tar extensions, duplicate names and escaping or broken PEM links fail with status 65. It neither decrypts nor falls back to an alternate S3 object.
+The client reads exactly the operator-selected current S3 object through the approved read-only adapter. In plaintext mode, it accepts an ordinary **gzip tar**; in encrypted mode, it first requires an exact ADR-031 GnuPG AES-256/OCB envelope, complete authenticated decryption in private staging and the same gzip/tar validation. The decoded size limit is 32 MiB and the member-count limit is 2,048. Wrong mode, unsupported crypto/envelopes, corrupted/truncated input, traversal, hardlinks, unsupported members and escaping or broken PEM links fail with status 65. It never falls back to an alternate S3 object.
 
 The new `lib/client-extract.bash` module composes the shared `lib/archive.bash` validator and `lib/restore.bash` private restore adapter. It extracts only into a new mode-0700 directory nested under the client's private staging directory. The restore adapter validates an exact private copy **before** invoking GNU tar, extracts without applying archived file ownership, and verifies the resulting filesystem and relative PEM links. Its `workspace/config` directory is *inactive*, never the selected user destination.
 
@@ -34,7 +34,7 @@ The client documents stable status classes: 0 for successful activation or local
 
 The task #54 test runner sets `BASH_STARTER_CLIENT_ARTIFACT` to the verified, standalone client and reruns both client fixture suites against an isolated copy, without needing `src/`, `lib/`, or `vendor/` at runtime. A green source-level test alone does not prove release readiness; publication must also pass the eight-file handoff, Bash 4.3 checks, attestation, and late-tagging gates.
 
-Further changes to plaintext member-dialect support, encrypted archives, destination replacement, client selection/installation or concurrency guarantees require a new, explicitly approved design review.
+Further changes to plaintext member-dialect support, encrypted envelope versions or algorithms, destination replacement, client selection/installation or concurrency guarantees require a new, explicitly approved design review.
 
 
 ## Authenticated restoration of the current encrypted object (task #186)
