@@ -1,0 +1,235 @@
+---
+name: Publish verified certbotbot OCI image
+
+# yamllint disable-line rule:truthy
+on:
+  # This follows the *successful no-push OCI gate*, not arbitrary release tags,
+  # PRs, or the workflow_run default-branch ref. Versioning's GITHUB_TOKEN tag
+  # does not reliably cause a new tag-triggered workflow to start.
+  workflow_run:
+    workflows: [OCI release validation]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Revalidate exact OCI gate and attested Versioning release
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    outputs:
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      source_run_id: ${{ steps.identity.outputs.source_run_id }}
+      source_attempt: ${{ steps.identity.outputs.source_attempt }}
+      release_version: ${{ steps.identity.outputs.release_version }}
+      manifest_sha: ${{ steps.identity.outputs.manifest_sha }}
+      producer_sha: ${{ steps.identity.outputs.producer_sha }}
+    steps:
+      - name: Checkout trusted protected main with complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Retrieve the exact successful gate's nonsecret proof
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: verified-oci-gate-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/oci-publish-gate
+
+      - name: Verify source run, gate attempt and proof inventory
+        id: identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: wesley-dean/certbotbot
+        run: |
+          set -euo pipefail
+          bash ci/verify-oci-publish-event.bash \
+            "$RUNNER_TEMP/oci-publish-gate/verified-oci-gate.txt"
+
+      - name: Require verified signed release and all eight attested assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: wesley-dean/certbotbot
+          SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
+          SOURCE_RUN_ID: ${{ steps.identity.outputs.source_run_id }}
+          SOURCE_ATTEMPT: ${{ steps.identity.outputs.source_attempt }}
+          RELEASE_VERSION: ${{ steps.identity.outputs.release_version }}
+          MANIFEST_SHA: ${{ steps.identity.outputs.manifest_sha }}
+          PRODUCER_SHA: ${{ steps.identity.outputs.producer_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git cat-file -e "$SOURCE_SHA^{commit}"
+          git merge-base --is-ancestor "$SOURCE_SHA" refs/remotes/origin/main
+          git checkout --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          bash ci/verify-oci-public-release.bash \
+            "$SOURCE_SHA" "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT" dist
+          test "$(sed -n 's/^version=//p' dist/producer-handoff.manifest)" \
+            = "$RELEASE_VERSION"
+          test "$(sha256sum dist/producer-handoff.manifest | awk '{print $1}')" \
+            = "$MANIFEST_SHA"
+          test "$(sha256sum dist/certbotbot.bash | awk '{print $1}')" \
+            = "$PRODUCER_SHA"
+          # A late-running older gate cannot overwrite a newer latest release.
+          latest="$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)"
+          test "$latest" = "v$RELEASE_VERSION"
+
+  # This separate job has the only registry-write authority. It cannot run
+  # until the independent gate/release checks pass. The explicit repository
+  # opt-in defaults OFF; provision a protected environment and enable only
+  # after reviewing IAM, secrets, and live-release acceptance.
+  publish:
+    name: Publish once to GHCR and Docker Hub
+    needs: verify
+    if: ${{ needs.verify.result == 'success' && vars.CERTBOTBOT_IMAGE_PUBLISH_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    environment:
+      name: oci-registry-publish
+    concurrency:
+      # Global serialization avoids older releases racing new 'latest' tags.
+      group: certbotbot-oci-registry-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      attestations: read
+      packages: write
+    steps:
+      - name: Checkout reviewed source with all release refs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Reverify release and create restricted publisher context
+        id: context
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: wesley-dean/certbotbot
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          SOURCE_RUN_ID: ${{ needs.verify.outputs.source_run_id }}
+          SOURCE_ATTEMPT: ${{ needs.verify.outputs.source_attempt }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+          MANIFEST_SHA: ${{ needs.verify.outputs.manifest_sha }}
+          PRODUCER_SHA: ${{ needs.verify.outputs.producer_sha }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_SHA" && test -n "$SOURCE_RUN_ID"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$SOURCE_SHA" refs/remotes/origin/main
+          git checkout --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          bash ci/verify-oci-public-release.bash \
+            "$SOURCE_SHA" "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT" dist
+          test "$(sed -n 's/^version=//p' dist/producer-handoff.manifest)" \
+            = "$RELEASE_VERSION"
+          test "$(sha256sum dist/producer-handoff.manifest | awk '{print $1}')" \
+            = "$MANIFEST_SHA"
+          test "$(sha256sum dist/certbotbot.bash | awk '{print $1}')" \
+            = "$PRODUCER_SHA"
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)" \
+            = "v$RELEASE_VERSION"
+          bash ci/prepare-oci-context.bash release dist \
+            "$RUNNER_TEMP/publish-context" "$SOURCE_SHA" \
+            "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT" \
+            "$RELEASE_VERSION" "$MANIFEST_SHA"
+          # Only the immutable checked handoff may determine build inputs.
+          test "$(sed -n 's/^producer_sha256=//p' \
+            "$RUNNER_TEMP/publish-context/oci/producer/provenance.txt")" \
+            = "$PRODUCER_SHA"
+
+      # All four authentication values are protected GitHub secrets, never
+      # build args, image labels, outputs, release artifacts or console text.
+      # The merged upstream action is pinned to its reviewed merge SHA.
+      - name: Publish verified release with the reviewed reusable action
+        id: publisher
+        uses: wesley-dean/publish_image@94d42d58eab435d50991f561f27382c4dc3cedb4
+        with:
+          github_ref: refs/tags/v${{ needs.verify.outputs.release_version }}
+          repository_name: certbotbot
+          context: ${{ runner.temp }}/publish-context
+          dockerfile: ${{ runner.temp }}/publish-context/Dockerfile
+          platforms: linux/amd64
+          push: 'true'
+          required_registries: dockerhub,ghcr
+          verified_release_ref: refs/tags/v${{ needs.verify.outputs.release_version }}
+          verified_source_sha: ${{ needs.verify.outputs.source_sha }}
+          build_args: |
+            SOURCE_COMMIT=${{ needs.verify.outputs.source_sha }}
+            RELEASE_VERSION=${{ needs.verify.outputs.release_version }}
+            PRODUCER_SHA256=${{ needs.verify.outputs.producer_sha }}
+            HANDOFF_MANIFEST_SHA256=${{ needs.verify.outputs.manifest_sha }}
+            BUILD_KIND=release
+          ghcr_registry: ghcr.io
+          ghcr_image: wesley-dean/certbotbot
+          ghcr_username: ${{ secrets.ghcr_username }}
+          ghcr_token: ${{ secrets.ghcr_token }}
+          dockerhub_registry: docker.io
+          dockerhub_image: wesleydean/certbotbot
+          dockerhub_username: ${{ secrets.dockerhub_username }}
+          dockerhub_token: ${{ secrets.dockerhub_token }}
+
+      - name: Require both reported references and actual registry manifests
+        shell: bash
+        env:
+          DIGEST: ${{ steps.publisher.outputs.digest }}
+          GHCR_REF: ${{ steps.publisher.outputs.ghcr_digest_ref }}
+          DOCKERHUB_REF: ${{ steps.publisher.outputs.dockerhub_digest_ref }}
+          IMAGE_TAGS: ${{ steps.publisher.outputs.tags }}
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+          PRODUCER_SHA: ${{ needs.verify.outputs.producer_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$GHCR_REF" = "ghcr.io/wesley-dean/certbotbot@$DIGEST"
+          test "$DOCKERHUB_REF" = "docker.io/wesleydean/certbotbot@$DIGEST"
+          for repository in ghcr.io/wesley-dean/certbotbot \
+            docker.io/wesleydean/certbotbot; do
+            grep -Fx "$repository:$RELEASE_VERSION" <<< "$IMAGE_TAGS"
+            grep -Fx "$repository:latest" <<< "$IMAGE_TAGS"
+            grep -Fx "$repository:sha-$SOURCE_SHA" <<< "$IMAGE_TAGS"
+            expected="$repository@$DIGEST"
+            # Verify ACTUAL remote registry response rather than trusting a
+            # reusable-action output. Failure in one registry is a failed run.
+            docker buildx imagetools inspect "$expected" >/dev/null
+            docker pull "$expected" >/dev/null
+            test "$(docker image inspect "$expected" \
+              --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+            test "$(docker image inspect "$expected" \
+              --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" \
+              = "$SOURCE_SHA"
+            test "$(docker image inspect "$expected" \
+              --format '{{index .Config.Labels "io.certbotbot.producer.sha256"}}')" \
+              = "$PRODUCER_SHA"
+          done
+          # Detailed registry parity, SBOM, attestations and runtime
+          # acceptance of pulled images remain separately tracked in #166.
+
+      - name: Clean temporary release state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          context="$RUNNER_TEMP/publish-context"
+          if [[ "$context" == "$RUNNER_TEMP/publish-context" &&
+            -d "$context" && ! -L "$context" ]]; then
+            rm -rf -- "$context"
+          fi
+          if [[ -d dist && ! -L dist ]]; then
+            rm -rf -- dist
+          fi
