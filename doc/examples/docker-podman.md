@@ -6,9 +6,9 @@ This is the bounded, **example-only** quick start for the production root
 build-input verification and Alpine package policy, consult the
 [OCI build contract](../oci-build-contract.md), [ADR-038](../adr/ADR-038-verified-oci-producer-images.md)
 and [ADR-039](../adr/ADR-039-alpine-oci-runtime.md).
-The comprehensive operator guide is separately tracked under
-[task #157](https://github.com/wesley-dean/certbotbot/issues/157);
-`doc/container-deployment.md` is its planned path and may not exist yet.
+For deployment requirements, consult the existing
+[full container deployment guide](../container-deployment.md) and the
+[verified publication contract](../oci-publication-contract.md).
 
 ## Scope and prerequisites
 
@@ -34,6 +34,87 @@ The initial build is **local development evidence**, not an authenticated
 registry release. The Dockerfile refuses a bare Git checkout build context:
 it requires an independently verified eight-file handoff. Do not put AWS
 credentials, a `.env`, ACME material, or private keys in the build context.
+
+## Use an independently verified published image
+
+Official publication is release-gated to both
+`ghcr.io/wesley-dean/certbotbot` and
+`docker.io/wesleydean/certbotbot`. The image contains the **ordinary
+producer**, not the separately shipped certificate client. The
+initially supported platform is `linux/amd64`. This section describes
+how to **use** an accepted image; it does not assert that a particular
+digest is already published or accepted.
+
+First, inspect the completed
+[image publication workflow](../../.github/workflows/publish-image.yml),
+the actual registry's manifest/digest and image provenance. Select an
+**independently verified complete `sha256:` digest** for the intended
+stable release and registry. Do not use `latest` as a deployment pin:
+the version/major/minor and `latest` tags may move, while the image
+digest identifies the selected published artifact. Other published
+tags include the exact version and `sha-` followed by the short or
+complete verified source commit; they are discovery aids, not substitutes
+for independent digest verification. GHCR may require authenticated
+pull access depending on package visibility.
+
+For Docker, replace the obvious placeholder with the **actual**
+verified GHCR image digest:
+
+~~~bash
+# Obtain the full digest by inspecting the actual accepted registry image.
+DIGEST='sha256:REPLACE_WITH_VERIFIED_64_HEX_DIGEST'
+IMAGE="ghcr.io/wesley-dean/certbotbot@$DIGEST"
+docker pull --platform linux/amd64 "$IMAGE"
+docker image inspect "$IMAGE" \
+  --format '{{.Os}}/{{.Architecture}} {{.Config.User}}'
+docker image inspect "$IMAGE" \
+  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+docker image inspect "$IMAGE" \
+  --format '{{index .Config.Labels "io.certbotbot.producer.sha256"}}'
+# Offline CLI smoke check: no AWS, Route53 or ACME credentials needed.
+docker run --rm --pull=never --network=none --read-only \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --tmpfs /run/certbotbot:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700 \
+  "$IMAGE" --version
+~~~
+
+For rootless Podman, replace the placeholder with the verified
+**Docker Hub** image digest, and use Podman's private tmpfs syntax:
+
+~~~bash
+DIGEST='sha256:REPLACE_WITH_VERIFIED_64_HEX_DIGEST'
+IMAGE="docker.io/wesleydean/certbotbot@$DIGEST"
+podman info --format '{{.Host.Security.Rootless}}'  # require true
+podman pull --arch amd64 --os linux "$IMAGE"
+podman image inspect "$IMAGE" \
+  --format '{{.Os}}/{{.Architecture}} {{.Config.User}}'
+podman image inspect "$IMAGE" \
+  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+podman image inspect "$IMAGE" \
+  --format '{{index .Config.Labels "io.certbotbot.producer.sha256"}}'
+podman run --rm --pull=never --network=none --read-only \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --mount type=tmpfs,destination=/run/certbotbot,tmpfs-mode=0700,U=true \
+  "$IMAGE" --help
+~~~
+
+Confirm `linux/amd64`, image UID/GID `65532:65532`, the expected
+full source revision and the checksum of the **verified ordinary
+producer** from the accepted eight-file release handoff. Inspect
+`org.opencontainers.image.version` as well. If checking both registries,
+validate the remote digest and labels of each image independently;
+do not assume one registry's success proves the other. Keep the
+previous known-good digest for rollback.
+
+These smoke checks deliberately use `--network=none`. For **real**
+certificate maintenance, remove that restriction and provide the
+already-required S3/Route53/ACME access, pre-existing account/archive,
+restricted runtime credentials, and one-writer scheduling described
+in [section 4](#4-real-credentials-and-operator-controlled-invocation)
+and the [full guide](../container-deployment.md). Replace
+`certbotbot:local` in the examples below with the verified `IMAGE`
+reference and pass the same public CLI flags. Never place credentials
+in image tags, build arguments, shell history, or published metadata.
 
 ## 1. Prepare a nonsecret development image context
 
@@ -169,12 +250,12 @@ environment variable**, never a `.env` file entry or CLI argument.
 Environment injection can remain observable to privileged host/container
 administrators; it does not provide a VM confidentiality guarantee.
 
-For production, pull using a reviewed **immutable registry digest**
-(`registry.example/namespace/certbotbot@sha256:<verified-digest>`),
-verify the platform and provenance/labels, then apply the same runtime
-restrictions. This is a format example: a published GHCR/Docker Hub digest
-is **not** asserted to exist yet. Registry publishing and parity verification
-belong to tasks #164–#166.
+For production, follow the [published image instructions](#use-an-independently-verified-published-image)
+above, using the verified registry digest as the image reference and
+the same runtime restrictions. Do not infer successful publication
+or complete cross-registry parity from a locally built image.
+The remaining registry verification contract is tracked in
+[task #166](https://github.com/wesley-dean/certbotbot/issues/166).
 
 ## 5. Permissions, retries, and lifecycle checklist
 
