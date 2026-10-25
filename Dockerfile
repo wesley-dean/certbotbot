@@ -1,7 +1,7 @@
-# OCI producer only. See ADR-038 and ci/prepare-oci-context.bash.
-# Debian 13.7 slim, linux/amd64 manifest published 2026-10-20.
-# https://github.com/docker-library/repo-info/blob/master/repos/debian/remote/13-slim.md
-FROM debian:13.7-slim@sha256:4876fdea29cac1a33a3195f1eb1952feb1fca7dd6dd00be3e2f1879cf20d34d2
+# OCI producer only. ADR-038 as partially superseded by Alpine ADR-039.
+# The published Alpine 3.24.3 linux/amd64 manifest is immutable:
+# https://github.com/docker-library/repo-info/blob/master/repos/alpine/remote/3.24.3.md
+FROM alpine:3.24.3@sha256:c26612752c78b18faacd63c7d50f4592c2e7b0f25e0e20e82bd74e465c57ab0d
 
 ARG SOURCE_COMMIT
 ARG RELEASE_VERSION
@@ -9,33 +9,39 @@ ARG PRODUCER_SHA256
 ARG HANDOFF_MANIFEST_SHA256
 ARG BUILD_KIND
 
-# Bash pipefail must apply before the first RUN that uses shell pipelines.
+# Only the supported Alpine v3.24 repositories, never edge/testing.
+# APK verifies the repository indexes and signed package records.
+COPY oci/alpine-repositories /etc/apk/repositories
+
+# Fuzzy package constraints deliberately permit compatible v3.24 patches.
+# Installed transitive versions are recorded in packages.lock below.
+# hadolint ignore=DL3018
+RUN set -eu; \
+    test "$(apk --print-arch)" = x86_64; \
+    apk add --no-cache \
+      bash 'aws-cli=~2' 'certbot=~5' 'certbot-dns-route53=~5' \
+      'gnupg=~2.4' ca-certificates openssl \
+      coreutils findutils tar gzip gawk sed grep
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Debian and Debian-security archives fixed to the same dated snapshot.
-COPY oci/debian.sources /etc/apt/sources.list.d/debian.sources
-# hadolint ignore=DL3008 # Fixed signed APT snapshot is the package-version lock.
-RUN set -eu; \
-    test "$(dpkg --print-architecture)" = amd64; \
-    rm -f /etc/apt/sources.list; \
-    apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
-      bash awscli certbot python3-certbot-dns-route53 \
-      gnupg ca-certificates openssl \
-      coreutils findutils tar gzip gawk sed grep; \
-    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb
-
-# Record the complete actually installed transitive Debian package inventory.
-# It is nonsecret image provenance, not a promise that all packages are safe.
-RUN set -eu; \
-    install -d -m 0755 /usr/local/share/certbotbot; \
-    dpkg-query -W -f='${Package}=${Version}\n' | LC_ALL=C sort \
-      > /usr/local/share/certbotbot/packages.lock
-
-# Verify the real dependencies, including authenticated OCB operation.
-# The fixed probe string is public test data, NEVER a production key.
+# Record what the package solver *actually installed*, including transitive
+# versions. This is provenance, not a promise of reproducible image bytes.
 RUN set -euo pipefail; \
-    [[ "$(dpkg --print-architecture)" == amd64 ]]; \
+    install -d -m 0755 /usr/local/share/certbotbot; \
+    apk info -vv | LC_ALL=C sort \
+      > /usr/local/share/certbotbot/packages.lock; \
+    test -s /usr/local/share/certbotbot/packages.lock; \
+    grep -Eq '^aws-cli-2\.' /usr/local/share/certbotbot/packages.lock; \
+    grep -Eq '^certbot-5\.' /usr/local/share/certbotbot/packages.lock; \
+    grep -Eq '^certbot-dns-route53-5\.' /usr/local/share/certbotbot/packages.lock; \
+    grep -Eq '^gnupg-2\.4\.' /usr/local/share/certbotbot/packages.lock
+
+# These are real functional compatibility checks, not merely package names.
+# The GnuPG probe string is fixed PUBLIC test data, not an operator secret.
+RUN set -euo pipefail; \
+    [[ "$(apk --print-arch)" == x86_64 ]]; \
+    [[ "$(cat /etc/alpine-release)" == 3.24.* ]]; \
     bash --version | head -n 1 | grep -Eq 'version (4\.[3-9]|[5-9]\.|[1-9][0-9])'; \
     aws --version 2>&1 | grep -Eq '^aws-cli/2\.'; \
     certbot --version >/dev/null; \
@@ -44,9 +50,17 @@ RUN set -euo pipefail; \
     for tool in tar gzip stat mktemp realpath find od tail awk sed grep sha256sum cmp; do \
       command -v "$tool" >/dev/null || exit 69; \
     done; \
+    tar --version | head -n 1 | grep -Fq 'GNU tar'; \
+    find --version | head -n 1 | grep -Fq 'GNU findutils'; \
+    awk --version | head -n 1 | grep -Fq 'GNU Awk'; \
     version="$(gpg --version | head -n 1)"; \
     [[ "$version" =~ gpg\ \(GnuPG\)\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; \
-    dpkg --compare-versions "${BASH_REMATCH[1]}" ge 2.4.7; \
+    major="${BASH_REMATCH[1]%%.*}"; \
+    rest="${BASH_REMATCH[1]#*.}"; \
+    minor="${rest%%.*}"; \
+    patch="${rest##*.}"; \
+    (( major > 2 || (major == 2 && \
+      (minor > 4 || (minor == 4 && patch >= 7))) )); \
     probe="$(mktemp -d)"; \
     trap 'rm -rf -- "$probe"' EXIT; \
     mkdir -m 0700 "$probe/gnupg"; \
@@ -68,8 +82,7 @@ RUN set -euo pipefail; \
       3<<<'public-OCB-test-only-not-a-secret' >/dev/null 2>&1; \
     cmp -s "$probe/plain" "$probe/restored"
 
-# Prepared producer bytes were checked against a complete 8-file handoff.
-# Re-verify the copied checksum, provenance and expected source/version.
+# Only the independently prepared/verified ordinary producer is accepted.
 COPY oci/producer/certbotbot.bash oci/producer/certbotbot.bash.sha256 oci/producer/provenance.txt /opt/certbotbot/
 WORKDIR /opt/certbotbot
 RUN set -euo pipefail; \
@@ -94,16 +107,14 @@ RUN set -euo pipefail; \
     install -m 0644 certbotbot.bash.sha256 provenance.txt /usr/local/share/certbotbot/; \
     rm -rf /opt/certbotbot
 
-# Never execute later RUN steps inside the removed verification directory.
 WORKDIR /
 
-# Static UID/GID avoids introducing a runtime account manager.
-# The operator mounts a mode-0700 owned tmpfs here under --read-only.
+# Static unprivileged user and private runtime directory.
 RUN set -euo pipefail; \
     if grep -Eq '(^certbotbot:|:65532:)' /etc/passwd; then exit 1; fi; \
     if grep -Eq '(^certbotbot:|:65532:)' /etc/group; then exit 1; fi; \
-    printf '%s\n' 'certbotbot:x:65532:' >> /etc/group; \
-    printf '%s\n' 'certbotbot:x:65532:65532:certbotbot OCI producer:/run/certbotbot:/usr/sbin/nologin' >> /etc/passwd; \
+    addgroup -S -g 65532 certbotbot; \
+    adduser -S -D -H -u 65532 -G certbotbot -h /run/certbotbot certbotbot; \
     install -d -m 0700 -o 65532 -g 65532 /run/certbotbot
 
 LABEL org.opencontainers.image.title="certbotbot" \
@@ -111,13 +122,13 @@ LABEL org.opencontainers.image.title="certbotbot" \
       org.opencontainers.image.source="https://github.com/wesley-dean/certbotbot" \
       org.opencontainers.image.revision="${SOURCE_COMMIT}" \
       org.opencontainers.image.version="${RELEASE_VERSION}" \
-      org.opencontainers.image.base.name="debian:13.7-slim" \
-      org.opencontainers.image.base.digest="sha256:4876fdea29cac1a33a3195f1eb1952feb1fca7dd6dd00be3e2f1879cf20d34d2" \
+      org.opencontainers.image.base.name="alpine:3.24.3" \
+      org.opencontainers.image.base.digest="sha256:c26612752c78b18faacd63c7d50f4592c2e7b0f25e0e20e82bd74e465c57ab0d" \
       org.opencontainers.image.vendor="Wesley Dean" \
       io.certbotbot.producer.sha256="${PRODUCER_SHA256}" \
       io.certbotbot.handoff.manifest.sha256="${HANDOFF_MANIFEST_SHA256}" \
       io.certbotbot.build.kind="${BUILD_KIND}" \
-      io.certbotbot.apt.snapshot="20261020T213255Z"
+      io.certbotbot.apk.branch="v3.24"
 
 ENV HOME=/run/certbotbot \
     TMPDIR=/run/certbotbot \
@@ -127,9 +138,7 @@ ENV HOME=/run/certbotbot \
 USER 65532:65532
 WORKDIR /run/certbotbot
 STOPSIGNAL SIGTERM
-# Explicitly disable probes: this is a finite one-shot CLI, not a service.
-# Execution status is the readiness/health result; no process remains to probe.
+# Finite one-shot CLI, not a long-lived service.
 HEALTHCHECK NONE
 ENTRYPOINT ["/usr/local/bin/certbotbot.bash"]
-# Safe default: display help rather than contacting AWS or renewing.
 CMD ["--help"]
