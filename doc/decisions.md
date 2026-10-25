@@ -506,3 +506,21 @@ only for the base distribution and OS package update policy; its verified
 producer, security, runtime and release contracts remain authoritative.
 
 See [ADR-039](adr/ADR-039-alpine-oci-runtime.md).
+
+### ADR-040: Release-Gated Dual-Registry OCI Publication
+
+The privileged certbotbot image publisher is triggered only by a successful
+OCI release-validation workflow, whose short-lived same-attempt proof is
+independently cross-checked against the original successful Versioning run,
+the signed stable release and all eight attested Bash assets. The repository
+must explicitly enable publishing, and a separate protected environment
+contains the only GHCR and Docker Hub authority; the reviewed publish_image
+action is pinned to an immutable merge commit and receives exact v0-safe
+source/tag identity, allowlisted build context and nonsecret provenance.
+Both registry manifests and pulled source/producer identities must match
+the reported digest or publication fails, without claiming transactional
+rollback. Alpine stable-branch package resolution can differ between the
+no-push gate build and the final publisher build, so detailed remote
+runtime, package, SBOM and parity verification remains in task #166.
+
+See [ADR-040](adr/ADR-040-release-gated-dual-registry-oci-publication.md).
