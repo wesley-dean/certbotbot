@@ -78,6 +78,20 @@ output="$parent/$output_name"
 [[ ! -e "$output" && ! -L "$output" ]] ||
   oci_error 'output must not exist'
 
+# Only paths newly created by this invocation may be removed.
+temp=''
+output_created=false
+completed=false
+oci_cleanup() {
+  if [[ "$output_created" == true && "$completed" != true ]]; then
+    rm -rf -- "$output"
+  fi
+  if [[ -n "$temp" ]]; then
+    rm -rf -- "$temp"
+  fi
+}
+trap oci_cleanup EXIT
+
 # Release candidates have an independently trusted manifest and full strict
 # inventory. A local build can acquire an equivalent *development-only*
 # manifest in a separate temporary copy, never publishing it as a release.
@@ -128,16 +142,7 @@ digest="$(sha256sum -- "$root/certbotbot.bash" | awk '{print $1}')" ||
 # The output is owned exclusively by this invocation after mkdir succeeds.
 umask 077
 mkdir -m 0700 -- "$output" || oci_error 'cannot create output context' 74
-completed=false
-oci_cleanup() {
-  if [[ "$completed" != true ]]; then
-    rm -rf -- "$output"
-  fi
-  if [[ -n "${temp:-}" ]]; then
-    rm -rf -- "$temp"
-  fi
-}
-trap oci_cleanup EXIT
+output_created=true
 mkdir -m 0700 "$output/oci" "$output/oci/producer" ||
   oci_error 'cannot create allowlisted context' 74
 install -m 0644 Dockerfile "$output/Dockerfile" ||
