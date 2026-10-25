@@ -147,12 +147,13 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "registry workflow has hard gate, opt-in, immutable action and fixed amd64" {
+@test "registry workflow publishes automatically after hard gate with immutable action and fixed amd64" {
   local workflow="$BATS_TEST_DIRNAME/../.github/workflows/publish-image.yml"
   local gate="$BATS_TEST_DIRNAME/../.github/workflows/oci-release-validation.yml"
   grep -Fq 'workflows: [OCI release validation]' "$workflow"
   grep -Fq 'needs: verify' "$workflow"
-  grep -Fq "CERTBOTBOT_IMAGE_PUBLISH_ENABLED == 'true'" "$workflow"
+  grep -Fq "if: ${{ needs.verify.result == 'success' }}" "$workflow"
+  ! grep -Fq 'CERTBOTBOT_IMAGE_PUBLISH_ENABLED' "$workflow"
   grep -Fq 'name: oci-registry-publish' "$workflow"
   grep -Fq 'required_registries: dockerhub,ghcr' "$workflow"
   grep -Fq 'uses: wesley-dean/publish_image@94d42d58eab435d50991f561f27382c4dc3cedb4' "$workflow"
