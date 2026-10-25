@@ -193,8 +193,12 @@ jobs:
           SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
           RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
           PRODUCER_SHA: ${{ needs.verify.outputs.producer_sha }}
+          REPORTED_SOURCE: ${{ steps.publisher.outputs.source_sha }}
+          REPORTED_REF: ${{ steps.publisher.outputs.release_ref }}
         run: |
           set -euo pipefail
+          test "$REPORTED_SOURCE" = "$SOURCE_SHA"
+          test "$REPORTED_REF" = "refs/tags/v$RELEASE_VERSION"
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           test "$GHCR_REF" = "ghcr.io/wesley-dean/certbotbot@$DIGEST"
           test "$DOCKERHUB_REF" = "docker.io/wesleydean/certbotbot@$DIGEST"
@@ -203,6 +207,11 @@ jobs:
             grep -Fx "$repository:$RELEASE_VERSION" <<< "$IMAGE_TAGS"
             grep -Fx "$repository:latest" <<< "$IMAGE_TAGS"
             grep -Fx "$repository:sha-$SOURCE_SHA" <<< "$IMAGE_TAGS"
+            for tag in "$RELEASE_VERSION" latest "sha-$SOURCE_SHA"; do
+              tag_digest="$(docker buildx imagetools inspect "$repository:$tag" |
+                awk '$1 == "Digest:" {print $2; exit}')"
+              test "$tag_digest" = "$DIGEST"
+            done
             expected="$repository@$DIGEST"
             # Verify ACTUAL remote registry response rather than trusting a
             # reusable-action output. Failure in one registry is a failed run.
