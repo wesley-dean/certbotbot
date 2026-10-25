@@ -532,10 +532,10 @@ and [retention safety](retention-safety-verification.md).
 - [Authenticated archive adapter](../lib/crypto.bash)
 - [Public lifecycle tests](../tests/public-lifecycle.bats),
   [configuration/identity tests](../tests/config-identity.bats),
-  [multi-SAN tests](../tests/multi-san.bats)
-- [Encryption tests](../tests/archive-encryption.bats),
-  [backup tests](../tests/dated-backup.bats),
-  [retention tests](../tests/retention.bats)
+  and [multi-SAN verification matrix](multi-san-verification.md)
+- [Encryption verification matrix](archive-encryption-verification.md),
+  [dated backup recovery and test evidence](dated-backup-recovery-verification.md),
+  and [retention tests](../tests/retention.bats)
 - [Architectural decisions](decisions.md) and
   [full lifecycle guide](how-it-works.md)
 
