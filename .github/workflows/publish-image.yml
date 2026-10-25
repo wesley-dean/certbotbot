@@ -88,13 +88,13 @@ jobs:
           test "$latest" = "v$RELEASE_VERSION"
 
   # This separate job has the only registry-write authority. It cannot run
-  # until the independent gate/release checks pass. The explicit repository
-  # opt-in defaults OFF; provision a protected environment and enable only
-  # after reviewing IAM, secrets, and live-release acceptance.
+  # until the independent gate/release checks pass. The enabled workflow
+  # publishes automatically after acceptance, subject to the protected
+  # environment and available registry credentials.
   publish:
     name: Publish once to GHCR and Docker Hub
     needs: verify
-    if: ${{ needs.verify.result == 'success' && vars.CERTBOTBOT_IMAGE_PUBLISH_ENABLED == 'true' }}
+    if: ${{ needs.verify.result == 'success' }}
     runs-on: ubuntu-24.04
     environment:
       name: oci-registry-publish
