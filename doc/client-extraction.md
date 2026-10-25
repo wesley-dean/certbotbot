@@ -35,3 +35,38 @@ The client documents stable status classes: 0 for successful activation or local
 The task #54 test runner sets `BASH_STARTER_CLIENT_ARTIFACT` to the verified, standalone client and reruns both client fixture suites against an isolated copy, without needing `src/`, `lib/`, or `vendor/` at runtime. A green source-level test alone does not prove release readiness; publication must also pass the eight-file handoff, Bash 4.3 checks, attestation, and late-tagging gates.
 
 Further changes to plaintext member-dialect support, encrypted archives, destination replacement, client selection/installation or concurrency guarantees require a new, explicitly approved design review.
+
+
+## Authenticated restoration of the current encrypted object (task #186)
+
+ADR-037 extends the standalone client with producer-compatible authenticated
+restoration. A selected `gpg-ocb` mode retrieves **exactly** the configured
+current S3 object as before, but requires the byte-exact
+`CERTBOTBOT-GPG-OCB-V1` plus LF envelope. The payload must have precisely
+one complete symmetric-key packet (tag 3) and one complete AEAD-encrypted
+packet (tag 20), with no trailing bytes. A bounded streaming length check
+recognizes ordinary and partial new-format OpenPGP packet lengths. A separate
+GnuPG packet inspection enforces ADR-031 AES-256/OCB and SHA-512
+iterated/salted S2K identity; neither inspection is itself authentication.
+
+GnuPG must then **complete** AEAD decryption successfully inside the client's
+private sibling workspace. Any plaintext written before authentication
+completes is quarantined; no tar validator or extractor receives it. After
+success, the existing 32 MiB / 2,048-member gzip/tar validator accepts or
+rejects the decrypted object, and the existing extraction/permission/link
+checks and absent-destination activation remain unchanged. Encrypted archives
+restore all supported lineages, not merely one selected certificate.
+
+Wrong mode, unknown envelope, malformed/legacy packet, tampering, bad key,
+unsafe plaintext, and truncation fail without a final directory, fallback S3
+read, archive contents or key on stdout/stderr. Both ciphertext and any
+temporary plaintext are deleted by the owned-workspace cleanup on ordinary
+failure; this does not promise forensic secure erasure or recovery after a
+host crash. The plaintext path still requires neither GnuPG nor a secret.
+
+The new packet frame check also uses a locally installed `awk` interpreter
+together with GNU `od` (ordinary runtime/core utilities); these become
+part of the conditional encrypted-input parsing trust boundary. Real-GnuPG
+source and shipped-client fixtures exercise this behavior, while task #187
+expands the adversarial matrix and task #188 establishes mandatory
+release-level encrypted-client gates.
