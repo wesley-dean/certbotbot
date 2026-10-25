@@ -24,7 +24,7 @@ certbotbot_client_crypto_probe_packets() {
   local home="$1" packet="$2" detail
   [[ -s "$packet" && -f "$packet" && ! -L "$packet" ]] || return 1
   detail="$(gpg --no-options --homedir "$home" --batch --no-tty \
-    --no-symkey-cache --list-packets "$packet" 2>/dev/null)" || return 1
+    --no-symkey-cache --list-packets "$packet" 2>/dev/null || :)"
   [[ "$detail" == *':symkey enc packet: version 5, cipher 9, aead 2, s2k 3, hash 10,'* &&
     "$detail" == *':aead encrypted packet: cipher=9 aead=2'* &&
     "$detail" == *'count 16777216'* ]]
