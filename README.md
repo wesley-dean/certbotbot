@@ -189,20 +189,53 @@ the template uses one frozen UTC date. The default literal key is
 and CLI flags follow CLI > environment > literal file > defaults. An
 explicit `--config FILE` replaces the implicit `./.env` source.
 
-The initial client accepts **only plaintext gzip-compressed tar** using
-the producer's restrictive format, with at most 32 MiB expanded content
-and 2,048 members. Encrypted archives (including the producer's
-authenticated GnuPG mode) are **deliberately rejected**; the client does
-not decrypt or silently fall back to another object. The client never
-overwrites an existing destination. It does not validate remote
-certificate-chain trust or install certificates into services.
+The client supports either **plaintext gzip-compressed tar**, or the
+producer's exact versioned **GnuPG AES-256/OCB authenticated archive**.
+Decoded content is limited to 32 MiB and 2,048 members, including
+full-state and symlink safety checks. Encrypted restoration additionally
+requires trusted **GnuPG 2.4.7+ with actual OCB support** and an
+operator-provided exported `GPG_SYMMETRIC_KEY`. The key must never
+be placed in a literal `.env`, a CLI argument, a checked-in file,
+or a log. Use `--archive-encryption gpg-ocb` to explicitly require
+encrypted input, or `auto` (default) to select it when an exported key
+is present. Without a key, `auto` uses plaintext and needs no GnuPG.
+There is **no format, key, alternate S3 object or legacy OpenPGP
+fallback**, and plaintext mode plus an exported key is rejected.
 
-See the [separate-client contract](doc/separate-client-contract.md),
+For example, after injecting the secret securely into the environment,
+use a fresh absent destination:
+
+```bash
+./certbotbot-client.bash \
+  --s3-bucket my-existing-certificates \
+  --s3-key latest.tar.gz \
+  --archive-encryption gpg-ocb \
+  --destination "$HOME/certificate-states/authenticated-restore"
+```
+
+The operator must configure AWS read-only permissions and obtain the
+matching key independently. Coordinate producer-format changes and key
+rotation with all consumers; the client cannot migrate, re-encrypt,
+or discover old versions. On success it restores **all** validated
+account and lineage state to a private, new destination; it never
+overwrites an existing destination or independently verifies
+certificate-chain trust, installs certificates or restarts services.
+
+The **encrypted client is release-qualified** only when a separate
+real-GnuPG shipped-client suite passes without skips against the
+exact eight verified release files, alongside the existing three
+producer suites, Bash 4.3 checks, attestation and late publication.
+A normal runner that skips cryptographic fixtures is not proof of
+successful encrypted restoration.
+
+See the [complete client settings reference](doc/client-settings.md),
+[secure encrypted and plaintext examples](doc/examples/certbotbot-client.md),
+[separate-client contract](doc/separate-client-contract.md),
 [retrieval](doc/client-retrieval.md),
 [archive activation and threat boundary](doc/client-extraction.md),
-[release verification](doc/release-verification.md), and
-[Accepted ADR-035](doc/adr/ADR-035-standalone-read-only-certificate-client.md)
-for detailed behavior, failure codes, security limitations, and tests.
+[release verification](doc/release-verification.md),
+and [ADRs 035 and 037](doc/decisions.md) for detailed options,
+failure codes, runtime limits, security assumptions and tests.
 
 ## Documentation and Architectural Decisions
 
