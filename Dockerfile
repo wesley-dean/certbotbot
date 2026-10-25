@@ -6,6 +6,8 @@ FROM --platform=linux/amd64 debian:13.7-slim@sha256:4876fdea29cac1a33a3195f1eb19
 ARG SOURCE_COMMIT
 ARG RELEASE_VERSION
 ARG PRODUCER_SHA256
+ARG HANDOFF_MANIFEST_SHA256
+ARG BUILD_KIND
 
 # Debian and Debian-security archives fixed to the same dated snapshot.
 COPY oci/debian.sources /etc/apt/sources.list.d/debian.sources
@@ -64,6 +66,8 @@ RUN set -euo pipefail; \
     [[ "${SOURCE_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; \
     [[ "${RELEASE_VERSION:-}" =~ ^[a-zA-Z0-9][a-zA-Z0-9.+_-]*$ ]]; \
     [[ "${PRODUCER_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; \
+    [[ "${HANDOFF_MANIFEST_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; \
+    [[ "$BUILD_KIND" == local || "$BUILD_KIND" == release ]]; \
     cd /opt/certbotbot; \
     sha256sum -c certbotbot.bash.sha256; \
     actual="$(sha256sum certbotbot.bash | awk '{print $1}')"; \
@@ -71,6 +75,8 @@ RUN set -euo pipefail; \
     grep -Fqx -- "source_sha=$SOURCE_COMMIT" provenance.txt; \
     grep -Fqx -- "version=$RELEASE_VERSION" provenance.txt; \
     grep -Fqx -- "producer_sha256=$PRODUCER_SHA256" provenance.txt; \
+    grep -Fqx -- "handoff_manifest_sha256=$HANDOFF_MANIFEST_SHA256" provenance.txt; \
+    grep -Fqx -- "build_kind=$BUILD_KIND" provenance.txt; \
     grep -Fqx -- "BASH_STARTER_VERSION=$RELEASE_VERSION" certbotbot.bash; \
     grep -Fqx -- "BASH_STARTER_BUILD_COMMIT=${SOURCE_COMMIT:0:12}" certbotbot.bash; \
     bash -n certbotbot.bash; \
@@ -97,6 +103,8 @@ LABEL org.opencontainers.image.title="certbotbot" \
       org.opencontainers.image.base.digest="sha256:4876fdea29cac1a33a3195f1eb1952feb1fca7dd6dd00be3e2f1879cf20d34d2" \
       org.opencontainers.image.vendor="Wesley Dean" \
       io.certbotbot.producer.sha256="${PRODUCER_SHA256}" \
+      io.certbotbot.handoff.manifest.sha256="${HANDOFF_MANIFEST_SHA256}" \
+      io.certbotbot.build.kind="${BUILD_KIND}" \
       io.certbotbot.apt.snapshot="20261020T213255Z"
 
 ENV HOME=/run/certbotbot \
