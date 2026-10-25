@@ -41,12 +41,24 @@ jobs:
       contents: read
       attestations: read
     steps:
-      - name: Checkout exact completed source commit
+      - name: Checkout trusted protected main history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
           persist-credentials: false
           fetch-depth: 0
+
+      - name: Require release commit reachable from trusted main
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git cat-file -e "$EXPECTED_SHA^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_SHA" refs/remotes/origin/main
+          git checkout --detach "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Install rootless Podman and verification dependencies
         run: |
