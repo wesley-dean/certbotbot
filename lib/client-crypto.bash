@@ -51,6 +51,15 @@ certbotbot_client_crypto_require() {
   local restored="$workspace/.crypto-probe.out"
   local result=0
 
+  # Encrypted-only packet framing needs a small trusted local tool set.
+  # Treat a missing executable as a runtime prerequisite, not corrupt S3.
+  local tool
+  for tool in od awk tail; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      certbotbot_client_error 'authenticated archive tooling unavailable' 69
+      return 69
+    fi
+  done
   if ! command -v gpg >/dev/null 2>&1; then
     certbotbot_client_error 'authenticated GnuPG runtime unavailable' 69
     return 69
