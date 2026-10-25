@@ -143,9 +143,9 @@ done
 
 # Override ENTRYPOINT solely for a read-only runtime inspection; application
 # invocation above always uses the real exec-form ENTRYPOINT.
-"$engine" run --rm --pull=never --network=none --read-only
-  --cap-drop=ALL --security-opt=no-new-privileges
-  --tmpfs /run/certbotbot:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700
+"$engine" run --rm --pull=never --network=none --read-only \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --tmpfs /run/certbotbot:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700 \
   --entrypoint /bin/bash "$image" -c '
     set -euo pipefail
     [[ "$(id -u)" == 65532 && "$(id -g)" == 65532 ]]
