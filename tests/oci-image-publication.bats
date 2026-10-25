@@ -17,6 +17,7 @@ setup() {
   "repository": {"full_name": "wesley-dean/certbotbot"},
   "workflow_run": {
     "name": "OCI release validation",
+    "path": ".github/workflows/oci-release-validation.yml",
     "event": "workflow_run",
     "head_branch": "main",
     "head_repository": {"full_name": "wesley-dean/certbotbot"},
@@ -92,6 +93,14 @@ teardown() {
   run bash "$VERIFY" "$PROOF"
   [ "$status" -ne 0 ]
   jq '.workflow_run.event="workflow_run" | .workflow_run.head_repository.full_name="untrusted/fork"' \
+    "$GITHUB_EVENT_PATH" > "$ROOT/altered"
+  mv -- "$ROOT/altered" "$GITHUB_EVENT_PATH"
+  run bash "$VERIFY" "$PROOF"
+  [ "$status" -ne 0 ]
+}
+
+@test "a different workflow with the same display name is not trusted" {
+  jq '.workflow_run.path=".github/workflows/other.yml"' \
     "$GITHUB_EVENT_PATH" > "$ROOT/altered"
   mv -- "$ROOT/altered" "$GITHUB_EVENT_PATH"
   run bash "$VERIFY" "$PROOF"
