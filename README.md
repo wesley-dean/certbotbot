@@ -179,6 +179,22 @@ chmod 0700 certbotbot.bash
 ./certbotbot.bash --version
 ```
 
+For the **standalone Bash tools**, rather than the container image,
+the ordinary producer and separate read-only client are available from
+[GitHub Releases](https://github.com/wesley-dean/certbotbot/releases).
+You can also use [`vet`](https://github.com/vet-run/vet) to download,
+inspect, lint (when ShellCheck is available), and explicitly approve
+a remote release script **before executing it**, for example:
+
+~~~bash
+vet https://github.com/wesley-dean/certbotbot/releases/latest/download/certbotbot.bash --help
+vet https://github.com/wesley-dean/certbotbot/releases/latest/download/certbotbot-client.bash --help
+~~~
+
+`vet` runs the fetched script for this invocation; it does not install
+a permanent copy or replace independent release and attestation checks.
+Use the release assets above when you need locally installed executables.
+
 The download commands intentionally do **not** contact S3, Route53
 or ACME. Once the real account, archive, permissions and selected
 domain have been **independently prepared**, an ordinary invocation
@@ -302,25 +318,25 @@ schedule itself or automatically deploy certificates. AWS
 workload identity or securely injected runtime credentials
 must be provided by the operator.
 
-The verified publisher targets
-`ghcr.io/wesley-dean/certbotbot` and
-`docker.io/wesleydean/certbotbot` after successful release, Docker,
-and rootless Podman validation. **Confirm an image has actually been
-published and its complete digest verified** before deploying it.
-For example, once you have checked a GHCR release's digest:
+After a successfully verified release, the publisher targets GHCR and
+Docker Hub. To pull and inspect the current image from either registry:
 
 ~~~bash
-IMAGE='ghcr.io/wesley-dean/certbotbot@sha256:REPLACE_WITH_VERIFIED_64_HEX_DIGEST'
-docker pull --platform linux/amd64 "$IMAGE"
-docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}} {{.Config.User}}'
+docker pull --platform linux/amd64 ghcr.io/wesley-dean/certbotbot:latest
+docker image inspect ghcr.io/wesley-dean/certbotbot:latest \
+  --format '{{.Os}}/{{.Architecture}} {{.Config.User}}'
+
+podman pull --arch amd64 --os linux docker.io/wesleydean/certbotbot:latest
+podman image inspect docker.io/wesleydean/certbotbot:latest \
+  --format '{{.Os}}/{{.Architecture}} {{.Config.User}}'
 ~~~
 
-To use Docker Hub, substitute the independently checked
-`docker.io/wesleydean/certbotbot@sha256:...` reference.
-Release tags include `latest`, semantic version and source-SHA tags,
-but **pin the immutable digest** for production deployment rather than
-a moving tag. These are selection instructions, not a claim that
-either registry has already passed live publication acceptance.
+`latest` follows the most recently accepted release and can change.
+For reproducible deployments, pinning a particular release or an
+independently verified image digest is encouraged. See the deployment
+guide for those options and for secure runtime examples. These commands
+do not establish that a release image has already been published or
+accepted in either registry.
 
 The [Docker/rootless Podman published-image quick start](doc/examples/docker-podman.md#use-an-independently-verified-published-image)
 includes direct `docker`/`podman` pull, label inspection, nonroot
