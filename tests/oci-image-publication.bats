@@ -152,7 +152,7 @@ teardown() {
   local gate="$BATS_TEST_DIRNAME/../.github/workflows/oci-release-validation.yml"
   grep -Fq 'workflows: [OCI release validation]' "$workflow"
   grep -Fq 'needs: verify' "$workflow"
-  grep -Fq "if: ${{ needs.verify.result == 'success' }}" "$workflow"
+  grep -Fq "if: \${{ needs.verify.result == 'success' }}" "$workflow"
   ! grep -Fq 'CERTBOTBOT_IMAGE_PUBLISH_ENABLED' "$workflow"
   grep -Fq 'name: oci-registry-publish' "$workflow"
   grep -Fq 'required_registries: dockerhub,ghcr' "$workflow"
