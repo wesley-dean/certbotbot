@@ -11,12 +11,13 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Check, build, and test
+  prepare:
+    name: Prepare and verify producer artifacts
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      checks: write
+    outputs:
+      manifest_sha: ${{ steps.handoff.outputs.manifest_sha }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -148,23 +149,8 @@ jobs:
           BASH_STARTER_ARTIFACT="${PWD}/dist/certbotbot.dev.bash" \
             bats --formatter tap tests/retention.bats tests/retention-safety.bats
 
-      - name: Run Bats tests for every artifact flavor
-        id: bats
-        continue-on-error: true
-        run: make test-report
-
-      - name: Publish Bats test results
-        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
-        if: always()
-        with:
-          name: Bats tests
-          path: test-results/*.xml
-          reporter: java-junit
-          fail-on-error: false
-          fail-on-empty: true
-
-      - name: Verify consumer artifacts are independent of vendor state
-        if: steps.bats.outcome == 'success'
+      # Preserve the old no-vendor acceptance before exporting the built bytes.
+      - name: Verify producer artifacts are independent of vendor state
         run: |
           rm -rf vendor
           for artifact in dist/*.bash; do
@@ -176,9 +162,109 @@ jobs:
             fi
           done
 
-      - name: Fail if Bats failed
-        if: steps.bats.outcome == 'failure'
-        run: exit 1
+      - name: Prepare verified same-run producer handoff
+        id: handoff
+        run: |
+          set -euo pipefail
+          digest="$(bash ci/producer-handoff.bash create dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 0.0.0-dev)"
+          printf 'manifest_sha=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+      # The handoff is the verified release-file subset, not the whole checkout
+      # or vendor tree. The one-day lifetime also limits Actions storage usage.
+      - name: Upload verified producer handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  bats:
+    name: Bats (${{ matrix.flavor }})
+    needs: prepare
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: write
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [development, ordinary, minified]
+    steps:
+      - name: Check out the same workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats make
+
+      - name: Download verified producer handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      # GitHub artifact downloads normalize Unix executable permissions.
+      # Refuse symlinks before restoring the intended executable file modes.
+      - name: Restore artifact permissions and verify exact handoff
+        env:
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        run: |
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            0.0.0-dev "$EXPECTED_MANIFEST_SHA"
+
+      - name: Run complete Bats contract for selected producer flavor
+        env:
+          TEST_FLAVOR: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          make test-report-one "TEST_FLAVOR=$TEST_FLAVOR"
+          test -s "test-results/bats-$TEST_FLAVOR.xml"
+
+      # Supplemental per-flavor annotations, never a replacement for Bats
+      # status; failures/absent reports must leave the matrix leg red.
+      - name: Publish selected Bats JUnit report
+        if: always()
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
+        with:
+          name: Bats JUnit (${{ matrix.flavor }})
+          path: test-results/bats-${{ matrix.flavor }}.xml
+          reporter: java-junit
+          fail-on-error: false
+          fail-on-empty: true
+
+  # Retain the original required-check name, but now gate the preparation,
+  # full three-flavor Bats matrix, and both existing compatibility jobs.
+  test:
+    name: Check, build, and test
+    needs: [prepare, bats, bash43, encryption]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Require every producer quality gate to succeed
+        env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          BATS_RESULT: ${{ needs.bats.result }}
+          BASH43_RESULT: ${{ needs.bash43.result }}
+          ENCRYPTION_RESULT: ${{ needs.encryption.result }}
+        run: |
+          set -euo pipefail
+          for gate in PREPARE_RESULT BATS_RESULT BASH43_RESULT ENCRYPTION_RESULT; do
+            if [[ "${!gate}" != success ]]; then
+              printf 'Required quality gate %s did not succeed (%s)\n' "$gate" "${!gate}" >&2
+              exit 1
+            fi
+          done
 
   bash43:
     name: Bash 4.3 compatibility
