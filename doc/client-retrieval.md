@@ -1,12 +1,11 @@
 # Separate Client: Read-Only S3 Retrieval (Task #52)
 
 Status: implemented in **maintained development source** under approved task
-[#52](https://github.com/wesley-dean/certbotbot/issues/52). This document
-does **not** claim the client is a released executable. Task
-[#53](https://github.com/wesley-dean/certbotbot/issues/53) now integrates
-plaintext extraction and late destination activation in maintained source;
-build, checksum, release and shipped-artifact tests belong to
-[#54](https://github.com/wesley-dean/certbotbot/issues/54).
+[#52](https://github.com/wesley-dean/certbotbot/issues/52). Task #53 integrated plaintext extraction and late activation in maintained
+source. Task [#54](https://github.com/wesley-dean/certbotbot/issues/54)
+now integrates the separately assembled client and checksum into the
+release/test handoff. Published availability depends on a successful
+main-branch release following review and merge.
 
 Governing contract: [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md)
 and [the separate-client contract](separate-client-contract.md).
@@ -82,7 +81,8 @@ privately before any activation. Invalid plaintext or GnuPG envelopes
 return status **65**, removing staged bytes without creating a destination.
 Only a complete validated tree is renamed to the absent destination
 and reported on stdout. See [client extraction](client-extraction.md).
-The independently published client binary remains task #54.
+The separately built client binary and checksum are verified by the
+#54 release gates before publication.
 
 Successful `--help` / `--version` have no AWS dependency.
 The final CLI statuses and success-path output are specified
@@ -104,7 +104,6 @@ commands; neither real AWS nor ACME credentials are used.
 The existing producer release inventory is **unchanged**:
 the client is not one of its three producer flavors. Task
 #53 provides shared validation/extraction and real-tar archive
-safety fixtures in `tests/client-extract.bats`. Task #54 builds the one standalone
-`certbotbot-client.bash` and `.sha256`, integrates the
-client-specific black-box suite and updates the explicit
-CI/release artifact inventories.
+safety fixtures in `tests/client-extract.bats`. Task #54 adds the one standalone `certbotbot-client.bash` and `.sha256`,
+independent black-box suite coverage, and explicit eight-file
+CI/release artifact verification.

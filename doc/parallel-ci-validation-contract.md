@@ -23,7 +23,7 @@ themselves.  Three producer variants are:
 | ordinary | `dist/certbotbot.bash` | `bats-ordinary.xml` |
 | minified | `dist/certbotbot.min.bash` | `bats-minified.xml` |
 
-The future `dist/certbotbot-client.bash` is a separate product with
+The independently built `dist/certbotbot-client.bash` is a separate product with
 its own test contract, not a fourth entry in this matrix.  The
 release inventory must respect whatever client deliverables exist
 on main **at the time task #174 is implemented**.
@@ -144,7 +144,8 @@ same scripts and checksum companions, each running `make test-report-one`
 against its own selected executable and publishing a distinct JUnit
 report.  `fail-fast: false` preserves sibling test evidence.
 
-The handoff contains only the six current producer release files and
+The handoff now contains the eight explicit release files (six producer files,
+the client and its checksum) and
 `producer-handoff.manifest`.  The preparation job publishes its
 SHA-256 digest through a GitHub job output.  The verifier requires
 the exact source SHA, run ID, attempt, build version and checked-out
@@ -235,10 +236,11 @@ versioning result.
 
 The release artifact inventory is still exactly the three
 **producer** executables plus their three `.sha256` companions.
-When approved task #54 delivers the distinct client executable,
-its release and standalone acceptance must be added explicitly.
-The producer-only matrix must **not** silently treat the client
-as a fourth flavor or publish it untested.
+Task #54 adds the distinct client executable with its own sidecar,
+standalone black-box tests, Bash 4.3 checks and eight-file handoff
+integrity enforcement. The producer matrix remains three flavors;
+no client byte may be published without passing the same strict release
+gates and attestation.
 
 See [Release Verification](release-verification.md) for the
 detailed DAG and [CI Parallelization Performance and Cost](ci-parallelization-benchmark.md)

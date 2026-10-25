@@ -20,11 +20,11 @@ concurrency, with `cancel-in-progress: true`.
 2. **Prepare release** in a read-only job. Validate maintained source
    (`make check`); prepare and verify pinned dependencies (`make deps` and
    `make deps-check`); and run one offline `make build VERSION=<candidate>`.
-   Check the exact producer artifact inventory, Bash syntax and SHA-256
-   companions. No release credential is available to this job.
+   Check the explicit three producer scripts **and one standalone client**,
+   their Bash syntax and eight SHA-256-verified release files. No release credential is available to this job.
 3. **Bind the handoff** using `ci/producer-handoff.bash create`. The manifest
    records the workflow commit SHA, run ID, run attempt, version, build
-   metadata and all checked producer executable hashes. Its SHA-256 is
+   metadata and **all four** checked executable hashes. Its SHA-256 is
    transmitted separately as a preparation-job output. The verified files
    and manifest are uploaded once as a **one-day retained**, same-run
    GitHub Actions artifact.
@@ -37,7 +37,9 @@ concurrency, with `cancel-in-progress: true`.
    only after rejecting symlinked files, then verifies the downloaded
    manifest and all release-file hashes against trusted job outputs and
    its own source/run/attempt/version. A test-only target **never**
-   rebuilds the handed-off executable.
+   rebuilds the handed-off executable. The same verification additionally
+   exercises the separately shipped client via real tar/gzip fixtures and
+   mocked read-only S3 from an isolated runtime directory.
 5. **Apply a strict unprivileged release gate.** The candidate version,
    preparation, entire Bats matrix and entire Bash 4.3 matrix must all
    report `success`. A failed, skipped, cancelled or missing required
@@ -49,7 +51,8 @@ concurrency, with `cancel-in-progress: true`.
    `contents: write`, `id-token: write`, `attestations: write` and
    `artifact-metadata: write`.
 7. **Attest before creating the release.** The pinned `actions/attest`
-   action attests `dist/*.bash` and `dist/*.bash.sha256`. Only after
+   action attests **all four** `dist/*.bash` and all four `dist/*.bash.sha256`.
+   Only after
    attestation succeeds does `softprops/action-gh-release` create the
    final tag/release with **the same verified executable and sidecar
    bytes**. The private CI handoff manifest is never a release asset.
@@ -63,25 +66,31 @@ The test and release version handoffs are independent workflow runs.
 A release must never reuse an artifact uploaded during a PR/test workflow
 or an earlier workflow attempt.
 
-## Current producer inventory and separate client
+## Current release inventory: two independent products
 
-The current producer consists of three executables:
+The exact release file inventory consists of three producer executables
+and one separate client, each with its conventional SHA-256 sidecar:
 
 - `certbotbot.dev.bash` and `certbotbot.dev.bash.sha256`
 - `certbotbot.bash` and `certbotbot.bash.sha256`
 - `certbotbot.min.bash` and `certbotbot.min.bash.sha256`
+- `certbotbot-client.bash` and `certbotbot-client.bash.sha256`
 
-All six files must be present and verified; unexpected extras are rejected.
-A checksum companion is in conventional `sha256sum` form with the exact
-executable basename.
+The first **three** scripts continue to form the producer's Bats/Bash 4.3
+representation matrix. The client has **one** ordinary-style executable
+and separate shipped-artifact black-box tests. Both products share a
+release version, commit/date provenance, and one exact, checksum-verified
+release handoff. The handoff manifest binds all **eight** release files
+to the same workflow identity and version. Extra or missing files,
+stale `.256` companions, invalid Bash syntax, missing executable mode,
+incorrect client identity/version, and changed bytes are rejected
+before release publication.
 
-ADR-035 authorizes a **future** `certbotbot-client.bash` and its own
-`.sha256` companion. That client is a separate product, not a fourth
-producer flavor, and is not yet built by the code governed here.
-When task #54 implements the client, it **must** revise the release
-inventory, handoff contract, client-specific tests, and publication
-checks in a coordinated PR. A build with unexpected client files
-fails closed rather than silently publishing untested bytes.
+An archive consumer has no Certbot, Route53 or renewal authority.
+Its Bash 4.3 compatibility, independent checksum, plaintext extraction,
+and malicious archive/no-clobber tests are mandatory quality evidence
+alongside all existing producer flavor gates. Source files and vendored
+libraries are never present at client runtime.
 
 ## Failure and trust boundaries
 

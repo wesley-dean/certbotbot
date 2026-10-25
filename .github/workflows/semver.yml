@@ -73,8 +73,7 @@ jobs:
             exit 1
           }
           make build "VERSION=$RELEASE_VERSION"
-          test ! -e dist/certbotbot-client.bash
-          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash; do
             bash -n "$artifact"
             test -f "$artifact.sha256"
             (cd dist && sha256sum -c "$(basename "$artifact").sha256")
@@ -131,7 +130,7 @@ jobs:
           EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
         run: |
           set -euo pipefail
-          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash; do
             test -f "$artifact" && test ! -L "$artifact"
             chmod 0755 "$artifact"
           done
@@ -172,7 +171,7 @@ jobs:
           EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
         run: |
           set -euo pipefail
-          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash; do
             test -f "$artifact" && test ! -L "$artifact"
             chmod 0755 "$artifact"
           done
@@ -193,6 +192,7 @@ jobs:
           esac
           docker run --rm \
             --env BASH_STARTER_ARTIFACT="/work/$artifact" \
+            --env BASH_STARTER_CLIENT_ARTIFACT="/work/dist/certbotbot-client.bash" \
             --volume "$GITHUB_WORKSPACE:/work:ro" \
             --workdir /work \
             bash:4.3 \
@@ -255,14 +255,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/main
-          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash; do
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash; do
             test -f "$artifact" && test ! -L "$artifact"
             chmod 0755 "$artifact"
           done
           bash ci/producer-handoff.bash verify dist \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
             "$RELEASE_VERSION" "$EXPECTED_MANIFEST_SHA"
-          # Sidecars were verified against the exact six files above.
+          # Sidecars were verified against the exact eight release files above.
           # The handoff manifest is not a public release asset.
 
       - name: Attest exact release artifacts
