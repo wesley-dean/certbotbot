@@ -56,10 +56,10 @@ suite=tests/client-authenticated-shipped.bats
   exit 1
 }
 expected="$(grep -c '^@test "' "$suite" || :)"
-[[ "$expected" =~ ^[0-9]+$ ]] && (( expected >= 19 )) || {
+if [[ ! "$expected" =~ ^[0-9]+$ ]] || (( expected < 19 )); then
   printf '%s\n' 'Encrypted-client test inventory incomplete' >&2
   exit 1
-}
+fi
 for essential in \
   'real producer OCB account-only archive restores privately' \
   'real encrypted multi-lineage archive is identical to plaintext restoration' \
