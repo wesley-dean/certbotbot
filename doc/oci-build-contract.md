@@ -74,9 +74,17 @@ docker run --rm --read-only --cap-drop=ALL \
 podman image inspect certbotbot:local --format '{{.Config.User}} {{.Config.Entrypoint}}'
 podman run --rm --read-only --cap-drop=all \
   --security-opt=no-new-privileges \
-  --tmpfs /run/certbotbot:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700 \
+  --mount type=tmpfs,destination=/run/certbotbot,tmpfs-mode=0700,U=true \
   certbotbot:local --version
 ~~~
+
+Docker and rootless Podman use different tmpfs ownership syntax. Docker accepts
+`uid=65532,gid=65532,mode=0700` in `--tmpfs`; the Podman `--tmpfs`
+parser on the CI runner rejects `uid=`, so use its documented
+`--mount type=tmpfs,...,tmpfs-mode=0700,U=true` form to assign ownership
+to the nonroot image user. Do not replace the private mount with a
+world-writable path or run the image as root. Task #162 verifies the private
+directory's owner, mode, and write capability in both engines.
 
 Help/version must report the same build metadata and output contract as the original producer script, without S3 or issuer calls. The image default command is --help, with the exact public producer executable as exec-form ENTRYPOINT. No implicit scheduler, host deployment, secret generation or account registration is provided.
 
