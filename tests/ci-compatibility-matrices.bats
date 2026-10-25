@@ -38,15 +38,15 @@ extract_suite_gate() {
   [ "$(grep -Fc '    name: Check, build, and test' "$WORKFLOW")" -eq 1 ]
   [ "$(grep -Fc '    name: Bash 4.3 compatibility' "$WORKFLOW")" -eq 1 ]
   [ "$(grep -Fc '    name: Authenticated archive interoperability' "$WORKFLOW")" -eq 1 ]
-  grep -Fq '    needs: [prepare, bats, bash43, encryption]' "$WORKFLOW"
+  grep -Fq '    needs: [prepare, bats, bash43, encryption, client-encryption]' "$WORKFLOW"
   grep -Fq '    needs: [prepare, bash43-flavor]' "$WORKFLOW"
   grep -Fq '    needs: [prepare, encryption-flavor]' "$WORKFLOW"
 }
 
 @test "Bash 4.3 and encryption suites use the approved same-run verified handoff" {
-  [ "$(grep -Fc 'name: producer-${{ github.run_id }}-${{ github.run_attempt }}' "$WORKFLOW")" -eq 4 ]
-  [ "$(grep -Fc 'bash ci/producer-handoff.bash verify dist' "$WORKFLOW")" -eq 3 ]
-  [ "$(grep -Fc '0.0.0-dev "$EXPECTED_MANIFEST_SHA"' "$WORKFLOW")" -eq 3 ]
+  [ "$(grep -Fc 'name: producer-${{ github.run_id }}-${{ github.run_attempt }}' "$WORKFLOW")" -eq 5 ]
+  [ "$(grep -Fc 'bash ci/producer-handoff.bash verify dist' "$WORKFLOW")" -eq 4 ]
+  [ "$(grep -Fc '0.0.0-dev "$EXPECTED_MANIFEST_SHA"' "$WORKFLOW")" -eq 4 ]
   grep -Fq 'retention-days: 1' "$WORKFLOW"
 }
 
@@ -96,4 +96,29 @@ extract_suite_gate() {
   done
   run env PREPARE_RESULT=failure FLAVORS_RESULT=success bash "$TEST_ROOT/gate.bash"
   [ "$status" -ne 0 ]
+}
+
+@test "standalone crypto suite independently verifies handoff and rejects skips" {
+  sed -n '/^  client-encryption:/,/^  test:/p' "$WORKFLOW" > "$TEST_ROOT/client-crypto"
+  grep -Fq 'name: Authenticated standalone client' "$TEST_ROOT/client-crypto"
+  grep -Fq 'runs-on: ubuntu-26.04' "$TEST_ROOT/client-crypto"
+  grep -Fq 'EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}' "$TEST_ROOT/client-crypto"
+  grep -Fq 'bash ci/producer-handoff.bash verify dist' "$TEST_ROOT/client-crypto"
+  grep -Fq 'bash ci/verify-client-crypto.bash' "$TEST_ROOT/client-crypto"
+  ! grep -Eq 'make (all|build|deps)' "$TEST_ROOT/client-crypto"
+}
+
+@test "required Test aggregate refuses failed skipped cancelled or missing client crypto" {
+  extract_suite_gate "Require every producer and standalone-client quality gate to succeed"
+  local status_value
+  run env PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success \
+    ENCRYPTION_RESULT=success CLIENT_ENCRYPTION_RESULT=success \
+    bash "$TEST_ROOT/gate.bash"
+  [ "$status" -eq 0 ]
+  for status_value in failure skipped cancelled ''; do
+    run env PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success \
+      ENCRYPTION_RESULT=success CLIENT_ENCRYPTION_RESULT="$status_value" \
+      bash "$TEST_ROOT/gate.bash"
+    [ "$status" -ne 0 ]
+  done
 }
