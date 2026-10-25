@@ -27,6 +27,7 @@ mktext() {
   printf '%s' "$value"
 }
 RENDERER
+    cat "$BATS_TEST_DIRNAME/../lib/client-crypto.bash"
     cat "$BATS_TEST_DIRNAME/../lib/client-s3.bash"
     cat "$BATS_TEST_DIRNAME/../lib/archive.bash"
     cat "$BATS_TEST_DIRNAME/../lib/restore.bash"
@@ -38,6 +39,9 @@ RENDERER
   cat > "$CASE_ROOT/bin/aws" <<'AWS'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${GPG_SYMMETRIC_KEY+x}" || -n "${CERTBOTBOT_CLIENT_GPG_SECRET+x}" ]]; then
+  exit 97
+fi
 if [[ "${1-}" == --version ]]; then
   printf 'aws-cli/2.22.0 Python/3.12\n'
   exit 0
@@ -82,6 +86,7 @@ teardown() {
 
 invoke() {
   run env -u S3_BUCKET -u S3_KEY -u S3_KEY_TEMPLATE \
+    -u GPG_SYMMETRIC_KEY -u ARCHIVE_ENCRYPTION \
     PATH="$CASE_ROOT/bin:$PATH" MOCK_CALLS="$CASE_ROOT/aws.log" \
     MOCK_S3_MODE="${MOCK_S3_MODE:-success}" \
     bash "$CLIENT" --destination "$CASE_ROOT/private/certs" "$@"
