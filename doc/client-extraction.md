@@ -1,6 +1,6 @@
 # Separate Client: Safe Plaintext and Authenticated Extraction
 
-Status: maintained-source implementation for approved [task #53](https://github.com/wesley-dean/certbotbot/issues/53). Task [#54](https://github.com/wesley-dean/certbotbot/issues/54) adds the standalone distributable and release/CI integration. The design is governed by [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md), [ADR-022](adr/ADR-022-portable-certbot-state-archives.md), and the [separate-client contract](separate-client-contract.md). A client release must pass separate black-box tests and attestation before publication.
+Status: implemented, with separate authenticated-client release qualification added under #188; original extraction was implemented for approved [task #53](https://github.com/wesley-dean/certbotbot/issues/53). Task [#54](https://github.com/wesley-dean/certbotbot/issues/54) adds the standalone distributable and release/CI integration. The design is governed by [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md), [ADR-022](adr/ADR-022-portable-certbot-state-archives.md), and the [separate-client contract](separate-client-contract.md). A client release must pass separate black-box tests and attestation before publication.
 
 ## Observable behavior
 
@@ -69,3 +69,16 @@ part of the conditional encrypted-input parsing trust boundary. Real-GnuPG
 source and shipped-client fixtures exercise this behavior, while task #187
 expands the adversarial matrix and task #188 establishes mandatory
 release-level encrypted-client gates.
+
+## Encrypted-client acceptance before release
+
+Under ADR-037, the shipped client is exercised with real GnuPG in a
+private isolated runtime, including positive account-only and multiple
+lineage restoration and adversarial wrong-key, tampering, unsupported
+format, unsafe tar, no-clobber and no-leak cases. Task #188 adds a
+non-skippable, independently required **Test and Versioning** gate for
+these fixtures, consuming only the same checksum-verified eight-file
+handoff that will be published. Any missing or skipped fixture is
+insufficient evidence of authenticated restoration, even if the
+plaintext suite passes. Full release acceptance requires a successful
+post-merge main-branch workflow and late attestation/tagging.
