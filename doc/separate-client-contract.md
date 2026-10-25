@@ -1,12 +1,12 @@
 # Separate Read-Only Certificate Client Contract
 
-Status: [task #51](https://github.com/wesley-dean/certbotbot/issues/51) accepted this design for [story #50](https://github.com/wesley-dean/certbotbot/issues/50). Task #52 implemented read-only source retrieval and task #53 implements archive validation, safe extraction, and private late activation in maintained source. Task #54 implements shipped-artifact assembly, black-box CI, and release integration, subject to PR review and a passing main-branch release. See [retrieval](client-retrieval.md) and [extraction](client-extraction.md) implementation contracts.
+Status: **plaintext behavior is implemented; encrypted support is a target design for tasks #185-#188, not yet shipped.** [task #51](https://github.com/wesley-dean/certbotbot/issues/51) accepted this design for [story #50](https://github.com/wesley-dean/certbotbot/issues/50). Task #52 implemented read-only source retrieval and task #53 implements archive validation, safe extraction, and private late activation in maintained source. Task #54 implements shipped-artifact assembly, black-box CI, and release integration, subject to PR review and a passing main-branch release. See [retrieval](client-retrieval.md) and [extraction](client-extraction.md) implementation contracts.
 
 Governing decision: [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md).
 
 ## Purpose and authority
 
-The standalone client fetches **one** current plaintext certificate-state archive from the operator-selected S3 bucket/key, validates it, and extracts **all** supported contents to a new caller-selected directory.  It is a read-only certificate **consumer**, not a renewal, deployment, S3 administration, or multi-lineage selection command.
+The standalone client fetches **one** current certificate-state archive from the operator-selected S3 bucket/key, validates it, and extracts **all** supported contents to a new caller-selected directory.  It is a read-only certificate **consumer**, not a renewal, deployment, S3 administration, or multi-lineage selection command.
 
 "Current" / "latest" means **the object currently stored at the configured authoritative S3 key**.  The client does not list dated backup keys, inspect S3 versions, choose by LastModified time, or seek a fallback object when the selected one is absent or encrypted.
 
@@ -30,7 +30,7 @@ After implementation and publication, the release filename will be `certbotbot-c
 
 Ordinary options accept both `--flag=value` and `--flag value`.  No positional DNS name, certificate name, backup key, encryption key, selected lineage, runtime renewal option, source archive path, or STDIN body is supported.  Unknown/duplicate/conflicting flags and unexpected operands are errors.
 
-Each nonsecret selected setting resolves CLI > explicitly exported environment > literal config file > default.  `--config FILE` is CLI-only; an absent explicit file fails, an absent implicit `./.env` is normal.  The file grammar is the producer's literal `KEY=VALUE` data grammar: no evaluation, shell expansion, sourcing, executable substitutions, duplicate keys, or unrecognized keys.  Existing **recognized** producer-only nonsecret keys may appear for file reuse but have no operational effect on the consumer.  Secrets do not belong in `.env`; `GPG_SYMMETRIC_KEY` is not a supported client input.
+Each nonsecret selected setting resolves CLI > explicitly exported environment > literal config file > default.  `--config FILE` is CLI-only; an absent explicit file fails, an absent implicit `./.env` is normal.  The file grammar is the producer's literal `KEY=VALUE` data grammar: no evaluation, shell expansion, sourcing, executable substitutions, duplicate keys, or unrecognized keys.  Existing **recognized** producer-only nonsecret keys may appear for file reuse but have no operational effect on the consumer.  Secrets do not belong in `.env`. Under ADR-037, `GPG_SYMMETRIC_KEY` will be accepted only from the explicitly exported process environment, captured and unexported before subprocess calls.
 
 `S3_KEY` and `S3_KEY_TEMPLATE` compete for one logical current-key setting at **each source tier**.  The highest tier defining either wins; defining both at that tier is an error, not a preference.  An explicit empty value is invalid.  A literal `S3_KEY` is never reinterpreted as a template.  A template is rendered exactly once from a single frozen UTC date, with the safe ASCII basename/token rules of ADR-032.  The selected bucket/key is fixed for the whole read operation; it does not change after midnight or when backups exist.
 
@@ -73,7 +73,7 @@ No client error permits a remote write.  Caller-visible diagnostics must not inc
 
 ## Runtime and release distribution
 
-The client is an independent executable that runs with Bash 4.3+, AWS CLI v2, GNU tar/gzip and ordinary documented local utilities.  It does not require Certbot, the Route53 plugin, GnuPG, a Git checkout, `vendor/` or in-repository `src/` and `lib/` at runtime.  Pure implementation may be assembled from reviewed code at build time, including digest-verified mktext for template rendering where needed.  Build inputs and dependency trust remain governed by existing ADRs.
+The client is an independent executable that runs with Bash 4.3+, AWS CLI v2, GNU tar/gzip and ordinary documented local utilities.  It does not require Certbot, the Route53 plugin, a Git checkout, `vendor/` or in-repository `src/` and `lib/` at runtime. GnuPG is required only for the future ADR-037 encrypted path.  Pure implementation may be assembled from reviewed code at build time, including digest-verified mktext for template rendering where needed.  Build inputs and dependency trust remain governed by existing ADRs.
 
 Following integration of task #54, `make build` and verified releases contain exactly:
 
@@ -87,6 +87,25 @@ Following integration of task #54, `make build` and verified releases contain ex
 `dist/certbotbot-client.bash.sha256`
 
 Each `.sha256` is conventional SHA-256 digest plus executable basename.  Producer artifact flavor tests continue to run three times, one per flavor.  The client has its **own** black-box suite and its own Bash 4.3 compatibility gate, plus syntax, checksum, no-vendor, release provenance, and unexpected-asset checks.  No historical release is rewritten or assumed to contain the client.
+
+## Authenticated-encryption extension (target contract, not yet shipping)
+
+Approved [story #183](https://github.com/wesley-dean/certbotbot/issues/183) extends this contract under [ADR-037](adr/ADR-037-authenticated-standalone-client-decryption.md). **Tasks #185-#188 must implement and independently verify the following; existing shipped plaintext-only behavior remains until then.** New nonsecret `--archive-encryption auto|none|gpg-ocb` (CLI > exported environment `ARCHIVE_ENCRYPTION` > literal file > default `auto`) selects the allowed representation, never guesses from downloaded bytes. The secret source is exclusively exported `GPG_SYMMETRIC_KEY`, with no CLI or literal-file secret value. The secret is captured with xtrace disabled, unexported before launching AWS or other helpers, and delivered only to trusted GnuPG over private FD 3.
+
+| Selected mode | Exported key | Required body | Result |
+| --- | --- | --- | --- |
+| auto | absent/empty | Plain gzip/tar | Existing plaintext path; GnuPG not required |
+| auto | valid nonempty | Authenticated v1 envelope | GnuPG preflight and decrypt |
+| none | absent/empty | Plain gzip/tar | Existing plaintext path |
+| none | nonempty | Not read | Exit 64: inconsistent key/mode |
+| gpg-ocb | absent/empty | Not read | Exit 64: key required |
+| gpg-ocb | valid nonempty | Authenticated v1 envelope | GnuPG preflight and decrypt |
+
+Unknown mode, invalid/line-broken secret and invalid nonsecret configuration fail 64 before S3. An absent or incompatible GnuPG 2.4.7+ with actual AES-256/OCB encrypt/decrypt/packet probe fails 69 **before S3 fetch** on the encrypted path, not on the plaintext path. After one read, incompatible representation, unknown envelope, legacy crypto, unsupported packet, wrong key, tampering, truncation, failed AEAD authentication, or invalid decrypted tar fail 65 without fallback or successful stdout. Existing missing S3 object 66, unsafe destination 73 and local I/O 74 classifications remain. The client never searches other keys, lists versions, calls S3 write/delete or invokes the issuer.
+
+Encrypted S3 bytes must have exact ASCII `CERTBOTBOT-GPG-OCB-V1` followed by LF and a binary GnuPG OpenPGP packet payload with symmetric-key packet v5, cipher AES256=9, OCB AEAD=2, iterated/salted S2K=3, SHA512=10, count=16777216, and authenticated data packet cipher 9 / AEAD 2. Unsupported packet sequences or trailing material fail. Packet recognition **is not authentication**. Complete successful noninteractive GnuPG AEAD authentication to a separate private staging file MUST precede the existing 32 MiB/2,048-member tar validator and extraction. Any plaintext written before authentication success stays quarantined and is discarded on failure.
+
+The existing secure parent, full multi-lineage state, relative PEM links, private file permissions, absent-destination no-clobber activation and success stdout (canonical destination path only) do not change. GnuPG and its libraries are a **conditional** runtime trust addition. The exact release remains three issuer variants and one standalone client, each with a `.sha256` sidecar. Real-GnuPG shipped-client black-box cases and CI/release attestations are mandatory. See [the client-specific threat model](client-encryption-threat-model.md).
 
 ## Acceptance matrix for tasks #52-#54
 
@@ -116,7 +135,7 @@ Task #54 adds these checks to the test/release workflows. A source-level or PR c
 
 ## Explicitly deferred
 
-Client GPG decryption (including GnuPG version/key delivery), selectively extracting one lineage, installing state into system paths, invoking service reloads or deployment hooks, fetching dated backups or S3 versions, replacement-in-place or rollback, alternate archive formats, other object stores, and distribution of client-specific OCI images all require separate approved contracts.
+Client GPG decryption remains unshipped pending tasks #185-#188 (governed by ADR-037); selectively extracting one lineage, installing state into system paths, invoking service reloads or deployment hooks, fetching dated backups or S3 versions, replacement-in-place or rollback, alternate archive formats, other object stores, and distribution of client-specific OCI images all require separate approved contracts.
 
 ## Traceability
 

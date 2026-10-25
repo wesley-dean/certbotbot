@@ -435,13 +435,28 @@ The approved separate-client design introduces one independently runnable
 certbotbot release to eight files while retaining the existing six producer
 artifacts and their checks.  The client reads only the current configured S3
 object, supports plaintext validated full-state archives, and extracts into a
-new private destination without renewal, remote writes, or GnuPG decryption.
+new private destination without renewal or remote writes. ADR-037 subsequently permits optional authenticated client GnuPG decryption, replacing only this original plaintext-only exclusion.
 It preserves the producer's current-key selection rules and uses late staging
 activation to avoid overwriting existing targets; encrypted objects require a
 separately approved client extension.
 
 See [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md)
 and [the separate-client contract](separate-client-contract.md).
+
+### ADR-037: Authenticated Decryption for the Standalone Client
+
+The read-only standalone client may opt into producer-compatible authenticated
+GnuPG AES-256/OCB decryption using the exact versioned ADR-031 envelope and a
+secret-manager-provided exported key.  Key-based `auto` or explicit mode selection
+fails closed on mismatch; decryption must authenticate completely before the
+existing bounded archive validator, private extraction and absent-destination
+activation run. GnuPG 2.4.7+ is conditional on encrypted operation and must pass
+real packet and roundtrip probes. This narrowly supersedes ADR-035's initial
+plaintext-only exclusion while retaining its S3 read-only authority and exact
+eight-file release contract; ADR-031's producer format is unchanged.
+
+See [ADR-037](adr/ADR-037-authenticated-standalone-client-decryption.md)
+and [the client encryption threat model](client-encryption-threat-model.md).
 
 ### ADR-036: Parallel Producer Validation with Verified CI Artifact Handoff
 
