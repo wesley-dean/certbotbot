@@ -473,3 +473,20 @@ separate-client testing contract remain intact.
 
 See [ADR-036](adr/ADR-036-parallel-producer-verification-and-handoff.md)
 and [the parallel CI validation contract](parallel-ci-validation-contract.md).
+
+### ADR-038: Verified OCI Producer Images for Docker and Podman
+
+The producer will be distributed in a separately tested, least-privilege
+Debian 13 OCI image whose entrypoint invokes the already verified ordinary
+certbotbot executable without changing its public CLI or S3/ACME behavior.
+Docker and rootless Podman share the same image, with an initial
+linux/amd64-only contract, nonroot execution, ephemeral private state,
+digest-pinned base and reviewed package dependencies, and no baked secrets.
+Image publishing follows the already attested eight-file GitHub release
+through a separately gated trusted event and the reviewed publish_image
+action; both GHCR and operator-confirmed Docker Hub must show matching
+provenance and correct tags, including explicitly validated v0.x handling.
+The image is a producer distribution rather than a ninth Bash asset, and
+runtime, engine and registry support are not claimed before tests.
+
+See [ADR-038](adr/ADR-038-verified-oci-producer-images.md).
