@@ -299,6 +299,17 @@ invoke() {
 make_authenticated_object() {
   local secret="${1:-CLIENT_CRYPTO_TEST_SENTINEL_FIXTURE_KEY_256_BITS}"
   command -v gpg >/dev/null 2>&1 || skip 'real GnuPG not installed'
+  local version major minor patch
+  version="$(gpg --version 2>/dev/null)" || skip 'GnuPG version unavailable'
+  [[ "$version" =~ gpg\ \(GnuPG\)\ ([0-9]+)\.([0-9]+)\.([0-9]+) ]] ||
+    skip 'Cannot identify GnuPG version'
+  major="${BASH_REMATCH[1]}"
+  minor="${BASH_REMATCH[2]}"
+  patch="${BASH_REMATCH[3]}"
+  if (( major < 2 || (major == 2 && (minor < 4 ||
+    (minor == 4 && patch < 7))) )); then
+    skip 'GnuPG 2.4.7+ required for authenticated fixture'
+  fi
   mkdir -m 700 "$TEST_ROOT/fixture-gnupg"
   if ! (umask 077; gpg --no-options --homedir "$TEST_ROOT/fixture-gnupg" \
     --batch --yes --no-tty --pinentry-mode loopback --no-symkey-cache \
@@ -372,4 +383,28 @@ encrypted_invoke() {
   [ ! -e "$TEST_ROOT/private/cert-state" ]
   [ -z "$(find "$TEST_ROOT/private" -mindepth 1 -print)" ]
   [ "$(grep -c '^get-object$' "$TEST_ROOT/aws.log")" -eq 1 ]
+}
+
+@test "truncated encrypted payload and unknown v1 header refuse restoration" {
+  make_object
+  make_authenticated_object
+  truncate -s -1 "$OBJECT"
+  encrypted_invoke
+  [ "$status" -eq 65 ]
+  [ ! -e "$TEST_ROOT/private/cert-state" ]
+  [ -z "$(find "$TEST_ROOT/private" -mindepth 1 -print)" ]
+  mv -T -- "$OBJECT" "$TEST_ROOT/saved-truncated-object"
+  printf 'CERTBOTBOT-GPG-OCB-V2\n' >"$OBJECT"
+  cat "$TEST_ROOT/fixture.gpg" >>"$OBJECT"
+  encrypted_invoke
+  [ "$status" -eq 65 ]
+  [ ! -e "$TEST_ROOT/private/cert-state" ]
+}
+
+@test "encrypted selection does not downgrade to valid plaintext archive" {
+  make_object
+  encrypted_invoke
+  [ "$status" -eq 65 ] || [ "$status" -eq 69 ]
+  [ ! -e "$TEST_ROOT/private/cert-state" ]
+  [ -z "$(find "$TEST_ROOT/private" -mindepth 1 -print)" ]
 }
