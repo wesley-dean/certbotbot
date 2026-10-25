@@ -292,3 +292,84 @@ invoke() {
   [ ! -e /tmp/DO_NOT_EXECUTE_CERTBOTBOT_CLIENT ]
   grep -Fq 'renew_hook = touch' "$TEST_ROOT/private/cert-state/renewal/one.example.conf"
 }
+
+
+# Real-GnuPG cryptographic fixtures (task #186). The mandatory runner-level
+# capability policy is governed by task #188; unsupported runners skip here.
+make_authenticated_object() {
+  local secret="${1:-CLIENT_CRYPTO_TEST_SENTINEL_FIXTURE_KEY_256_BITS}"
+  command -v gpg >/dev/null 2>&1 || skip 'real GnuPG not installed'
+  mkdir -m 700 "$TEST_ROOT/fixture-gnupg"
+  if ! (umask 077; gpg --no-options --homedir "$TEST_ROOT/fixture-gnupg" \
+    --batch --yes --no-tty --pinentry-mode loopback --no-symkey-cache \
+    --passphrase-fd 3 --symmetric --force-ocb --cipher-algo AES256 \
+    --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 16777216 \
+    --output "$TEST_ROOT/fixture.gpg" "$OBJECT" \
+    3<<<"$secret" >/dev/null 2>&1); then
+    skip 'GnuPG cannot emit ADR-031 authenticated OCB fixture'
+  fi
+  { printf 'CERTBOTBOT-GPG-OCB-V1\n'; cat "$TEST_ROOT/fixture.gpg"; } >"$TEST_ROOT/encrypted-object"
+  mv -T -- "$TEST_ROOT/encrypted-object" "$OBJECT"
+}
+
+encrypted_invoke() {
+  local secret="${1:-CLIENT_CRYPTO_TEST_SENTINEL_FIXTURE_KEY_256_BITS}"
+  run env -u ARCHIVE_ENCRYPTION -u S3_BUCKET -u S3_KEY -u S3_KEY_TEMPLATE \
+    GPG_SYMMETRIC_KEY="$secret" PATH="$TEST_ROOT/bin:$PATH" \
+    MOCK_S3_LOG="$TEST_ROOT/aws.log" MOCK_S3_OBJECT="$OBJECT" \
+    bash "$CLIENT" --destination "$TEST_ROOT/private/cert-state" \
+      --s3-bucket fixture-bucket --archive-encryption gpg-ocb
+}
+
+@test "real authenticated OCB object restores all certificate lineages privately" {
+  make_lineage one.example
+  make_lineage two.example
+  make_object
+  make_authenticated_object
+  encrypted_invoke
+  [ "$status" -eq 0 ]
+  [ "$output" = "$TEST_ROOT/private/cert-state" ]
+  [ "$(grep -c '^get-object$' "$TEST_ROOT/aws.log")" -eq 1 ]
+  [ -z "$(find "$TEST_ROOT/private" -maxdepth 1 -name '.certbotbot-client.*' -print)" ]
+  local base="$TEST_ROOT/private/cert-state" name item
+  for name in one.example two.example; do
+    for item in cert chain fullchain privkey; do
+      [ -L "$base/live/$name/$item.pem" ]
+      [ "$(readlink "$base/live/$name/$item.pem")" = "../../archive/$name/${item}1.pem" ]
+      [ "$(stat -c %a "$base/archive/$name/${item}1.pem")" = 600 ]
+    done
+  done
+  [ "$(cat "$base/accounts/acme-v02.api.letsencrypt.org/directory/account-001/private_key.json")" = ACCOUNT_PRIVATE_KEY_SENTINEL ]
+}
+
+@test "wrong key or appended ciphertext fails without partial destination or leaked bytes" {
+  make_object
+  make_authenticated_object
+  encrypted_invoke WRONG_CLIENT_CRYPTO_TEST_SENTINEL_KEY
+  [ "$status" -eq 65 ]
+  [[ "$output" != *ACCOUNT_PRIVATE_KEY_SENTINEL* ]]
+  [[ "$output" != *WRONG_CLIENT_CRYPTO_TEST_SENTINEL_KEY* ]]
+  [ ! -e "$TEST_ROOT/private/cert-state" ]
+  [ -z "$(find "$TEST_ROOT/private" -mindepth 1 -print)" ]
+  [ "$(grep -c '^get-object$' "$TEST_ROOT/aws.log")" -eq 1 ]
+  rm -f "$TEST_ROOT/aws.log"
+  printf '\001' >>"$OBJECT"
+  encrypted_invoke
+  [ "$status" -eq 65 ]
+  [ ! -e "$TEST_ROOT/private/cert-state" ]
+  [ -z "$(find "$TEST_ROOT/private" -mindepth 1 -print)" ]
+  [ "$(grep -c '^get-object$' "$TEST_ROOT/aws.log")" -eq 1 ]
+}
+
+@test "authenticated unsafe tar remains unauthorized archive content" {
+  make_lineage one.example
+  rm "$TEST_ROOT/source/live/one.example/privkey.pem"
+  ln -s ../../../../etc/passwd "$TEST_ROOT/source/live/one.example/privkey.pem"
+  make_object
+  make_authenticated_object
+  encrypted_invoke
+  [ "$status" -eq 65 ]
+  [ ! -e "$TEST_ROOT/private/cert-state" ]
+  [ -z "$(find "$TEST_ROOT/private" -mindepth 1 -print)" ]
+  [ "$(grep -c '^get-object$' "$TEST_ROOT/aws.log")" -eq 1 ]
+}
