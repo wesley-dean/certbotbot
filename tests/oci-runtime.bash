@@ -101,11 +101,30 @@ for pair in help version; do
   }
 done
 
-for scenario in missing invalid; do
+# The image deliberately supplies CMD ["--help"], so *zero Docker argv*
+# is a successful help invocation. The bare host producer differs because it
+# has no image CMD; test that image-specific default independently.
+run_capture default
+cmp -s "$work/help.status" "$work/default.status" || {
+  printf 'oci: default image command did not exit like --help\n' >&2
+  exit 1
+}
+cmp -s "$work/help.out" "$work/default.out" || {
+  printf 'oci: default image command did not print --help output\n' >&2
+  exit 1
+}
+[[ ! -s "$work/default.err" ]] || {
+  printf 'oci: default image command emitted unexpected stderr\n' >&2
+  exit 1
+}
+
+# Explicitly pass an incomplete invocation so CMD is replaced and the real
+# required-argument failure path is exercised without contacting cloud APIs.
+for scenario in missing-domain invalid; do
   case "$scenario" in
-    missing)
-      host_capture "$scenario"
-      run_capture "$scenario"
+    missing-domain)
+      host_capture "$scenario" --s3-bucket fixture-bucket
+      run_capture "$scenario" --s3-bucket fixture-bucket
       ;;
     invalid)
       host_capture "$scenario" --oci-unknown-option
@@ -113,7 +132,7 @@ for scenario in missing invalid; do
       ;;
   esac
   [[ "$(cat "$work/$scenario.status")" != 0 ]] || {
-    printf 'oci: invalid or missing input succeeded: %s\n' "$scenario" >&2
+    printf 'oci: invalid input unexpectedly succeeded: %s\n' "$scenario" >&2
     exit 1
   }
   cmp -s "$work/$scenario.host.status" "$work/$scenario.status" || {
