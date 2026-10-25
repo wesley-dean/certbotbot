@@ -91,12 +91,13 @@ never obtained in unprivileged source or no-push validation jobs.
    The validated release must also be GitHub's current **latest**
    stable release, preventing a delayed older gate from replacing
    `latest` under normal repository serialization.
-5. The only credentialed job is conditioned on preflight success
-   **and** an operator-set repository variable
-   `CERTBOTBOT_IMAGE_PUBLISH_ENABLED=true` (unset/false disables all
-   publishing). It uses a protected `oci-registry-publish` environment,
-   globally serialized registry publication, and job-local
+5. The only credentialed job is conditioned on preflight success and
+   an available protected `oci-registry-publish` environment, with
+   globally serialized registry publication and job-local
    `contents:read`, `attestations:read`, `packages:write`.
+   An enabled publisher workflow on the default branch is sufficient
+   authorization to attempt publication of an accepted stable release;
+   no additional repository enablement variable is needed.
    It independently repeats the release/asset check and produces the
    allowlisted `ci/prepare-oci-context.bash release` build context.
    Nothing is built from a PR artifact, raw repo root or floating
@@ -158,9 +159,11 @@ source handoff, **not automatically the byte-identity** of a rebuilt
 publisher image. The publisher must independently check its final
 digest and release/producer labels; task #166 must establish complete
 pulled-image runtime, package inventory, SBOM/provenance and parity.
-A release may precede an enabled publication workflow, and an
-unconfigured environment or missing secrets intentionally prevents
-publication. Registry, GitHub and runner administrators retain
+A release may precede deployment of the publication workflow.
+A missing secret or unavailable protected environment prevents successful
+publication. The workflow itself is the explicit operational switch;
+maintainers who do not intend automatic publication must disable or
+remove that workflow. Registry, GitHub and runner administrators retain
 their respective high privileges.
 
 An operator should not mark a real publication accepted merely because
@@ -185,9 +188,11 @@ completion from a merged workflow.
 - **Use force_release for v0 tags:** rejected because it cannot repair
   metadata-action's ambient `workflow_run` ref by itself. Explicit
   verified release identity is now available upstream.
-- **Automatic publishing on every merge/PR or enable by default:**
-  rejected because registry write authority requires an explicit
-  protected configuration and passed source/release gates.
+- **Publish on PRs, arbitrary pushes, or unvalidated merges:**
+  rejected because registry write authority requires a verified stable
+  release, completed OCI acceptance, and a protected environment.
+  Successful accepted releases publish automatically when this workflow
+  is installed and enabled on the default branch, without a second flag.
 - **Push during the original OCI validation workflow:** rejected to
   retain a clean unprivileged acceptance gate, an independently
   reviewable credentialed boundary and observable partial success.
@@ -195,11 +200,12 @@ completion from a merged workflow.
 ## Consequences and migration
 
 No changes to the Bash producer, separate client or existing eight-file
-release contents. Existing releases and default workflow behavior remain
-unchanged until publication is explicitly enabled. Maintainers must
-configure `oci-registry-publish` protection, the authorization variable
-and the registry credentials, then inspect a qualifying real release
-run before treating the workflow as operational. Consumers should pin
+release contents. Once the publishing workflow is merged and enabled on the
+default branch, a newly verified stable release automatically attempts to
+publish through its existing release gates. Maintainers must configure
+`oci-registry-publish` protection and registry credentials before such
+a run, then inspect a qualifying real release before treating publication
+as operational. Consumers should pin
 verified image digests rather than moving tags.
 
 The published OCI build is a separately reviewed derivative of the
