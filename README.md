@@ -302,18 +302,34 @@ schedule itself or automatically deploy certificates. AWS
 workload identity or securely injected runtime credentials
 must be provided by the operator.
 
-See the [Docker/rootless Podman quick start](doc/examples/docker-podman.md)
-and the [full container deployment guide](doc/container-deployment.md).
-Local image build/runtime tests are **not** proof that a
-registry image has been published or that the running image
-can issue real certificates in the operator's environment.
-The intended registries are
+The verified publisher targets
 `ghcr.io/wesley-dean/certbotbot` and
-`docker.io/wesleydean/certbotbot`; **do not assume
-they contain accepted release images** until the distinct
-[registry publication and verification tasks](https://github.com/wesley-dean/certbotbot/issues/165)
-and [#166](https://github.com/wesley-dean/certbotbot/issues/166)
-have passed.
+`docker.io/wesleydean/certbotbot` after successful release, Docker,
+and rootless Podman validation. **Confirm an image has actually been
+published and its complete digest verified** before deploying it.
+For example, once you have checked a GHCR release's digest:
+
+~~~bash
+IMAGE='ghcr.io/wesley-dean/certbotbot@sha256:REPLACE_WITH_VERIFIED_64_HEX_DIGEST'
+docker pull --platform linux/amd64 "$IMAGE"
+docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}} {{.Config.User}}'
+~~~
+
+To use Docker Hub, substitute the independently checked
+`docker.io/wesleydean/certbotbot@sha256:...` reference.
+Release tags include `latest`, semantic version and source-SHA tags,
+but **pin the immutable digest** for production deployment rather than
+a moving tag. These are selection instructions, not a claim that
+either registry has already passed live publication acceptance.
+
+The [Docker/rootless Podman published-image quick start](doc/examples/docker-podman.md#use-an-independently-verified-published-image)
+includes direct `docker`/`podman` pull, label inspection, nonroot
+read-only run examples, and the additional prerequisites for real
+issuance. See the [full container deployment guide](doc/container-deployment.md)
+and [publication contract](doc/oci-publication-contract.md) for
+trust, credential and release boundaries. Local image build/runtime
+tests do **not** prove live registry publication or certificate issuance
+in your environment.
 
 ### Operator examples
 
