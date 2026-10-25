@@ -17,17 +17,14 @@ flowchart TD
   engines[Docker and rootless Podman tests without credentials]
   proof[One-day same-run/attempt proof]
   verify[Publisher preflight: gate + Versioning run + public release]
-  opt{Protected explicit publication enable?}
+  environment[Protected publisher environment and registry credentials]
   action[Immutable publish_image action: one Buildx dual push]
   check[Both registry digests/tags and pulled OCI identity]
-  stopped[No registry publication]
 
   versioning -->|completed successful run| gate --> engines
   engines -->|success only| proof
   proof -->|workflow_run completed success| verify
-  verify --> opt
-  opt -->|not enabled| stopped
-  opt -->|enabled| action --> check
+  verify --> environment --> action --> check
 ```
 
 The source SHA, run ID/attempt, stable semantic version, producer SHA-256
@@ -45,10 +42,10 @@ can run before it passes.
 
 ## Required operator configuration
 
-- Explicitly set the **repository variable**
-  `CERTBOTBOT_IMAGE_PUBLISH_ENABLED=true` after review. Until it is set,
-  the workflow validates eligible release evidence but **skips all
-  publishing**, even when the upstream gate passes.
+- The enabled publishing workflow on the default branch automatically
+  attempts publication for every successfully validated current stable
+  release. There is no separate repository variable or opt-in switch.
+  Disable or remove the workflow if automatic publication is not intended.
 - Establish GitHub environment `oci-registry-publish` with appropriate
   required reviewers, main-branch restrictions, and deployment controls.
   Do not rely on an automatically created unprotected environment.
@@ -117,5 +114,5 @@ A real completed gate triggered by a **newly verified stable release**
 is required for end-to-end publisher acceptance. If unavailable,
 task #165 remains open after code merge until the maintainer can
 review real GHCR/Docker Hub evidence. Do not bypass the gate, forge
-a GitHub event, select a development image as `latest`, or enable
-publisher credentials on a PR test simply to obtain a green run.
+a GitHub event, select a development image as `latest`, or expose
+publisher credentials to a PR test simply to obtain a green run.
