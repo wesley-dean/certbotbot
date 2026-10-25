@@ -37,6 +37,7 @@ mktext() {
   printf '%s' "$value"
 }
 RENDERER
+    cat "$BATS_TEST_DIRNAME/../lib/client-crypto.bash"
     cat "$BATS_TEST_DIRNAME/../lib/client-s3.bash"
     cat "$BATS_TEST_DIRNAME/../lib/archive.bash"
     cat "$BATS_TEST_DIRNAME/../lib/restore.bash"
@@ -103,6 +104,7 @@ make_lineage() {
 
 invoke() {
   run env -u S3_BUCKET -u S3_KEY -u S3_KEY_TEMPLATE \
+    -u GPG_SYMMETRIC_KEY -u ARCHIVE_ENCRYPTION \
     PATH="$TEST_ROOT/bin:$PATH" \
     MOCK_S3_LOG="$TEST_ROOT/aws.log" MOCK_S3_OBJECT="$OBJECT" \
     MOCK_S3_MODE="${MOCK_S3_MODE:-ok}" \
