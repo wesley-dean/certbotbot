@@ -9,8 +9,12 @@ ARG PRODUCER_SHA256
 ARG HANDOFF_MANIFEST_SHA256
 ARG BUILD_KIND
 
+# Bash pipefail must apply before the first RUN that uses shell pipelines.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Debian and Debian-security archives fixed to the same dated snapshot.
 COPY oci/debian.sources /etc/apt/sources.list.d/debian.sources
+# hadolint ignore=DL3008 # Fixed signed APT snapshot is the package-version lock.
 RUN set -eu; \
     test "$(dpkg --print-architecture)" = amd64; \
     rm -f /etc/apt/sources.list; \
@@ -27,8 +31,6 @@ RUN set -eu; \
     install -d -m 0755 /usr/local/share/certbotbot; \
     dpkg-query -W -f='${Package}=${Version}\n' | LC_ALL=C sort \
       > /usr/local/share/certbotbot/packages.lock
-
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Verify the real dependencies, including authenticated OCB operation.
 # The fixed probe string is public test data, NEVER a production key.
@@ -69,13 +71,13 @@ RUN set -euo pipefail; \
 # Prepared producer bytes were checked against a complete 8-file handoff.
 # Re-verify the copied checksum, provenance and expected source/version.
 COPY oci/producer/certbotbot.bash oci/producer/certbotbot.bash.sha256 oci/producer/provenance.txt /opt/certbotbot/
+WORKDIR /opt/certbotbot
 RUN set -euo pipefail; \
     [[ "${SOURCE_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; \
     [[ "${RELEASE_VERSION:-}" =~ ^[a-zA-Z0-9][a-zA-Z0-9.+_-]*$ ]]; \
     [[ "${PRODUCER_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; \
     [[ "${HANDOFF_MANIFEST_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; \
     [[ "$BUILD_KIND" == local || "$BUILD_KIND" == release ]]; \
-    cd /opt/certbotbot; \
     sha256sum -c certbotbot.bash.sha256; \
     actual="$(sha256sum certbotbot.bash | awk '{print $1}')"; \
     [[ "$actual" == "$PRODUCER_SHA256" ]]; \
@@ -92,11 +94,14 @@ RUN set -euo pipefail; \
     install -m 0644 certbotbot.bash.sha256 provenance.txt /usr/local/share/certbotbot/; \
     rm -rf /opt/certbotbot
 
+# Never execute later RUN steps inside the removed verification directory.
+WORKDIR /
+
 # Static UID/GID avoids introducing a runtime account manager.
 # The operator mounts a mode-0700 owned tmpfs here under --read-only.
 RUN set -euo pipefail; \
-    ! grep -Eq '(^certbotbot:|:65532:)' /etc/passwd; \
-    ! grep -Eq '(^certbotbot:|:65532:)' /etc/group; \
+    if grep -Eq '(^certbotbot:|:65532:)' /etc/passwd; then exit 1; fi; \
+    if grep -Eq '(^certbotbot:|:65532:)' /etc/group; then exit 1; fi; \
     printf '%s\n' 'certbotbot:x:65532:' >> /etc/group; \
     printf '%s\n' 'certbotbot:x:65532:65532:certbotbot OCI producer:/run/certbotbot:/usr/sbin/nologin' >> /etc/passwd; \
     install -d -m 0700 -o 65532 -g 65532 /run/certbotbot
@@ -122,6 +127,9 @@ ENV HOME=/run/certbotbot \
 USER 65532:65532
 WORKDIR /run/certbotbot
 STOPSIGNAL SIGTERM
+# Explicitly disable probes: this is a finite one-shot CLI, not a service.
+# Execution status is the readiness/health result; no process remains to probe.
+HEALTHCHECK NONE
 ENTRYPOINT ["/usr/local/bin/certbotbot.bash"]
 # Safe default: display help rather than contacting AWS or renewing.
 CMD ["--help"]
