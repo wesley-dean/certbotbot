@@ -1,0 +1,85 @@
+---
+name: OCI runtime acceptance
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oci:
+    name: Docker and rootless Podman (linux/amd64)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install required local verification tools and rootless Podman
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes podman uidmap slirp4netns fuse-overlayfs
+          docker version
+          podman version
+          test "$(id -u)" -ne 0
+          test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
+
+      - name: Build exact eight-file development handoff
+        run: |
+          set -euo pipefail
+          make deps
+          make build VERSION=0.0.0-dev
+          bash -n tests/oci-runtime.bash
+          bash ci/producer-handoff.bash create dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 0.0.0-dev
+
+      - name: Prepare bounded local-only context
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/oci"
+          # Local mode refuses an existing release-style manifest.
+          rm dist/producer-handoff.manifest
+          bash ci/prepare-oci-context.bash local dist \
+            "$RUNNER_TEMP/oci/context" "$GITHUB_SHA" \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 0.0.0-dev
+          grep -E '^(source_sha|version|producer_sha256|handoff_manifest_sha256|build_kind)=' \
+            "$RUNNER_TEMP/oci/context/oci/producer/provenance.txt"
+
+      - name: Build once with Docker and no release authority
+        run: |
+          set -euo pipefail
+          context="$RUNNER_TEMP/oci/context"
+          source "$context/oci/producer/provenance.txt"
+          docker build --platform linux/amd64 --pull=false \
+            --build-arg SOURCE_COMMIT="$source_sha" \
+            --build-arg RELEASE_VERSION="$version" \
+            --build-arg PRODUCER_SHA256="$producer_sha256" \
+            --build-arg HANDOFF_MANIFEST_SHA256="$handoff_manifest_sha256" \
+            --build-arg BUILD_KIND="$build_kind" \
+            -t certbotbot:oci-acceptance "$context"
+
+      - name: Exercise Docker read-only, unprivileged runtime
+        run: |
+          set -euo pipefail
+          bash tests/oci-runtime.bash docker certbotbot:oci-acceptance dist/certbotbot.bash
+
+      - name: Transfer exact built image to rootless Podman without registry
+        run: |
+          set -euo pipefail
+          docker save -o "$RUNNER_TEMP/oci/producer-image.tar" certbotbot:oci-acceptance
+          test -s "$RUNNER_TEMP/oci/producer-image.tar"
+          podman load -i "$RUNNER_TEMP/oci/producer-image.tar"
+          # No second build, no pull, and no emulated platform.
+          podman image inspect certbotbot:oci-acceptance
+
+      - name: Exercise rootless Podman read-only, unprivileged runtime
+        run: |
+          set -euo pipefail
+          test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
+          bash tests/oci-runtime.bash podman certbotbot:oci-acceptance dist/certbotbot.bash
