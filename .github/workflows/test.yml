@@ -260,25 +260,69 @@ jobs:
           fail-on-error: false
           fail-on-empty: true
 
+  # ADR-037: a distinct consumer gate, not a fourth producer flavor.
+  # A skipped crypto fixture or missing GnuPG capability MUST fail this job.
+  client-encryption:
+    name: Authenticated standalone client
+    needs: prepare
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact acceptance test source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install true authenticated-client test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats gnupg
+
+      - name: Download exact same-run verified artifact handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      - name: Verify complete client and producer artifact identity
+        env:
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        run: |
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            0.0.0-dev "$EXPECTED_MANIFEST_SHA"
+
+      - name: Require real GnuPG shipped-client acceptance without skips
+        run: |
+          set -euo pipefail
+          export BASH_STARTER_ARTIFACT="$PWD/dist/certbotbot.bash"
+          export BASH_STARTER_CLIENT_ARTIFACT="$PWD/dist/certbotbot-client.bash"
+          bash ci/verify-client-crypto.bash
+
   # Retain the original required-check name, but now gate the preparation,
   # full three-flavor Bats matrix, and both existing compatibility jobs.
   test:
     name: Check, build, and test
-    needs: [prepare, bats, bash43, encryption]
+    needs: [prepare, bats, bash43, encryption, client-encryption]
     if: always()
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - name: Require every producer quality gate to succeed
+      - name: Require every producer and standalone-client quality gate to succeed
         env:
           PREPARE_RESULT: ${{ needs.prepare.result }}
           BATS_RESULT: ${{ needs.bats.result }}
           BASH43_RESULT: ${{ needs.bash43.result }}
           ENCRYPTION_RESULT: ${{ needs.encryption.result }}
+          CLIENT_ENCRYPTION_RESULT: ${{ needs['client-encryption'].result }}
         run: |
           set -euo pipefail
-          for gate in PREPARE_RESULT BATS_RESULT BASH43_RESULT ENCRYPTION_RESULT; do
+          for gate in PREPARE_RESULT BATS_RESULT BASH43_RESULT ENCRYPTION_RESULT CLIENT_ENCRYPTION_RESULT; do
             if [[ "${!gate}" != success ]]; then
               printf 'Required quality gate %s did not succeed (%s)\n' "$gate" "${!gate}" >&2
               exit 1

@@ -32,7 +32,7 @@ extract_release_gate() {
   [ "$(grep -Fc 'make test-one "TEST_FLAVOR=$TEST_FLAVOR"' "$RELEASE_WORKFLOW")" -eq 1 ]
   grep -Fq 'bash tests/compat-bash43.bash' "$RELEASE_WORKFLOW"
   grep -Fq 'bash:4.3' "$RELEASE_WORKFLOW"
-  [ "$(grep -Fc 'bash ci/producer-handoff.bash verify dist' "$RELEASE_WORKFLOW")" -eq 3 ]
+  [ "$(grep -Fc 'bash ci/producer-handoff.bash verify dist' "$RELEASE_WORKFLOW")" -eq 4 ]
   ! grep -Fq 'make test VERSION=' "$RELEASE_WORKFLOW"
 }
 
@@ -45,9 +45,9 @@ extract_release_gate() {
 }
 
 @test "all consumers use same-run one-day handoff and externally bound manifest digest" {
-  [ "$(grep -Fc 'name: release-producer-${{ github.run_id }}-${{ github.run_attempt }}' "$RELEASE_WORKFLOW")" -eq 4 ]
-  [ "$(grep -Fc 'EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}' "$RELEASE_WORKFLOW")" -eq 3 ]
-  [ "$(grep -Fc '"$RELEASE_VERSION" "$EXPECTED_MANIFEST_SHA"' "$RELEASE_WORKFLOW")" -eq 3 ]
+  [ "$(grep -Fc 'name: release-producer-${{ github.run_id }}-${{ github.run_attempt }}' "$RELEASE_WORKFLOW")" -eq 5 ]
+  [ "$(grep -Fc 'EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}' "$RELEASE_WORKFLOW")" -eq 4 ]
+  [ "$(grep -Fc '"$RELEASE_VERSION" "$EXPECTED_MANIFEST_SHA"' "$RELEASE_WORKFLOW")" -eq 4 ]
   [ "$(grep -Fc 'retention-days: 1' "$RELEASE_WORKFLOW")" -eq 1 ]
   ! grep -Eq 'make (all|deps|build) "TEST_FLAVOR=' "$RELEASE_WORKFLOW"
 }
@@ -70,17 +70,17 @@ extract_release_gate() {
   [ "$(grep -Fc 'attestations: write' "$RELEASE_WORKFLOW")" -eq 1 ]
   [ "$(grep -Fc 'artifact-metadata: write' "$RELEASE_WORKFLOW")" -eq 1 ]
   grep -Fq 'name: versioning' "$RELEASE_WORKFLOW"
-  grep -Fq 'needs: [version, prepare, release-bats, release-bash43, gate, publish]' "$RELEASE_WORKFLOW"
+  grep -Fq 'needs: [version, prepare, release-bats, release-bash43, release-client-encryption, gate, publish]' "$RELEASE_WORKFLOW"
 }
 
 @test "prepublication gate refuses any failed skipped cancelled or absent matrix result" {
   extract_release_gate "Reject any incomplete release gate"
-  run env VERSION_RESULT=success PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success bash "$TEST_ROOT/gate.bash"
+  run env VERSION_RESULT=success PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success CLIENT_CRYPTO_RESULT=success bash "$TEST_ROOT/gate.bash"
   [ "$status" -eq 0 ]
   local variable outcome
-  for variable in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT; do
+  for variable in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT CLIENT_CRYPTO_RESULT; do
     for outcome in failure skipped cancelled ''; do
-      run env VERSION_RESULT=success PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success "$variable=$outcome" bash "$TEST_ROOT/gate.bash"
+      run env VERSION_RESULT=success PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success CLIENT_CRYPTO_RESULT=success "$variable=$outcome" bash "$TEST_ROOT/gate.bash"
       [ "$status" -ne 0 ]
     done
   done
@@ -88,12 +88,12 @@ extract_release_gate() {
 
 @test "final versioning check refuses unverified or incomplete publication" {
   extract_release_gate "Require fully published and verified release"
-  run env VERSION_RESULT=success PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success GATE_RESULT=success PUBLISH_RESULT=success bash "$TEST_ROOT/gate.bash"
+  run env VERSION_RESULT=success PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success CLIENT_CRYPTO_RESULT=success GATE_RESULT=success PUBLISH_RESULT=success bash "$TEST_ROOT/gate.bash"
   [ "$status" -eq 0 ]
   local variable outcome
-  for variable in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT GATE_RESULT PUBLISH_RESULT; do
+  for variable in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT CLIENT_CRYPTO_RESULT GATE_RESULT PUBLISH_RESULT; do
     for outcome in failure skipped cancelled ''; do
-      run env VERSION_RESULT=success PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success GATE_RESULT=success PUBLISH_RESULT=success "$variable=$outcome" bash "$TEST_ROOT/gate.bash"
+      run env VERSION_RESULT=success PREPARE_RESULT=success BATS_RESULT=success BASH43_RESULT=success CLIENT_CRYPTO_RESULT=success GATE_RESULT=success PUBLISH_RESULT=success "$variable=$outcome" bash "$TEST_ROOT/gate.bash"
       [ "$status" -ne 0 ]
     done
   done
@@ -111,4 +111,21 @@ extract_release_gate() {
   grep -Fq 'bash tests/compat-bash43.bash' "$RELEASE_WORKFLOW"
   grep -Fq 'make test-one "TEST_FLAVOR=$TEST_FLAVOR"' "$RELEASE_WORKFLOW"
   [ "$(grep -Fc 'flavor: [development, ordinary, minified]' "$RELEASE_WORKFLOW")" -eq 2 ]
+}
+
+@test "release client cryptographic gate checks exact bytes with real GnuPG" {
+  sed -n '/^  release-client-encryption:/,/^  gate:/p' "$RELEASE_WORKFLOW" > "$TEST_ROOT/client-release"
+  grep -Fq 'name: Release authenticated standalone client' "$TEST_ROOT/client-release"
+  grep -Fq 'runs-on: ubuntu-26.04' "$TEST_ROOT/client-release"
+  grep -Fq 'EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}' "$TEST_ROOT/client-release"
+  grep -Fq 'bash ci/producer-handoff.bash verify dist' "$TEST_ROOT/client-release"
+  grep -Fq 'bash ci/verify-client-crypto.bash' "$TEST_ROOT/client-release"
+  ! grep -Eq 'make (all|build|deps)' "$TEST_ROOT/client-release"
+}
+
+@test "release consumer gate is an explicit prerequisite before publish" {
+  grep -Fq 'needs: [version, prepare, release-bats, release-bash43, release-client-encryption]' "$RELEASE_WORKFLOW"
+  grep -Fq "CLIENT_CRYPTO_RESULT: \${{ needs['release-client-encryption'].result }}" "$RELEASE_WORKFLOW"
+  grep -Fq 'VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT CLIENT_CRYPTO_RESULT' "$RELEASE_WORKFLOW"
+  grep -Fq "if: github.ref == 'refs/heads/main' && needs.gate.result == 'success'" "$RELEASE_WORKFLOW"
 }

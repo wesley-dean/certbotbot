@@ -1,8 +1,8 @@
 # Separate Read-Only Certificate Client Contract
 
-Status: **plaintext behavior is released; authenticated client restoration is being implemented under tasks #185-#186 and must still pass #187-#188 release verification before being claimed as published.** [task #51](https://github.com/wesley-dean/certbotbot/issues/51) accepted this design for [story #50](https://github.com/wesley-dean/certbotbot/issues/50). Task #52 implemented read-only source retrieval and task #53 implements archive validation, safe extraction, and private late activation in maintained source. Task #54 implements shipped-artifact assembly, black-box CI, and release integration, subject to PR review and a passing main-branch release. See [retrieval](client-retrieval.md) and [extraction](client-extraction.md) implementation contracts.
+Status: **plaintext client restoration is released; authenticated implementation and independent black-box tests are merged under #185-#187. Mandatory encrypted-client release checks are added under #188 and require post-merge green release evidence before encrypted publication is claimed.** [task #51](https://github.com/wesley-dean/certbotbot/issues/51) accepted this design for [story #50](https://github.com/wesley-dean/certbotbot/issues/50). Task #52 implemented read-only source retrieval and task #53 implements archive validation, safe extraction, and private late activation in maintained source. Task #54 implements shipped-artifact assembly, black-box CI, and release integration, subject to PR review and a passing main-branch release. See [retrieval](client-retrieval.md) and [extraction](client-extraction.md) implementation contracts.
 
-Governing decision: [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md).
+Governing decisions: [ADR-035](adr/ADR-035-standalone-read-only-certificate-client.md) and [ADR-037](adr/ADR-037-authenticated-standalone-client-decryption.md).
 
 ## Purpose and authority
 
@@ -90,7 +90,7 @@ Each `.sha256` is conventional SHA-256 digest plus executable basename.  Produce
 
 ## Authenticated-encryption extension (implemented in source; release qualification pending)
 
-Approved [story #183](https://github.com/wesley-dean/certbotbot/issues/183) extends this contract under [ADR-037](adr/ADR-037-authenticated-standalone-client-decryption.md). **Tasks #185-#186 implement the following, with independent shipped-client adversarial and release qualification required from #187-#188.** New nonsecret `--archive-encryption auto|none|gpg-ocb` (CLI > exported environment `ARCHIVE_ENCRYPTION` > literal file > default `auto`) selects the allowed representation, never guesses from downloaded bytes. The secret source is exclusively exported `GPG_SYMMETRIC_KEY`, with no CLI or literal-file secret value. The secret is captured with xtrace disabled, unexported before launching AWS or other helpers, and delivered only to trusted GnuPG over private FD 3.
+Approved [story #183](https://github.com/wesley-dean/certbotbot/issues/183) extends this contract under [ADR-037](adr/ADR-037-authenticated-standalone-client-decryption.md). **Tasks #185-#187 implement and exercise this contract; #188 makes real-GnuPG evidence mandatory for PR and published-release acceptance.** New nonsecret `--archive-encryption auto|none|gpg-ocb` (CLI > exported environment `ARCHIVE_ENCRYPTION` > literal file > default `auto`) selects the allowed representation, never guesses from downloaded bytes. The secret source is exclusively exported `GPG_SYMMETRIC_KEY`, with no CLI or literal-file secret value. The secret is captured with xtrace disabled, unexported before launching AWS or other helpers, and delivered only to trusted GnuPG over private FD 3.
 
 | Selected mode | Exported key | Required body | Result |
 | --- | --- | --- | --- |
@@ -127,7 +127,7 @@ The existing secure parent, full multi-lineage state, relative PEM links, privat
 | Local staging/extractor/activation failure | Status 74; staged contents not presented as success |
 | Unauthorized AWS PutObject/DeleteObject, Route53 or Certbot mock | Never invoked in any successful or failing case |
 | Help and version with broken AWS stub | Success without S3 command |
-| Actual built script in clean workspace | Functions without source tree/vendor/Certbot/GnuPG |
+| Actual built script in clean workspace | Functions without source tree/vendor/Certbot; plaintext without GnuPG, encrypted with compatible GnuPG |
 | Bash 4.3, checksum and release suite | Client tested independently; all three producer flavors remain covered |
 | Secret-output sentinel | No key bytes, AWS credential value, archive member payload or raw tool error on stdout/stderr |
 
@@ -135,7 +135,7 @@ Task #54 adds these checks to the test/release workflows. A source-level or PR c
 
 ## Explicitly deferred
 
-Authenticated-client release gating remains pending #187-#188 (governed by ADR-037); selectively extracting one lineage, installing state into system paths, invoking service reloads or deployment hooks, fetching dated backups or S3 versions, replacement-in-place or rollback, alternate archive formats, other object stores, and distribution of client-specific OCI images all require separate approved contracts.
+Authenticated-client publication verification remains pending post-merge #188 acceptance (governed by ADR-037); selectively extracting one lineage, installing state into system paths, invoking service reloads or deployment hooks, fetching dated backups or S3 versions, replacement-in-place or rollback, alternate archive formats, other object stores, and distribution of client-specific OCI images all require separate approved contracts.
 
 ## Traceability
 
@@ -144,3 +144,19 @@ Authenticated-client release gating remains pending #187-#188 (governed by ADR-0
 - [Task #53](https://github.com/wesley-dean/certbotbot/issues/53) owns validation, safe extraction, destination activation and failure hygiene.
 - [Task #54](https://github.com/wesley-dean/certbotbot/issues/54) owns build/release integration, checksum/attestation update, documentation, and shipped-artifact black-box testing.
 - [ADRs 021, 022, 027, 030, 031 and 032](decisions.md) remain authoritative for the overlapping producer S3, archive, lineage, encryption, and key-selection semantics.
+
+## Required authenticated-client acceptance evidence
+
+The independently verified **eight-file handoff** is the only client
+binary source for CI and release. A separate Ubuntu 26.04 job requires
+real GnuPG 2.4.7+ AES-256/OCB and runs the black-box
+`tests/client-authenticated-shipped.bats` suite through
+`ci/verify-client-crypto.bash` after checksum and manifest verification.
+An absent, skipped, canceled or failing crypto job prevents Test and
+Versioning aggregate success and blocks release publication. This
+includes source and checked immutable release candidates, with no
+additional client flavor, executable asset, or new S3 authority.
+
+The client is not deemed *published with verified authenticated support*
+until a main-branch release succeeds after merging these gates.
+See the [settings reference](client-settings.md) for operator use.

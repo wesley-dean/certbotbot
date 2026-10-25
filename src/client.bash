@@ -28,6 +28,14 @@ Options:
   --config FILE                 Explicit literal .env-format config file
   --help                        Show this help
   --version                     Show client build provenance
+
+Encrypted mode requires GnuPG 2.4.7+ with working AES-256/OCB support.
+The only secret input is exported GPG_SYMMETRIC_KEY; never place it in CLI or .env.
+auto uses authenticated OCB when the key is present; otherwise plain gzip/tar.
+none plus key or gpg-ocb without key is an error. No format/key fallback.
+The destination must be absent under an existing caller-owned private parent.
+Only the selected S3 object is read; the client never issues or uploads certs.
+See doc/client-settings.md in the project for the full configuration contract.
 EOF
 }
 

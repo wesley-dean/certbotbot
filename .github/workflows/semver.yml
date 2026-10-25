@@ -198,11 +198,54 @@ jobs:
             bash:4.3 \
             bash tests/compat-bash43.bash
 
+  # Independent consumer gate over the exact release-candidate bytes.
+  release-client-encryption:
+    name: Release authenticated standalone client
+    needs: [version, prepare]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact release acceptance source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install authenticated client test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats gnupg
+
+      - name: Download exact immutable release candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      - name: Verify exact eight-file candidate and checked provenance
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        run: |
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "$RELEASE_VERSION" "$EXPECTED_MANIFEST_SHA"
+
+      - name: Require non-skipped real-GnuPG client cryptographic acceptance
+        run: |
+          set -euo pipefail
+          export BASH_STARTER_ARTIFACT="$PWD/dist/certbotbot.bash"
+          export BASH_STARTER_CLIENT_ARTIFACT="$PWD/dist/certbotbot-client.bash"
+          bash ci/verify-client-crypto.bash
+
   # This job uses no publisher authority. A single failed, skipped or cancelled
   # matrix member prevents any release, even if other members passed.
   gate:
     name: Require all release verification jobs
-    needs: [version, prepare, release-bats, release-bash43]
+    needs: [version, prepare, release-bats, release-bash43, release-client-encryption]
     if: always()
     runs-on: ubuntu-24.04
     permissions:
@@ -214,9 +257,10 @@ jobs:
           PREPARE_RESULT: ${{ needs.prepare.result }}
           BATS_RESULT: ${{ needs['release-bats'].result }}
           BASH43_RESULT: ${{ needs['release-bash43'].result }}
+          CLIENT_CRYPTO_RESULT: ${{ needs['release-client-encryption'].result }}
         run: |
           set -euo pipefail
-          for gate in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT; do
+          for gate in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT CLIENT_CRYPTO_RESULT; do
             if [[ "${!gate}" != success ]]; then
               printf 'Release gate %s did not succeed (%s)\n' "$gate" "${!gate}" >&2
               exit 1
@@ -290,7 +334,7 @@ jobs:
   # depend on successful publication as well as every quality gate.
   versioning:
     name: versioning
-    needs: [version, prepare, release-bats, release-bash43, gate, publish]
+    needs: [version, prepare, release-bats, release-bash43, release-client-encryption, gate, publish]
     if: always()
     runs-on: ubuntu-24.04
     permissions:
@@ -302,11 +346,12 @@ jobs:
           PREPARE_RESULT: ${{ needs.prepare.result }}
           BATS_RESULT: ${{ needs['release-bats'].result }}
           BASH43_RESULT: ${{ needs['release-bash43'].result }}
+          CLIENT_CRYPTO_RESULT: ${{ needs['release-client-encryption'].result }}
           GATE_RESULT: ${{ needs.gate.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
         run: |
           set -euo pipefail
-          for gate in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT GATE_RESULT PUBLISH_RESULT; do
+          for gate in VERSION_RESULT PREPARE_RESULT BATS_RESULT BASH43_RESULT CLIENT_CRYPTO_RESULT GATE_RESULT PUBLISH_RESULT; do
             if [[ "${!gate}" != success ]]; then
               printf 'Versioning completion gate %s did not succeed (%s)\n' "$gate" "${!gate}" >&2
               exit 1

@@ -1,6 +1,6 @@
 # Standalone Client Authenticated-Archive Threat Model
 
-Status: target design for approved [task #184](https://github.com/wesley-dean/certbotbot/issues/184) and [story #183](https://github.com/wesley-dean/certbotbot/issues/183). Runtime behavior is not implemented by this document. Governing decision: [ADR-037](adr/ADR-037-authenticated-standalone-client-decryption.md), refining ADR-035 while preserving ADR-031's producer format.
+Status: implemented encrypted-client boundary under merged tasks #184-#187; approved #188 adds required real-GnuPG Test and Versioning gates. Publication of the new gate is not claimed before a passing post-merge release. Governing decision: [ADR-037](adr/ADR-037-authenticated-standalone-client-decryption.md), refining ADR-035 while preserving ADR-031's producer format.
 
 ## Security objectives and assets
 
@@ -42,8 +42,26 @@ The encrypted path adds trusted GnuPG, its linked libraries, agent where used, l
 - **#185:** configuration precedence, allowed/forbidden combinations, key capture/unexport, no raw subprocess secret, absence of GnuPG requirements in plaintext, prefetch encrypted-mode capability probe and status classification.
 - **#186:** exact packet/whole-ciphertext acceptance, protected authenticated staging, unchanged bounded tar validator, no-clobber activation and fail-closed cleanup on every abort.
 - **#187:** black-box **shipped client** fixtures made with real supported GnuPG: correct key, wrong/missing key, tamper, truncation, unknown version, legacy/incorrect packet, malicious decrypted tar, multi-lineage preservation, existing destination, secret sentinel and no secondary AWS read.
-- **#188:** mandatory CI OCB capability and shipped-client matrix, same eight files and checksums, release attestation and operator documentation. Failed or skipped required encryption checks must block publication.
+- **#188:** dedicated unprivileged non-skippable GnuPG 2.4.7+ shipped-client Test/Versioning jobs, verified eight-file immutable handoff, explicit aggregate and publish gates, operator help/settings/examples and release attestation. Required skipped, missing or failed crypto evidence blocks publication.
 
 ## Non-goals and review triggers
 
 No key generation, distribution, rotation, recovery, server installation, producer migration, alternate object selection, or cryptographic proof of certificate chain trust is supplied. Revisit this model for any new envelope version, changed GnuPG/S2K parameters, new runtime crypto dependency, new key source, added authority, different archive validator, target replacement semantics or release topology. The producer-specific [encryption threat model](archive-encryption-threat-model.md) continues to govern issuance and publication independently.
+
+## Operator verification and key transition
+
+The client and producer share the exact authoritative key and
+format contract. The operator distributes and rotates high-entropy
+secrets independently of GitHub Actions and outside the client CLI or
+literal config. A new key must be coordinated with producer upload and
+consumer retrieval; no downgrade, multi-key fallback, historical
+version lookup or migration is offered to the client. See
+[client settings](client-settings.md) and
+[encrypted examples](examples/certbotbot-client.md).
+
+The independent required Test/Versioning jobs may inspect *generated*
+fixture secrets only inside private runner processes. The immutable
+release handoff contains only executable binaries, checksums and its
+private workflow manifest, never test workspace secrets. The verified
+public release contains only eight executable/checksum assets, after
+successful attestation and all quality gates.
