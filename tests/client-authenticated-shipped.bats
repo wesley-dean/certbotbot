@@ -135,12 +135,18 @@ encrypt_archive() {
   # not a fake crypto stub or a precomputed fixture.
   local mode="${1:-ocb}"
   require_real_ocb
-  mkdir -m 0700 "$TEST_ROOT/fixture-gnupg"
+  mkdir -p -m 0700 "$TEST_ROOT/fixture-gnupg"
   local -a args=(--no-options --homedir "$TEST_ROOT/fixture-gnupg"
     --batch --yes --no-tty --pinentry-mode loopback --no-symkey-cache
     --passphrase-fd 3 --symmetric --cipher-algo AES256
     --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 16777216)
-  if [[ "$mode" == ocb ]]; then args+=(--force-ocb); fi
+  if [[ "$mode" != legacy ]]; then args+=(--force-ocb); fi
+  if [[ "$mode" == wrong-s2k ]]; then
+    local index
+    for (( index=0; index<${#args[@]}; index++ )); do
+      if [[ "${args[index]}" == SHA512 ]]; then args[index]=SHA256; fi
+    done
+  fi
   if ! (umask 077; "$REAL_GPG_BIN" "${args[@]}" \
     --output "$TEST_ROOT/fixture.gpg" "$ARCHIVE" \
     3<<<"$TEST_KEY" >/dev/null 2>&1); then
@@ -322,9 +328,13 @@ assert_rejected_encrypted() {
   assert_rejected_encrypted
 }
 
-@test "legacy CFB/MDC OpenPGP payload is rejected even with correct secret" {
+@test "legacy CFB/MDC and incorrect authenticated S2K format are rejected" {
   make_archive
   encrypt_archive legacy
+  run_encrypted
+  assert_rejected_encrypted
+  rm -f "$AWS_LOG" "$TEST_ROOT/fixture.gpg"
+  encrypt_archive wrong-s2k
   run_encrypted
   assert_rejected_encrypted
 }
@@ -387,7 +397,7 @@ assert_rejected_encrypted() {
 
 @test "authenticated tar exceeding 2048 members is rejected" {
   mkdir -p "$SOURCE/keys"
-  local i
+  local i entry
   for (( i=0; i<2050; i++ )); do
     printf -v entry 'member-%04d' "$i"
     : >"$SOURCE/keys/$entry"
