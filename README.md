@@ -341,11 +341,12 @@ accepted in either registry.
 The [Docker/rootless Podman published-image quick start](doc/examples/docker-podman.md#use-an-independently-verified-published-image)
 includes direct `docker`/`podman` pull, label inspection, nonroot
 read-only run examples, and the additional prerequisites for real
-issuance. See the [full container deployment guide](doc/container-deployment.md)
-and [publication contract](doc/oci-publication-contract.md) for
-trust, credential and release boundaries. Local image build/runtime
-tests do **not** prove live registry publication or certificate issuance
-in your environment.
+issuance. See the [full container deployment guide](doc/container-deployment.md),
+[OCI publication and operator guide](doc/oci-image-publication.md), and
+[publication contract](doc/oci-publication-contract.md) for
+trust, credentials, registry recovery, upgrades, and release boundaries.
+Local image build/runtime tests do **not** prove live registry
+publication or certificate issuance in your environment.
 
 ### Operator examples
 
