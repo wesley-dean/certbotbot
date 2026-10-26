@@ -110,9 +110,11 @@ jobs:
           test "$(docker image inspect certbotbot:release-acceptance \
             --format '{{index .Config.Labels "io.certbotbot.producer.sha256"}}')" = "$producer_sha256"
           bash tests/oci-runtime.bash docker certbotbot:release-acceptance dist/certbotbot.bash
+          bash tests/oci-lifecycle.bash docker certbotbot:release-acceptance dist/certbotbot.bash
           docker save -o "$RUNNER_TEMP/producer-image.tar" certbotbot:release-acceptance
           podman load -i "$RUNNER_TEMP/producer-image.tar"
           bash tests/oci-runtime.bash podman certbotbot:release-acceptance dist/certbotbot.bash
+          bash tests/oci-lifecycle.bash podman certbotbot:release-acceptance dist/certbotbot.bash
 
       # Proof exists only if the *same* validated image passed both engines.
       # The distinct workflow_run publisher must revalidate release artifacts.

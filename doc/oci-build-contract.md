@@ -91,3 +91,32 @@ Help/version must report the same build metadata and output contract as the orig
 If an Alpine v3.24 package, runtime tool or verified script check fails, **do not** bypass its guard to force a successful build. Docker and Podman have **not been used to validate this image in the current development environment**, so none of these engine builds are claimed as executed or successful. Task #162 will add mandatory engine-specific acceptance gates, including rootless Podman, permissions, UID mapping and SELinux-sensitive mounts.
 
 After review, remove your own temporary local context; it contains only the public verified producer and nonsensitive provenance data. The caller owns cleanup and any mounted runtime secrets.
+
+## Mocked certificate lifecycle parity under OCI (#200)
+
+The tested image's existing CLI and toolchain smoke checks are complemented by
+`tests/oci-lifecycle.bash`. It shares the synthetic S3/Certbot fixture with
+`tests/public-lifecycle.bats` to create a self-signed seeded archive on the
+trusted host and runs ten lifecycle cases against the real ordinary producer
+under both Docker and rootless Podman. The identical Docker-built image is
+loaded by Podman; no second image build or registry pull is involved.
+
+The trusted fixture is mounted **read-only** at `/fixture`; the only writable
+container state is a private UID-owned `/run/certbotbot` tmpfs. No production
+credentials, host certificate directory, OCI engine socket or runtime network
+access are provided. A short-lived test driver stages the local fake S3 object
+in tmpfs and invokes `/usr/local/bin/certbotbot.bash` directly. The regular
+`tests/oci-runtime.bash` suite separately verifies the real OCI ENTRYPOINT.
+
+Covered cases are successful selected-lineage no-op renewal; wildcard SAN
+selection of the same lineage; CLI and environment precedence for forced and
+suppressed no-renewal upload; missing S3 object, denied HeadObject, corrupt and
+partial download, and invalid CLI input. Each case enforces exact write/renewal
+call counts, preservation of remote bytes when not publishing, redaction of
+mock private cloud diagnostics, and host/container result parity.
+
+The no-network suite deliberately **does not** demonstrate actual AWS IAM,
+Route53 DNS authorization, Let's Encrypt issuance or real infrastructure
+connectivity. Host OpenSSL issues only a synthetic, self-signed certificate
+through the established Certbot mock, and tests the ordinary producer's
+restoration, renewal and local publication boundary.
