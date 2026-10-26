@@ -93,11 +93,44 @@ visible after the other registry fails. There is **no distributed
 rollback**; the maintainer must inspect and reconcile actual registry
 objects independently before retrying.
 
-The pulled images' complete package inventory, SBOM/attestation,
-runtime lifecycle and cross-registry parity require additional
-acceptance under #166. OCI image publication does not change the
-operator's S3/Route53/ACME privileges or certificate installation
-contract.
+## Independent pulled-image acceptance (task #166)
+
+After successful protected publication, a separate `verify_pulled` job
+retrieves the exact published image digest. It has **no Docker Hub
+publishing credentials, no protected publisher environment, no AWS/ACME
+credentials, and no registry-write permission**. Its only registry
+authorization is a scoped read-only GitHub token for GHCR. The release
+producer is re-downloaded and independently checked against the
+original signed source, eight public assets, checksums, and attestations.
+
+The job requires both registries' OCI indexes to contain exactly one
+`linux/amd64` runnable manifest. It rejects other runnable platforms
+and requires a BuildKit attestation descriptor bound to the image
+manifest's digest, including in-toto predicates annotated as SPDX SBOM
+and SLSA provenance. Those checks establish **descriptor structure and
+index-level identity binding**; they do not cryptographically verify
+the underlying in-toto statements or claim independently signed images.
+Neither an SBOM nor a provenance predicate is inherently a signature.
+
+Each registry image is pulled by immutable digest, checked for release,
+source and producer labels, then run against the exact verified ordinary
+producer using the existing no-network, read-only Docker acceptance
+suite. That same downloaded image is exported to and loaded under
+**rootless Podman**, not rebuilt, and tested there too. Both registries
+must have matching image identity and installed package inventories;
+no network credentials are passed to a running certbotbot container.
+
+A short-lived one-day GitHub Actions artifact records only nonsecret
+manifest, digest, platform, SBOM/provenance descriptor and installed
+package inventory evidence. A failed verification makes the overall
+publisher workflow fail **even if both pushes already succeeded**;
+it cannot undo either registry's accepted write. Operators must inspect
+actual remote state and never treat a failed verification as successful
+acceptance. Task #167 will consolidate publication setup, authentication,
+repair, rollback, and upgrade instructions for maintainers.
+
+OCI image publication does not change the operator's S3/Route53/ACME
+privileges or certificate installation contract.
 
 ## What has and has not been verified
 
