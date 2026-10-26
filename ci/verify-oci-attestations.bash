@@ -41,6 +41,55 @@ oci_attestation_fail() {
   exit 1
 }
 
+## @fn oci_attestation_fetch_raw()
+## @brief Read a registry OCI manifest with bounded propagation retries.
+## @details
+## Attempt up to five reads at five-second intervals when a registry is
+## unavailable. A permanent authentication or authorization refusal is
+## an immediate failure, with a category-only diagnostic. Do not emit
+## untrusted registry error text: it may contain sensitive headers or
+## credentials. A successful response is returned unchanged to jq for
+## strict structural verification, never accepted from a retry by itself.
+## @param reference Immutable registry reference.
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## The registry JSON manifest after a successful read.
+## @par STDERR
+## Bounded attempt numbers, exit status, and nonsecret failure category.
+## @returns Raw manifest JSON when available.
+## @retval 0 The registry returned a manifest.
+## @retval 1 The registry refused access or remained unavailable.
+oci_attestation_fetch_raw() {
+  local image_reference=$1 output='' attempt=1 rc=0 category=''
+  for ((attempt = 1; attempt <= 5; attempt++)); do
+    if output="$(docker buildx imagetools inspect --raw "$image_reference" 2>&1)"; then
+      printf '%s\n' "$output"
+      return 0
+    else
+      rc=$?
+    fi
+    category=registry_read_error
+    case "$output" in
+      *unauthorized*|*Unauthorized*|*UNAUTHORIZED*|*denied*|*Denied*|*DENIED*|*"401"*|*"403"*)
+        category=authentication_or_authorization ;;
+      *"404"*|*"not found"*|*"manifest unknown"*)
+        category=manifest_not_yet_visible ;;
+      *"429"*|*"rate limit"*|*"Too Many Requests"*)
+        category=rate_limited ;;
+    esac
+    printf 'OCI attestation verification: read attempt %d/5 failed (exit=%d, category=%s): %s\n' \
+      "$attempt" "$rc" "$category" "$image_reference" >&2
+    if [[ "$category" == authentication_or_authorization ]]; then
+      oci_attestation_fail "registry access denied for $image_reference; check GHCR package visibility and scoped read permission"
+    fi
+    if ((attempt < 5)); then
+      sleep 5
+    fi
+  done
+  oci_attestation_fail "registry manifest unavailable after five attempts: $image_reference"
+}
+
 if (( $# != 4 )); then
   printf 'usage: %s IMAGE_DIGEST SOURCE_SHA VERSION REPORT_DIR\n' "$0" >&2
   exit 64
@@ -54,7 +103,7 @@ report_dir=$4
   "$source_sha" =~ ^[0-9a-f]{40}$ &&
   "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 64
 [[ -n "$report_dir" && ! -e "$report_dir" && ! -L "$report_dir" ]] || exit 64
-for command in docker jq mkdir; do
+for command in docker jq mkdir sleep; do
   command -v "$command" >/dev/null || exit 69
 done
 mkdir -m 0700 -- "$report_dir" || exit 1
@@ -62,8 +111,7 @@ mkdir -m 0700 -- "$report_dir" || exit 1
 for registry in ghcr.io/wesley-dean/certbotbot \
   docker.io/wesleydean/certbotbot; do
   reference="$registry@$digest"
-  index="$(docker buildx imagetools inspect --raw "$reference" 2>/dev/null)" ||
-    oci_attestation_fail "image index unavailable: $reference"
+  index="$(oci_attestation_fetch_raw "$reference")"
 
   # Only the tested linux/amd64 image may be runnable.  BuildKit's
   # unknown/unknown attestation descriptors are not runnable platforms.
@@ -96,9 +144,7 @@ for registry in ghcr.io/wesley-dean/certbotbot \
   [[ "$attestation_digest" =~ ^sha256:[0-9a-f]{64}$ ]] ||
     oci_attestation_fail "missing image-bound attestation descriptor: $reference"
 
-  attestation="$(docker buildx imagetools inspect --raw \
-    "$registry@$attestation_digest" 2>/dev/null)" ||
-    oci_attestation_fail "image-bound attestation manifest unavailable: $reference"
+  attestation="$(oci_attestation_fetch_raw "$registry@$attestation_digest")"
   jq -e '
     .schemaVersion == 2 and
     .mediaType == "application/vnd.oci.image.manifest.v1+json" and
