@@ -327,8 +327,12 @@ jobs:
               > "$RUNNER_TEMP/oci-published-evidence/$registry-packages.lock"
             docker save -o "$RUNNER_TEMP/oci-$registry.tar" "$local_image"
             podman load -i "$RUNNER_TEMP/oci-$registry.tar"
-            test "$(podman image inspect "$local_image" --format '{{.Id}}')" \
-              = "$(docker image inspect "$local_image" --format '{{.Id}}')"
+            docker_image_id="$(docker image inspect "$local_image" \
+              --format '{{.Id}}')"
+            podman_image_id="$(podman image inspect "$local_image" \
+              --format '{{.Id}}')"
+            # Engine format may or may not prefix the same SHA with sha256:.
+            test "${podman_image_id#sha256:}" = "${docker_image_id#sha256:}"
             bash tests/oci-runtime.bash podman "$local_image" \
               "$PWD/dist/certbotbot.bash"
           done
