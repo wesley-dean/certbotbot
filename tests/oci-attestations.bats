@@ -14,6 +14,9 @@ setup() {
   export NO_SBOM=false
   export NO_PROVENANCE=false
   export NO_ATTESTATION=false
+  export MOCK_MANIFEST_OUTAGE=none
+  export MOCK_MANIFEST_STATE="$ROOT/manifest-reads"
+  printf '0\n' > "$MOCK_MANIFEST_STATE"
   export VERIFY="$BATS_TEST_DIRNAME/../ci/verify-oci-attestations.bash"
   cat > "$ROOT/bin/docker" <<'DOCKER'
 #!/usr/bin/env bash
@@ -21,6 +24,24 @@ set -euo pipefail
 [[ "$1" == buildx && "$2" == imagetools &&
   "$3" == inspect && "$4" == --raw ]] || exit 69
 reference=$5
+read_count="$(cat "$MOCK_MANIFEST_STATE")"
+printf '%s\n' "$((read_count + 1))" > "$MOCK_MANIFEST_STATE"
+case "$MOCK_MANIFEST_OUTAGE" in
+  denied)
+    printf 'denied: fictional-access-token-DO-NOT-LOG\n' >&2
+    exit 255
+    ;;
+  persistent)
+    printf 'manifest unknown\n' >&2
+    exit 255
+    ;;
+  transient)
+    if (( read_count < 2 )); then
+      printf 'manifest unknown\n' >&2
+      exit 255
+    fi
+    ;;
+esac
 if [[ "$reference" == *"@$ATTEST" ]]; then
   jq -n --argjson no_sbom "$NO_SBOM" \
     --argjson no_provenance "$NO_PROVENANCE" '
@@ -67,7 +88,11 @@ else
     }'
 fi
 DOCKER
-  chmod +x "$ROOT/bin/docker"
+  cat > "$ROOT/bin/sleep" <<'SLEEP'
+#!/usr/bin/env bash
+exit 0
+SLEEP
+  chmod +x "$ROOT/bin/docker" "$ROOT/bin/sleep"
 }
 
 teardown() {
@@ -135,4 +160,30 @@ teardown() {
   grep -Fq 'bash tests/oci-runtime.bash podman' "$workflow"
   grep -Fq 'bash tests/oci-runtime.bash docker' "$workflow"
   grep -Fq 'retention-days: 1' "$workflow"
+}
+
+@test "transient unavailable manifest retries then accepts both registries" {
+  export MOCK_MANIFEST_OUTAGE=transient
+  run bash "$VERIFY" "$DIGEST" "$SOURCE_SHA" "$VERSION" "$ROOT/evidence"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"attempt 1/5 failed"* ]]
+  [ "$(cat "$MOCK_MANIFEST_STATE")" -eq 6 ]
+}
+
+@test "permanent unavailable manifest fails closed after bounded attempts" {
+  export MOCK_MANIFEST_OUTAGE=persistent
+  run bash "$VERIFY" "$DIGEST" "$SOURCE_SHA" "$VERSION" "$ROOT/evidence"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unavailable after five attempts"* ]]
+  [ "$(cat "$MOCK_MANIFEST_STATE")" -eq 5 ]
+}
+
+@test "GHCR access refusal is immediate and redacts untrusted diagnostics" {
+  export MOCK_MANIFEST_OUTAGE=denied
+  run bash "$VERIFY" "$DIGEST" "$SOURCE_SHA" "$VERSION" "$ROOT/evidence"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"authentication_or_authorization"* ]]
+  [[ "$output" == *"check GHCR package visibility and scoped read permission"* ]]
+  [[ "$output" != *"fictional-access-token-DO-NOT-LOG"* ]]
+  [ "$(cat "$MOCK_MANIFEST_STATE")" -eq 1 ]
 }
