@@ -102,6 +102,9 @@ jobs:
       # Global serialization avoids older releases racing new 'latest' tags.
       group: certbotbot-oci-registry-publish
       cancel-in-progress: false
+    outputs:
+      # The digest is a nonsecret content address, never a credential.
+      image_digest: ${{ steps.publisher.outputs.digest }}
     permissions:
       contents: read
       attestations: read
@@ -212,3 +215,132 @@ jobs:
           if [[ -d dist && ! -L dist ]]; then
             rm -rf -- dist
           fi
+
+  # Verify the actual published image in a distinct runner, rather than
+  # testing any container while the publishing secrets are in scope.
+  # Docker Hub is public; GHCR uses only the job's scoped read-only token.
+  verify_pulled:
+    name: Verify both published images under Docker and rootless Podman
+    needs: [verify, publish]
+    if: ${{ needs.publish.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+      packages: read
+    steps:
+      - name: Checkout the exact accepted release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.source_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install rootless Podman and verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes podman uidmap slirp4netns fuse-overlayfs jq
+          test "$(id -u)" -ne 0
+          test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
+          docker buildx version
+          podman version
+
+      - name: Reverify signed source and attested ordinary producer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: wesley-dean/certbotbot
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          SOURCE_RUN_ID: ${{ needs.verify.outputs.source_run_id }}
+          SOURCE_ATTEMPT: ${{ needs.verify.outputs.source_attempt }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+          PRODUCER_SHA: ${{ needs.verify.outputs.producer_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          bash ci/verify-oci-public-release.bash \
+            "$SOURCE_SHA" "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT" dist
+          test "$(sha256sum dist/certbotbot.bash | awk '{print $1}')" \
+            = "$PRODUCER_SHA"
+          test "$(sed -n 's/^version=//p' dist/producer-handoff.manifest)" \
+            = "$RELEASE_VERSION"
+
+      - name: Authenticate only for read-only GHCR access
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Inspect each registry's OCI index and attestation manifests
+        shell: bash
+        env:
+          DIGEST: ${{ needs.publish.outputs.image_digest }}
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+        run: |
+          set -euo pipefail
+          bash ci/verify-oci-attestations.bash \
+            "$DIGEST" "$SOURCE_SHA" "$RELEASE_VERSION" \
+            "$RUNNER_TEMP/oci-published-evidence"
+
+      - name: Pull and test both copies under Docker and rootless Podman
+        shell: bash
+        env:
+          DIGEST: ${{ needs.publish.outputs.image_digest }}
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          PRODUCER_SHA: ${{ needs.verify.outputs.producer_sha }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          for registry in ghcr dockerhub; do
+            case "$registry" in
+              ghcr) repository=ghcr.io/wesley-dean/certbotbot ;;
+              dockerhub) repository=docker.io/wesleydean/certbotbot ;;
+            esac
+            remote="$repository@$DIGEST"
+            local_image="certbotbot:verified-$registry"
+            docker pull "$remote" >/dev/null
+            docker tag "$remote" "$local_image"
+            test "$(docker image inspect "$local_image" \
+              --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" \
+              = "$SOURCE_SHA"
+            test "$(docker image inspect "$local_image" \
+              --format '{{index .Config.Labels "io.certbotbot.producer.sha256"}}')" \
+              = "$PRODUCER_SHA"
+            test "$(docker image inspect "$local_image" \
+              --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" \
+              = "$RELEASE_VERSION"
+            bash tests/oci-runtime.bash docker "$local_image" \
+              "$PWD/dist/certbotbot.bash"
+
+            # Record a nonsecret runtime package inventory. The two registries
+            # must contain the same Buildx image and package set.
+            docker run --rm --pull=never --network=none --read-only \
+              --cap-drop=ALL --security-opt=no-new-privileges \
+              --entrypoint /bin/cat "$local_image" \
+              /usr/local/share/certbotbot/packages.lock \
+              > "$RUNNER_TEMP/oci-published-evidence/$registry-packages.lock"
+            docker save -o "$RUNNER_TEMP/oci-$registry.tar" "$local_image"
+            podman load -i "$RUNNER_TEMP/oci-$registry.tar"
+            test "$(podman image inspect "$local_image" --format '{{.Id}}')" \
+              = "$(docker image inspect "$local_image" --format '{{.Id}}')"
+            bash tests/oci-runtime.bash podman "$local_image" \
+              "$PWD/dist/certbotbot.bash"
+          done
+          cmp -s "$RUNNER_TEMP/oci-published-evidence/ghcr-packages.lock" \
+            "$RUNNER_TEMP/oci-published-evidence/dockerhub-packages.lock"
+          sha256sum "$RUNNER_TEMP/oci-published-evidence/"*-packages.lock
+
+      - name: Preserve short-lived, nonsecret registry acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verified-oci-published-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/oci-published-evidence/
+          if-no-files-found: warn
+          retention-days: 1
