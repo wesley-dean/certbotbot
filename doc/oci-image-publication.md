@@ -290,8 +290,9 @@ Rootless Podman has a different private-tmpfs contract:
 
 ~~~bash
 # Require an unprivileged Podman runtime.
-podman info --format '{{.Host.Security.Rootless}}'
-# Set IMAGE to the independently reviewed Docker Hub image digest.
+test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
+# Set DIGEST to the complete, independently reviewed Docker Hub digest.
+DIGEST='sha256:REPLACE_WITH_VERIFIED_64_HEX_DIGEST'
 IMAGE="docker.io/wesleydean/certbotbot@$DIGEST"
 podman pull --arch amd64 --os linux "$IMAGE"
 podman run --rm --pull=never --network=none --read-only \
