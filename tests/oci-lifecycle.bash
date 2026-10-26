@@ -45,6 +45,8 @@ if [[ "$engine" == podman ]]; then
 fi
 
 # The same fixture underpins the exhaustive standalone Bats contract.
+# The shared fixture requires the artifact under test, as in Bats setup.
+BASH_STARTER_ARTIFACT="$producer"
 source tests/helpers/lifecycle-fixture.bash
 lifecycle_fixture_setup
 trap 'rm -rf -- "$ROOT"' EXIT
