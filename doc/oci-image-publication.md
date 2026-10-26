@@ -99,6 +99,26 @@ The workflow permits only the verified release ref and original
 source SHA, not the ambient `workflow_run` default-branch ref.
 A delayed, superseded release must fail rather than update `latest`.
 
+The publisher's critical `publish_image` inputs are deliberately
+explicit; these are verified against the checked-in
+[workflow](../.github/workflows/publish-image.yml):
+
+| Action input | Required contract |
+| --- | --- |
+| `github_ref`, `verified_release_ref` | Exact reviewed `refs/tags/vX.Y.Z`, never ambient `main` |
+| `verified_source_sha` | Full verified source commit from the Versioning run |
+| `repository_name` | `certbotbot` |
+| `dockerfile`, `context` | Verified allowlisted publisher context and its Dockerfile |
+| `platforms` | `linux/amd64` only |
+| `push`, `required_registries` | `true` and `dockerhub,ghcr` |
+| `ghcr_registry`, `ghcr_image` | `ghcr.io`, `wesley-dean/certbotbot` |
+| `dockerhub_registry`, `dockerhub_image` | `docker.io`, `wesleydean/certbotbot` |
+| `build_args` | Nonsecret source SHA, release version, producer checksum, handoff checksum and `BUILD_KIND=release` |
+
+`force_release` is not used. The pinned action handles stable
+`v0.x.y` releases through verified source and ref inputs; never
+force a release based solely on a tag name.
+
 Successful pushes are followed by verification of **both** registry
 references, the same image digest and required tags, `linux/amd64`,
 and the original source and ordinary producer checksum labels.
