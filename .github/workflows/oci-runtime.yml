@@ -36,6 +36,9 @@ jobs:
           make deps
           make build VERSION=0.0.0-dev
           bash -n tests/oci-runtime.bash
+          bash -n tests/oci-lifecycle.bash
+          bash -n tests/oci-lifecycle-case.bash
+          bash -n tests/helpers/lifecycle-fixture.bash
           bash ci/producer-handoff.bash create dist \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 0.0.0-dev
 
@@ -69,6 +72,11 @@ jobs:
           set -euo pipefail
           bash tests/oci-runtime.bash docker certbotbot:oci-acceptance dist/certbotbot.bash
 
+      - name: Exercise mocked certificate lifecycle under Docker
+        run: |
+          set -euo pipefail
+          bash tests/oci-lifecycle.bash docker certbotbot:oci-acceptance dist/certbotbot.bash
+
       - name: Transfer exact built image to rootless Podman without registry
         run: |
           set -euo pipefail
@@ -83,3 +91,8 @@ jobs:
           set -euo pipefail
           test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
           bash tests/oci-runtime.bash podman certbotbot:oci-acceptance dist/certbotbot.bash
+
+      - name: Exercise mocked certificate lifecycle under rootless Podman
+        run: |
+          set -euo pipefail
+          bash tests/oci-lifecycle.bash podman certbotbot:oci-acceptance dist/certbotbot.bash
