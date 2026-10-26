@@ -21,26 +21,26 @@ independent release mechanism.
 | --- | --- |
 | GitHub Versioning workflow | Test, attest, and publish eight standalone Bash assets from a reviewed source revision |
 | OCI release validation | Bind the signed source and release assets to a no-push OCI image; exercise Docker and rootless Podman without publishing secrets |
-| Protected publisher | Reverify the release; build and push the same image to GHCR and Docker Hub with the pinned \`publish_image\` action |
+| Protected publisher | Reverify the release; build and push the same image to GHCR and Docker Hub with the pinned `publish_image` action |
 | Post-push checks | Read both registries' tags and immutable manifests; verify image digest, platform, source and producer identity |
 | Independent pulled-image acceptance | Retrieve the published image by digest, verify OCI attestation descriptors, run under Docker and rootless Podman, compare package inventories |
 | Certificate operator | Supply existing S3, Route53, ACME, IAM, scheduling and certificate-installation infrastructure |
 
 The image is currently **Linux/amd64 only** and runs as
 **UID:GID 65532:65532**. Its root filesystem can be read-only,
-provided that \`/run/certbotbot\` is a private writable tmpfs.
+provided that `/run/certbotbot` is a private writable tmpfs.
 The runtime uses the selected Alpine 3.24 release family and the
-ordinary verified \`certbotbot.bash\` artifact. The producer does not
+ordinary verified `certbotbot.bash` artifact. The producer does not
 register a Let's Encrypt account, configure AWS, schedule renewals,
 install certificates on another host, or run a certificate server.
 
 Both publication destinations are explicit:
 
-- GHCR: \`ghcr.io/wesley-dean/certbotbot\`
-- Docker Hub: \`docker.io/wesleydean/certbotbot\`
+- GHCR: `ghcr.io/wesley-dean/certbotbot`
+- Docker Hub: `docker.io/wesleydean/certbotbot`
 
 These names are **not** interchangeable. In particular, the Docker
-Hub namespace is \`wesleydean\`, without a hyphen. Docker Hub
+Hub namespace is `wesleydean`, without a hyphen. Docker Hub
 visibility is managed on Docker Hub; GHCR package visibility and
 access are managed separately on GitHub. Public pull access is an
 operator-owned registry setting, not an effect of a successful push.
@@ -48,12 +48,12 @@ operator-owned registry setting, not an effect of a successful push.
 ## How automatic publication works
 
 The enabled
-[\`publish-image.yml\` workflow](../.github/workflows/publish-image.yml)
+[`publish-image.yml` workflow](../.github/workflows/publish-image.yml)
 publishes automatically after a successfully validated stable release.
 There is **no separate repository enablement variable**. Disable the
 workflow if automatic publishing is not intended.
 
-~~~mermaid
+```mermaid
 flowchart TD
     main[Reviewed merge to protected main]
     version[Versioning: verified source and eight attested assets]
@@ -73,12 +73,12 @@ flowchart TD
     push --> ghcr --> check
     push --> hub --> check
     check --> verify
-~~~
+```
 
 The event chain is **Versioning → OCI release validation →
 Publish verified certbotbot OCI image**. The two downstream workflows
-listen for completed \`workflow_run\` events; they do not rely on tag
-or release events from a release created using \`GITHUB_TOKEN\`.
+listen for completed `workflow_run` events; they do not rely on tag
+or release events from a release created using `GITHUB_TOKEN`.
 Such token-created tag/release events cannot be assumed to trigger
 additional workflows.
 
@@ -93,14 +93,14 @@ The publisher preflight rechecks that proof against the originating
 Versioning run and GitHub's current latest stable release. The
 protected publisher job independently rechecks the release and uses
 an allowlisted build context. It invokes the reviewed immutable
-\`wesley-dean/publish_image\` commit recorded in the
+`wesley-dean/publish_image` commit recorded in the
 [publication workflow](../.github/workflows/publish-image.yml).
 The workflow permits only the verified release ref and original
-source SHA, not the ambient \`workflow_run\` default-branch ref.
-A delayed, superseded release must fail rather than update \`latest\`.
+source SHA, not the ambient `workflow_run` default-branch ref.
+A delayed, superseded release must fail rather than update `latest`.
 
 Successful pushes are followed by verification of **both** registry
-references, the same image digest and required tags, \`linux/amd64\`,
+references, the same image digest and required tags, `linux/amd64`,
 and the original source and ordinary producer checksum labels.
 A separate, read-only, post-publication job then checks index
 structure, SBOM/provenance descriptor presence and binding, actual
@@ -121,8 +121,8 @@ destinations. Protect the branch and the publication environment
 before enabling or relying upon automatic publishing.
 
 1. In the GitHub repository's **Settings → Environments**, create
-   \`oci-registry-publish\`. Restrict deployment to the protected
-   \`main\` branch and configure appropriate required reviewers
+   `oci-registry-publish`. Restrict deployment to the protected
+   `main` branch and configure appropriate required reviewers
    or environment approval according to the team's policy. An
    automatically created environment without protection does not
    satisfy the intended boundary.
@@ -134,64 +134,64 @@ before enabling or relying upon automatic publishing.
 3. Ensure that the GHCR package destination is owned/accessible
    by the intended organization or user and that its credential
    can push packages. Ensure that the Docker Hub account/token has
-   push authority for \`wesleydean/certbotbot\`.
+   push authority for `wesleydean/certbotbot`.
 4. Explicitly configure the intended public/private visibility
    of **both** registry packages. A private repository may push
    successfully yet be unavailable to anonymous downstream
-   \`docker pull\` or \`podman pull\` users.
+   `docker pull` or `podman pull` users.
 5. Confirm the workflow's pinned upstream action, protected
    credentials, expected image namespaces, platform and permissions
    before releasing. Do not replace the pinned action with
-   \`@main\`, an arbitrary tag, or a similarly named action.
+   `@main`, an arbitrary tag, or a similarly named action.
 
 | GitHub Actions secret | Value / purpose |
 | --- | --- |
-| \`ghcr_username\` | GHCR login identity permitted to publish the package |
-| \`ghcr_token\` | GHCR package-write credential; use appropriately scoped GitHub authorization |
-| \`dockerhub_username\` | Docker Hub identity authorized for \`wesleydean/certbotbot\` |
-| \`dockerhub_token\` | Docker Hub access token authorized for image publication |
+| `ghcr_username` | GHCR login identity permitted to publish the package |
+| `ghcr_token` | GHCR package-write credential; use appropriately scoped GitHub authorization |
+| `dockerhub_username` | Docker Hub identity authorized for `wesleydean/certbotbot` |
+| `dockerhub_token` | Docker Hub access token authorized for image publication |
 
 The workflow currently passes these four values to the pinned
-\`publish_image\` action. It does **not** read a similarly spelled
-uppercase variable or a separate \`CERTBOTBOT_IMAGE_PUBLISH_ENABLED\`
+`publish_image` action. It does **not** read a similarly spelled
+uppercase variable or a separate `CERTBOTBOT_IMAGE_PUBLISH_ENABLED`
 switch. Verify exact secret names if the action reports missing
-credentials. \`GITHUB_TOKEN\` may support GHCR publication in other
+credentials. `GITHUB_TOKEN` may support GHCR publication in other
 setups, but this project's current workflow explicitly supplies
-\`ghcr_token\`; do not silently assume the two are the same.
+`ghcr_token`; do not silently assume the two are the same.
 
 The publisher's explicit GitHub job permissions are
-\`contents: read\`, \`attestations: read\`, and \`packages: write\`.
-Its preflight uses \`actions: read\` to retrieve the exact gate proof.
+`contents: read`, `attestations: read`, and `packages: write`.
+Its preflight uses `actions: read` to retrieve the exact gate proof.
 Only the protected publisher has registry-write credentials.
-The independent pulled-image job has \`contents: read\`,
-\`actions: read\`, \`attestations: read\`, and \`packages: read\`;
+The independent pulled-image job has `contents: read`,
+`actions: read`, `attestations: read`, and `packages: read`;
 it has no Docker Hub push token or publishing environment and
 uses a read-only GitHub token for GHCR access.
 
 Keep credential values in GitHub's secret store, never in Git,
-a command example, image labels, \`.env\`, a Docker build argument,
+a command example, image labels, `.env`, a Docker build argument,
 GitHub step outputs, artifacts or logs. A successful CI run is
 not evidence that secret material was safe if a separate process
 has echoed it.
 
 ## Image tags, immutable identities and provenance
 
-For a stable release tagged \`vX.Y.Z\`, the action publishes:
+For a stable release tagged `vX.Y.Z`, the action publishes:
 
-- \`latest\`, which advances only for the accepted current stable release;
-- \`X.Y.Z\`, \`X.Y\`, and \`X\` tags;
-- \`sha-<short-source-commit>\` and
-  \`sha-<full-40-character-source-commit>\`.
+- `latest`, which advances only for the accepted current stable release;
+- `X.Y.Z`, `X.Y`, and `X` tags;
+- `sha-<short-source-commit>` and
+  `sha-<full-40-character-source-commit>`.
 
 These are image tags, so version tags omit the GitHub release tag's
-leading \`v\`. No \`edge\` tag is published by this release-only
-workflow. \`latest\`, version-family tags, and other mutable references
+leading `v`. No `edge` tag is published by this release-only
+workflow. `latest`, version-family tags, and other mutable references
 must not be mistaken for immutable bytes. The complete
-\`repository@sha256:digest\` reference identifies the selected
+`repository@sha256:digest` reference identifies the selected
 published artifact.
 
 For an introductory example, the [README](../README.md) deliberately
-uses \`latest\` without a hardcoded release version. For production,
+uses `latest` without a hardcoded release version. For production,
 pin a reviewed immutable digest and retain the previous known-good
 digest for rollback.
 
@@ -227,7 +227,7 @@ docker image inspect "$IMAGE" \
 
 Compare the source revision, version and producer SHA-256 label with
 the independently verified GitHub release and ordinary
-\`certbotbot.bash\` artifact. Independently check the corresponding
+`certbotbot.bash` artifact. Independently check the corresponding
 Docker Hub digest, too; do not infer availability from a successful
 GHCR pull. The built-in publisher checks expect the **same single
 Buildx image digest** in both destinations. Separate downstream
@@ -237,7 +237,7 @@ mirrors or registry transformations are not implicitly trusted.
 
 The upstream publisher requests a BuildKit-generated SBOM for pushed
 images. The independent acceptance job checks each registry's OCI
-index for one runnable \`linux/amd64\` manifest, a matching
+index for one runnable `linux/amd64` manifest, a matching
 image-bound BuildKit attestation descriptor, and in-toto layers
 advertising SPDX SBOM and SLSA provenance predicate types. It also
 checks image labels and package inventory after a real pull.
@@ -256,7 +256,7 @@ Do not present SBOM presence alone as an image security guarantee.
 
 These probes use the image's real one-shot producer entrypoint.
 No live AWS credentials, issuer account or network access are
-required for \`--help\` and \`--version\`. Replace the digest
+required for `--help` and `--version`. Replace the digest
 placeholder above before executing a digest-pinned probe.
 
 ~~~bash
@@ -284,9 +284,9 @@ Real certificate issuance or renewal requires outbound access to
 AWS and the ACME service, a pre-existing registered account,
 seeded S3 state, scoped IAM/Route53 credentials, secure optional
 GPG secret injection, and a one-writer schedule. Do **not** run
-real certificate jobs using \`--network=none\`. Do not add
-\`--privileged\`, a Docker socket mount, host
-\`/etc/letsencrypt\`, or world-writable secret state to solve
+real certificate jobs using `--network=none`. Do not add
+`--privileged`, a Docker socket mount, host
+`/etc/letsencrypt`, or world-writable secret state to solve
 container permission problems.
 
 For real credential and archive handling, follow
@@ -305,8 +305,8 @@ this offline smoke test.
    tests passed and the matching same-attempt proof was produced.
 3. Find **Publish verified certbotbot OCI image** chained from
    that successful gate. Confirm success in both
-   \`Revalidate exact OCI gate and attested Versioning release\`
-   and \`Publish once to GHCR and Docker Hub\`.
+   `Revalidate exact OCI gate and attested Versioning release`
+   and `Publish once to GHCR and Docker Hub`.
 4. In the publish job, confirm the actual GHCR and Docker Hub
    manifest/tag responses and image digest checks succeeded.
    The pushed digest and tag mappings are more authoritative
@@ -318,7 +318,7 @@ this offline smoke test.
    rootless runtime behavior and matching installed package inventories.
 6. Retain the nonsecret digest and source SHA in the release
    acceptance record. Inspect the short-lived
-   \`verified-oci-published-...\` workflow artifact if needed.
+   `verified-oci-published-...` workflow artifact if needed.
    Its retention is **one day**, so archive independently
    reviewed evidence outside GitHub Actions if long-term
    audit retention is required.
@@ -332,17 +332,17 @@ fails even when remote tags already exist.
 
 | Symptom | Investigation and action |
 | --- | --- |
-| No OCI gate after a release | Inspect the completed Versioning workflow, event permissions and named \`workflow_run\` trigger. Do not assume a \`GITHUB_TOKEN\`-created tag will trigger another workflow. |
-| Gate rejected a source, tag or attestation | Check its originating run/attempt, protected \`main\` ancestry, signed source, eight expected release assets and attestations. Never forge a gate proof or bypass the verifier. |
+| No OCI gate after a release | Inspect the completed Versioning workflow, event permissions and named `workflow_run` trigger. Do not assume a `GITHUB_TOKEN`-created tag will trigger another workflow. |
+| Gate rejected a source, tag or attestation | Check its originating run/attempt, protected `main` ancestry, signed source, eight expected release assets and attestations. Never forge a gate proof or bypass the verifier. |
 | Publisher preflight fails | Check that the exact gate proof is available and identifies the same successful Versioning run; ensure the release is still GitHub's **latest stable** release. |
-| Publisher waits for approval | Inspect \`oci-registry-publish\` protection/reviewers and authorized deployment branches; do not remove protection merely to speed up publication. |
+| Publisher waits for approval | Inspect `oci-registry-publish` protection/reviewers and authorized deployment branches; do not remove protection merely to speed up publication. |
 | Action says credentials are missing | Check the **exact lower-case GitHub secret names**, their scope, and whether the environment permits access. Never print credential values to troubleshoot. |
 | Registry login or push is denied | Verify namespace/repository ownership, token scopes and expiry, GHCR package permissions, Docker Hub permissions and any registry policy. Rotate a rejected token using the procedure below. |
 | Push succeeded but final manifest check fails | Inspect both remote registries. An OCI index or tag may take time to propagate. The publisher retries unavailable reads a bounded number of times, but fails closed on wrong digests or identity. Check private-package pull access when applicable. |
-| Docker Hub and GHCR differ | Capture each remote tag/digest independently; treat publication as incomplete and investigate the mismatch. Do not silently overwrite a newer accepted \`latest\` or claim success based on the first registry. |
-| Pulled-image job fails on manifests or SBOM | Inspect the actual OCI index and attestation descriptors; check BuildKit behavior and supported \`linux/amd64\`. Do not weaken the requirement just to mark the run green. |
-| Docker or Podman runtime check fails | Confirm supported architecture, read-only rootfs, nonroot UID/GID, private tmpfs, package inventory, and exact digest. For rootless Podman, check \`U=true\` tmpfs ownership; do not elevate to root. |
-| Release is no longer latest | The publisher intentionally rejects a superseded release. Evaluate the new accepted release instead of forcing an old \`latest\`. |
+| Docker Hub and GHCR differ | Capture each remote tag/digest independently; treat publication as incomplete and investigate the mismatch. Do not silently overwrite a newer accepted `latest` or claim success based on the first registry. |
+| Pulled-image job fails on manifests or SBOM | Inspect the actual OCI index and attestation descriptors; check BuildKit behavior and supported `linux/amd64`. Do not weaken the requirement just to mark the run green. |
+| Docker or Podman runtime check fails | Confirm supported architecture, read-only rootfs, nonroot UID/GID, private tmpfs, package inventory, and exact digest. For rootless Podman, check `U=true` tmpfs ownership; do not elevate to root. |
+| Release is no longer latest | The publisher intentionally rejects a superseded release. Evaluate the new accepted release instead of forcing an old `latest`. |
 
 ### Partial publication is not a transaction
 
@@ -367,7 +367,7 @@ For recovery:
    Alpine packages and produce a new digest.
 5. If a newer release has superseded it, follow the new normal
    verified release path. Do **not** bypass the stable-release
-   check to overwrite \`latest\` with an older source.
+   check to overwrite `latest` with an older source.
 6. Recheck both registries and the independently pulled-image
    acceptance job. Record a successful end-to-end run before
    declaring the release accepted.
@@ -383,8 +383,8 @@ publisher is repaired.
 
 1. Create a replacement token in the correct GHCR or Docker Hub
    identity, with the minimum required package authority.
-2. Update the corresponding \`ghcr_token\` or
-   \`dockerhub_token\` GitHub Actions secret at the reviewed
+2. Update the corresponding `ghcr_token` or
+   `dockerhub_token` GitHub Actions secret at the reviewed
    scope. Keep its exact key name unchanged; do not create a
    second publication-enable variable.
 3. Test access through the next approved gated release or an
@@ -411,7 +411,7 @@ published digest and package list, not merely the release tag.
 For a planned upgrade:
 
 1. Review the changelog/ADRs and accepted release, the actual
-   \`linux/amd64\` image, package inventory and security results.
+   `linux/amd64` image, package inventory and security results.
 2. Confirm the Versioning, OCI gate, dual publisher and
    pulled-image acceptance workflows succeeded for the new
    release and both registries.
@@ -425,7 +425,7 @@ For a planned upgrade:
    accepted image **by its immutable digest** and investigate
    separately before authorizing another producer run.
 
-\`latest\` is useful for initial exploration, but an existing
+`latest` is useful for initial exploration, but an existing
 production deployment should not follow it implicitly without
 review. Do not treat source-commit tags as proof that the
 same transitive OS packages were installed in every rebuild.
@@ -436,7 +436,7 @@ publisher requires its own engineering and governance review.
 ## Related material
 
 - [Product README](../README.md): onboarding, public CLI, and
-  current \`latest\` pull examples
+  current `latest` pull examples
 - [Container deployment](container-deployment.md): private tmpfs,
   AWS credentials, runtime permissions and certificate operation
 - [Docker and Podman quick start](examples/docker-podman.md):
