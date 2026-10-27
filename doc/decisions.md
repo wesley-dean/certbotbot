@@ -542,3 +542,10 @@ no-push gate build and the final publisher build, so detailed remote
 runtime, package, SBOM and parity verification remains in task #166.
 
 See [ADR-040](adr/ADR-040-release-gated-dual-registry-oci-publication.md).
+
+### ADR-042: Explicit CA-Bound Staging Selection for Certificate Lifecycle
+
+The ordinary certificate producer explicitly selects either Let's Encrypt production or staging, keeping production as the compatibility default while requiring staging opt-in.  The selected CA identity binds the restored account, Certbot `--server`, issuance, selected renewal, and renewal metadata validation, with no mixed account archives or endpoint fallback.  Milestone 4's privileged E2E workflow separately requires explicit staging-only selection and forbids production contacts, including for negative tests.  This refines only the production-only CA assumptions of ADRs 023–025 and preserves ADR-041's independent registration and account-initialization rules.
+
+See [ADR-042](adr/ADR-042-explicit-ca-bound-staging-issuance.md).
+

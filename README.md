@@ -53,7 +53,9 @@ producer; neither is required.
 The current producer supports **S3 storage**, **gzip-compressed GNU tar**
 state archives (optionally inside an authenticated GPG envelope), and
 **Certbot with Route53 DNS-01**. It relies on a **previously registered
-Let's Encrypt production account** and an **already seeded S3 archive**.
+Let's Encrypt account for the **selected CA** (production by default, or
+explicit staging) and an **already seeded S3 archive**. Never mix staging
+and production account state within one archive or S3 object key.
 
 The ordinary certificate lifecycle does **not** create Let's Encrypt accounts,
 S3 buckets, IAM roles, hosted zones, or an initial archive.  The separate,
@@ -137,8 +139,10 @@ The address and bucket are illustrative.  The command uses isolated
 Certbot state, a verified account-only tar archive and conditional S3
 publication.  No certificate is issued.  A confirmed missing S3 key is
 permitted only for explicit registration; access errors and ambiguous state
-are fatal.  The current ordinary issuer remains production-only: creating
-a staging account does not yet authorize staging certificate issuance.
+are fatal.  The ordinary issuer accepts a *separate*, explicitly selected staging
+CA and archive under ADR-042. Registration never implicitly starts issuance;
+any milestone 4 live test must explicitly use staging and must never reach
+Let's Encrypt production.
 See [the registration contract](doc/acme-account-registration-contract.md)
 and [ADR-041](doc/adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md).
 
@@ -274,6 +278,7 @@ public flags.
 
 | CLI | Environment / literal `.env` | Default or purpose |
 | --- | --- | --- |
+| `--acme-environment` | `ACME_ENVIRONMENT` | `production` by default; opt into `staging` for a matching test archive |
 | `DNS_NAME` or `--domain` | `DOMAIN` | **Required** primary DNS name |
 | `--san` (repeatable) | `ADDITIONAL_SANS` | Optional additional names; CLI replaces lower-tier SAN collection |
 | `--include-subdomains` | `INCLUDE_SUBDOMAINS` | `true`; add complementary apex/wildcard for each name |

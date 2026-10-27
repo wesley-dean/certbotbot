@@ -23,8 +23,10 @@ are linked at each stage.
 
 One invocation selects **one certificate lineage** (one Certbot cert name)
 and one **authoritative existing S3 current archive**. That archive can hold
-an existing production ACME account plus multiple complete, independent
-lineages. Selection never means "renew all" or "remove orphaned lineages":
+one existing account for the selected Let's Encrypt CA and multiple
+complete, independent lineages. Production is the ordinary default;
+staging is an explicit opt-in, bound through account, renewal metadata and
+Certbot server checks by ADR-042. Never share an S3 archive between CAs. Selection never means "renew all" or "remove orphaned lineages":
 unselected lineages must survive exactly as validated.
 
 A fresh trusted runner needs Bash **4.3+**, AWS CLI v2, Certbot and its

@@ -9,10 +9,35 @@
 ## deliberately do not claim that the account is registered remotely or that
 ## canonical renewal metadata has been mapped into a private Certbot runtime.
 
-## @fn certbotbot_state_account()
-## @brief Requires one unambiguous production ACME account with private files.
+## @fn certbotbot_ca_select()
+## @brief Binds the ordinary issuer to exactly one supported Let's Encrypt CA.
 ## @details
-## The account must occupy Certbot's production endpoint directory and contain
+## ADR-042 permits an explicit staging selection and retains production as
+## the compatibility default.  The selected host and server are derived
+## only from the bounded environment, never from untrusted archive content.
+## @par STDOUT
+## Nothing is written to STDOUT.
+## @par STDERR
+## One fixed diagnostic when the environment is unsupported.
+## @retval 0 Selected host and server are bound.
+## @retval 64 Invalid CA environment.
+certbotbot_ca_select() {
+  case "${CERTBOTBOT_ACME_ENVIRONMENT-production}" in
+    production) CERTBOTBOT_CA_HOST=acme-v02.api.letsencrypt.org ;;
+    staging) CERTBOTBOT_CA_HOST=acme-staging-v02.api.letsencrypt.org ;;
+    *)
+      printf '%s\n' 'certbotbot: unsupported ACME environment' >&2
+      return 64
+      ;;
+  esac
+  # shellcheck disable=SC2034
+  CERTBOTBOT_CA_SERVER="https://$CERTBOTBOT_CA_HOST/directory"
+}
+
+## @fn certbotbot_state_account()
+## @brief Requires one unambiguous account for the selected ACME environment.
+## @details
+## The account must occupy the explicitly selected CA directory and contain
 ## nonempty, regular registration, key and metadata files. No other account
 ## endpoints or competing IDs are allowed in the single-account MVP. The key
 ## must have no group/other permissions. Content is never printed or parsed.
@@ -28,7 +53,8 @@
 ## @retval 1 Account selection or on-disk structure is unsuitable.
 certbotbot_state_account() {
   local config="$1" host directory account entry file count=0
-  host="$config/accounts/acme-v02.api.letsencrypt.org"
+  certbotbot_ca_select || return 1
+  host="$config/accounts/$CERTBOTBOT_CA_HOST"
   directory="$host/directory"
   [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] ||
     return 1
@@ -230,7 +256,7 @@ certbotbot_state_lineage() {
 ## @details
 ## The selected name is an operation target, not a filter for state safety.
 ## Before provider execution and before publication, verify all persisted
-## renewal files against the supported production account/Route53 dialect.
+## renewal files against the selected CA account/Route53 dialect.
 ## This function must only run when renewal paths are canonical: never between
 ## selected prepare/finalize operations. The read-only mapper uses ordinary
 ## structural preflight and does not rewrite any renewal file in verify mode.

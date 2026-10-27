@@ -16,7 +16,7 @@ literal .env/environment/CLI settings, selects the one lineage, then:
 2. Checks the mandatory existing S3 object and downloads its bytes using the
    resolved bucket/key. No missing-object bootstrap or host-account fallback.
 3. Validates and restores relative Certbot state into isolated `config/`.
-   Requires the single recognized existing production ACME account and
+   Requires the single recognized existing account for the selected CA and
    unambiguous selected lineage.
 4. If the lineage is absent, issues exactly that certificate with installed
    Certbot/Route53 and the restored account, then canonicalizes the generated
@@ -43,9 +43,11 @@ ACME sandbox, remote certificate chain verifier, distributed lock, or
 transaction. Operator-supplied tools and credentials have their normal
 authority. The host's `/etc/letsencrypt` is never used as a state fallback.
 
-The issuer and selected-renewal adapters use the production Let's Encrypt
-endpoint and **do not register an account**. This remains the existing MVP
-contract. All automated lifecycle tests replace Certbot/AWS with controlled
+The issuer and selected-renewal adapters use the explicitly selected Let's Encrypt
+endpoint (production by compatibility default, staging by opt-in) and
+**do not register an account**. ADR-042 refines the original MVP
+production-only CA assumption; cross-CA archives and renewal metadata
+fail closed. All automated lifecycle tests replace Certbot/AWS with controlled
 local mocks and use actual local OpenSSL and tar/gzip; they do not establish
 real ACME/Route53/S3 interoperability. Milestone #4 governs authorized live
 staging evidence.

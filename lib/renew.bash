@@ -141,7 +141,7 @@ certbotbot_renew_fingerprint() {
 ## Installed Certbot must list dns-route53 and recognize the exact restored
 ## account. The provider maps five canonical renewal path fields to private
 ## paths, then invokes 'certbot renew --cert-name NAME' with explicit
-## private directories, account, production ACME server, noninteractive mode,
+## private directories, account, selected ACME server, noninteractive mode,
 ## and hook suppression. It validates resulting lineage and SANs, returns
 ## renewal paths to canonical form, and compares durable state fingerprints.
 ## It never invokes global renew, register, forced renewal or publication.
@@ -235,7 +235,7 @@ certbotbot_provider_renew() {
     fi
   done
 
-  directory="$config/accounts/acme-v02.api.letsencrypt.org/directory"
+  directory="$config/accounts/$CERTBOTBOT_CA_HOST/directory"
   for entry in "$directory/"*; do
     [[ -d "$entry" && ! -L "$entry" ]] || continue
     account="${entry##*/}"
@@ -245,7 +245,7 @@ certbotbot_provider_renew() {
     printf '%s\n' 'certbotbot: unsupported ACME account identity' >&2
     return 65
   fi
-  common=(--config-dir "$config" --work-dir "$work" --logs-dir "$logs" --server https://acme-v02.api.letsencrypt.org/directory --non-interactive --no-directory-hooks)
+  common=(--config-dir "$config" --work-dir "$work" --logs-dir "$logs" --server "$CERTBOTBOT_CA_SERVER" --non-interactive --no-directory-hooks)
 
   listing="$(umask 077; mktemp "$logs/plugins.XXXXXXXX")" || {
     printf '%s\n' 'certbotbot: private Certbot staging unavailable' >&2
