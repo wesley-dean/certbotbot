@@ -123,8 +123,7 @@ certbotbot_filename_render() {
     certbotbot_filename_error 'embedded mktext renderer unavailable'
     return 64
   fi
-  if ! rendered="$(printf '%s' "$template" |
-    mktext render certbotbot_filename_context 2>/dev/null)"; then
+  if ! rendered="$(printf '%s' "$template" | mktext render certbotbot_filename_context 2>/dev/null)"; then
     certbotbot_filename_error 'filename rendering failed'
     return 64
   fi
