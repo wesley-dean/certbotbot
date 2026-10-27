@@ -142,7 +142,7 @@ certbotbot_provider_issue() {
     return 69
   fi
 
-  directory="$config/accounts/acme-v02.api.letsencrypt.org/directory"
+  directory="$config/accounts/$CERTBOTBOT_CA_HOST/directory"
   for entry in "$directory/"*; do
     [[ -d "$entry" && ! -L "$entry" ]] || continue
     account="${entry##*/}"
@@ -160,7 +160,7 @@ certbotbot_provider_issue() {
       return 74
     fi
   done
-  common=(--config-dir "$config" --work-dir "$work" --logs-dir "$logs" --server https://acme-v02.api.letsencrypt.org/directory --non-interactive --no-directory-hooks)
+  common=(--config-dir "$config" --work-dir "$work" --logs-dir "$logs" --server "$CERTBOTBOT_CA_SERVER" --non-interactive --no-directory-hooks)
 
   listing="$(umask 077; mktemp "$logs/plugins.XXXXXXXX")" || {
     printf '%s\n' 'certbotbot: private Certbot staging unavailable' >&2
