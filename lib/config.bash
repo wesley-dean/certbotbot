@@ -113,12 +113,12 @@ certbotbot_config_resolve() {
   while (( i < ${#args[@]} )); do
     arg="${args[i]}"
     case "$arg" in
-      --config|--domain|--san|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed)
+      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed)
         (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --config=*|--domain=*|--san=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*)
+      --config=*|--domain=*|--san=*|--acme-environment=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -156,6 +156,7 @@ certbotbot_config_resolve() {
         explicit_config=true
         ;;
       --domain) key=DOMAIN ;;
+      --acme-environment) key=ACME_ENVIRONMENT ;;
       --include-subdomains) key=INCLUDE_SUBDOMAINS ;;
       --cert-name) key=CERT_NAME ;;
       --s3-bucket) key=S3_BUCKET ;;
@@ -181,14 +182,18 @@ certbotbot_config_resolve() {
     certbotbot_error 'configuration file is missing'
     return 64
   fi
-  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [BACKUP_RETENTION_COUNT]=0 [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false)
-  for name in DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
+  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [BACKUP_RETENTION_COUNT]=0 [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false [ACME_ENVIRONMENT]=production)
+  for name in ACME_ENVIRONMENT DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     value="${defaults[$name]}"
     if [[ -n "${CERTBOTBOT_FILE_VALUES[$name]+x}" ]]; then value="${CERTBOTBOT_FILE_VALUES[$name]}"; fi
     if [[ -n "${!name+x}" ]]; then value="${!name}"; fi
     if [[ -n "${cli[$name]+x}" ]]; then value="${cli[$name]}"; fi
     printf -v "CERTBOTBOT_$name" '%s' "$value"
   done
+  case "$CERTBOTBOT_ACME_ENVIRONMENT" in
+    production|staging) ;;
+    *) certbotbot_error 'invalid ACME environment'; return 64 ;;
+  esac
   # S3_KEY and S3_KEY_TEMPLATE are one logical choice. Do not resolve
   # independently: a higher-tier literal must mask a lower-tier template.
   CERTBOTBOT_S3_KEY_IS_TEMPLATE=false
