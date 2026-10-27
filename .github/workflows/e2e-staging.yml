@@ -2,17 +2,10 @@
 name: Manual Let's Encrypt staging E2E
 
 # Separate credentialed acceptance: never PR, push, schedule or release.
+# CKV_GHA_7: the manual workflow accepts no user-controlled build inputs.
+# Only the repository owner can dispatch the fixed staging-only test.
 on:
   workflow_dispatch:
-    inputs:
-      acme_environment:
-        description: 'Type staging exactly (production is forbidden)'
-        type: string
-        required: true
-      confirmation:
-        description: 'Type I_AUTHORIZE_STAGING_ONLY after reviewing the test domain, zone, S3 key and recovery plan'
-        type: string
-        required: true
 
 permissions:
   contents: read
@@ -30,16 +23,15 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'wesley-dean/certbotbot' &&
       github.ref == 'refs/heads/main' &&
-      inputs.acme_environment == 'staging' &&
-      inputs.confirmation == 'I_AUTHORIZE_STAGING_ONLY'
+      github.actor == 'wesley-dean' &&
+      github.triggering_actor == 'wesley-dean'
     runs-on: ubuntu-24.04
     outputs:
       manifest_sha: ${{ steps.handoff.outputs.manifest_sha }}
     env:
-      E2E_ACME_ENVIRONMENT: ${{ inputs.acme_environment }}
-      E2E_OPERATOR_CONFIRMATION: ${{ inputs.confirmation }}
+      E2E_ACME_ENVIRONMENT: staging
     steps:
-      # FIRST STEP. Reject prohibited selections before even checking out
+      # FIRST STEP. Reject prohibited dispatches before even checking out
       # source, installing packages, or accessing any remote endpoint.
       - name: Reject non-staging event before any network-capable step
         shell: bash
@@ -49,8 +41,9 @@ jobs:
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$GITHUB_ACTOR" == wesley-dean ]]
+          [[ "$GITHUB_TRIGGERING_ACTOR" == wesley-dean ]]
           [[ "$E2E_ACME_ENVIRONMENT" == staging ]]
-          [[ "$E2E_OPERATOR_CONFIRMATION" == I_AUTHORIZE_STAGING_ONLY ]]
 
       - name: Check out exact trusted main source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,14 +94,13 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'wesley-dean/certbotbot' &&
       github.ref == 'refs/heads/main' &&
-      inputs.acme_environment == 'staging' &&
-      inputs.confirmation == 'I_AUTHORIZE_STAGING_ONLY'
+      github.actor == 'wesley-dean' &&
+      github.triggering_actor == 'wesley-dean'
     runs-on: ubuntu-24.04
     outputs:
       object_sha256: ${{ steps.stage.outputs.object_sha256 }}
     env:
-      E2E_ACME_ENVIRONMENT: ${{ inputs.acme_environment }}
-      E2E_OPERATOR_CONFIRMATION: ${{ inputs.confirmation }}
+      E2E_ACME_ENVIRONMENT: staging
     steps:
       - name: Reject prohibited CA and untrusted source before checkout
         shell: bash
@@ -118,8 +110,9 @@ jobs:
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$GITHUB_ACTOR" == wesley-dean ]]
+          [[ "$GITHUB_TRIGGERING_ACTOR" == wesley-dean ]]
           [[ "$E2E_ACME_ENVIRONMENT" == staging ]]
-          [[ "$E2E_OPERATOR_CONFIRMATION" == I_AUTHORIZE_STAGING_ONLY ]]
 
       - name: Check out same trusted main source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -179,12 +172,11 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'wesley-dean/certbotbot' &&
       github.ref == 'refs/heads/main' &&
-      inputs.acme_environment == 'staging' &&
-      inputs.confirmation == 'I_AUTHORIZE_STAGING_ONLY'
+      github.actor == 'wesley-dean' &&
+      github.triggering_actor == 'wesley-dean'
     runs-on: ubuntu-24.04
     env:
-      E2E_ACME_ENVIRONMENT: ${{ inputs.acme_environment }}
-      E2E_OPERATOR_CONFIRMATION: ${{ inputs.confirmation }}
+      E2E_ACME_ENVIRONMENT: staging
     steps:
       - name: Reject prohibited CA and untrusted source before checkout
         shell: bash
@@ -194,8 +186,9 @@ jobs:
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$GITHUB_ACTOR" == wesley-dean ]]
+          [[ "$GITHUB_TRIGGERING_ACTOR" == wesley-dean ]]
           [[ "$E2E_ACME_ENVIRONMENT" == staging ]]
-          [[ "$E2E_OPERATOR_CONFIRMATION" == I_AUTHORIZE_STAGING_ONLY ]]
 
       - name: Check out same trusted main source on clean runner
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
