@@ -141,7 +141,7 @@ certbotbot_renew_fingerprint() {
 ## Installed Certbot must list dns-route53 and recognize the exact restored
 ## account. The provider maps five canonical renewal path fields to private
 ## paths, then invokes 'certbot renew --cert-name NAME' with explicit
-## private directories, account, production ACME server, noninteractive mode,
+## private directories, account, selected ACME server, noninteractive mode,
 ## and hook suppression. It validates resulting lineage and SANs, returns
 ## renewal paths to canonical form, and compares durable state fingerprints.
 ## It never invokes global renew, register, forced renewal or publication.
