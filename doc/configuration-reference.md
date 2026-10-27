@@ -13,8 +13,9 @@ read-only `certbotbot-client.bash` has a different CLI; see the
 [the registration contract](acme-account-registration-contract.md).
 It requires an email address and affirmative TOS consent, defaults EFF
 email signup to `true`, and permits an account-only initialization of a
-positively missing object.  It does not issue a certificate or change the
-issuer's production-only ACME selection.
+positively missing object.  It does not issue a certificate. The ordinary
+issuer independently supports explicit staging selection under ADR-042;
+production remains the compatibility default.
 
 The ordinary command manages **one selected certificate lineage per invocation**,
 within one **existing, authoritative S3 archive**. That archive may contain
@@ -26,6 +27,12 @@ reload certificates on another host.
 For the actual processing order and trust boundaries, see
 [How it works](how-it-works.md). For Docker and rootless Podman, see
 [the container deployment guide](container-deployment.md).
+The ordinary issuer accepts only `production` (default) or explicit
+`staging`, with distinct S3 keys and strictly matching account and
+renewal metadata. For milestone 4, **staging must be selected explicitly**;
+no live production contact is permitted. See
+[ADR-042](adr/ADR-042-explicit-ca-bound-staging-issuance.md).
+
 This reference describes supported configuration **without** claiming
 that its illustrative production-facing commands have been run against
 live AWS, Route53, or Let's Encrypt.
@@ -84,6 +91,7 @@ must exist at execution time; inputs can be inherited from a lower tier.
 
 | CLI option | Environment / `.env` key | Default | Accepted value / effect |
 | --- | --- | --- | --- |
+| `--acme-environment` | `ACME_ENVIRONMENT` | `production` | `production` or `staging`; one bounded CA per archive, no implicit registration or endpoint fallback |
 | Primary positional `DNS_NAME` or `--domain` | `DOMAIN` | **Required** | One canonicalizable primary DNS name |
 | `--san` (repeatable) | `ADDITIONAL_SANS` | Empty collection | Additional DNS names; CLI: one per flag; environment/file: comma-separated collection |
 | `--include-subdomains` | `INCLUDE_SUBDOMAINS` | `true` | Literal `true` or `false`; adds apex/wildcard complement to each explicit name |
@@ -477,7 +485,7 @@ dependencies separately:
 | --- | --- | --- |
 | AWS role, workload identity, OIDC federation or SDK credential chain | Operator/cloud runtime | Allow precise S3 reads/writes and Route53 DNS changes as needed |
 | `AWS_PROFILE`, `AWS_DEFAULT_REGION`, `AWS_REGION`, `AWS_SHARED_CREDENTIALS_FILE` | AWS CLI / operator, **not** parsed `.env` keys | Select suitable external account/region/credential source |
-| Existing S3 bucket and current object | Operator | Seed valid tar/GPG archive containing existing production Let's Encrypt account |
+| Existing S3 bucket and current object | Operator | Seed a valid tar/GPG archive with an existing account matching the explicitly selected Let's Encrypt CA (production by default) |
 | Hosted-zone and Route53 policy | Operator | Authorize DNS-01 changes for every requested SAN's zone |
 | Certbot and `certbot-dns-route53` | Host/image package owner | Existing-account selected issuance/renewal; no account auto-registration |
 | Bash 4.3+, AWS CLI v2, GNU tar/gzip, OpenSSL, filesystem tools | Host/image package owner | Compatible trusted external executables |
