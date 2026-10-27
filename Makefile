@@ -164,9 +164,9 @@ format:
 ## The count is intentionally required to be positive, not pinned to a brittle
 ## number of individual Bats cases; new cases remain automatic additions.
 verify-m4-e2e-inventory:
-	@test -f "$(M4_E2E_SUITE)" && test ! -L "$(M4_E2E_SUITE)" || { printf '%s\\n' 'Missing or unsafe milestone 4 E2E Bats suite' >&2; exit 65; }
-	@case ' $(TEST_SCRIPTS) ' in *' $(M4_E2E_SUITE) '*) ;; *) printf '%s\\n' 'Milestone 4 E2E suite is absent from the full Bats inventory' >&2; exit 65 ;; esac
-	@count="$(bats --count "$(M4_E2E_SUITE)")" && [[ "$count" =~ ^[1-9][0-9]*$ ]] || { printf '%s\\n' 'Milestone 4 E2E Bats suite has no executable cases' >&2; exit 65; }
+	@test -f "$(M4_E2E_SUITE)" && test ! -L "$(M4_E2E_SUITE)" || { printf '%s\n' 'Missing or unsafe milestone 4 E2E Bats suite' >&2; exit 65; }
+	@case ' $(TEST_SCRIPTS) ' in *' $(M4_E2E_SUITE) '*) ;; *) printf '%s\n' 'Milestone 4 E2E suite is absent from the full Bats inventory' >&2; exit 65 ;; esac
+	@count="$$(bats --count "$(M4_E2E_SUITE)")" && [[ "$$count" =~ ^[1-9][0-9]*$$ ]] || { printf '%s\n' 'Milestone 4 E2E Bats suite has no executable cases' >&2; exit 65; }
 
 ## Run the behavior suite against every generated artifact flavor.
 test: build verify-m4-e2e-inventory
