@@ -10,8 +10,8 @@
 ## It does not register ACME accounts, renew existing lineages, execute
 ## restored hooks, validate issued PEMs, or publish a new S3 archive.
 ##
-## Only installed Certbot and certbot-dns-route53 are supported. Production
-## inherits the operator's AWS credentials and selected region. MVP tests use
+## Only installed Certbot and certbot-dns-route53 are supported. The explicitly
+## selected CA inherits the operator's AWS credentials and selected region. MVP tests use
 ## a deterministic executable mock instead of live cloud/ACME accounts.
 
 ## @fn certbotbot_provider_sans()
