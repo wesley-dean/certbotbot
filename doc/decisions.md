@@ -507,6 +507,23 @@ producer, security, runtime and release contracts remain authoritative.
 
 See [ADR-039](adr/ADR-039-alpine-oci-runtime.md).
 
+### ADR-041: Explicit ACME Registration and Account-Only Archive Initialization
+
+An operator-invoked `certbotbot register` operation requires an email address,
+explicit terms acceptance and a selected Let's Encrypt production or staging
+account context, with EFF email signup enabled by default and independently
+configurable. Registration never
+occurs implicitly during certificate issuance or renewal; explicit registration
+alone may initialize a positively missing current S3 object with a validated
+account-only archive. Existing suitable accounts are reused without rewriting
+their state, while incompatible account contexts, uncertain reads and unsafe
+archives fail closed; first writes and updates use conditional S3 publication.
+The existing production-only issuance constraints remain in force until a
+separate accepted staging/issuer decision.
+
+See [ADR-041](adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md)
+and [the registration contract](acme-account-registration-contract.md).
+
 ### ADR-040: Release-Gated Dual-Registry OCI Publication
 
 The privileged certbotbot image publisher is triggered only by a successful
