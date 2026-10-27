@@ -17,18 +17,17 @@
 ## Registration usage and recognized flags.
 ## @retval 0 Usage was printed.
 certbotbot_register_usage() {
-  cat <<'EOF'
-Usage: certbotbot register [options]
-  --email ADDRESS                   Required contact address
-  --agree-tos true|false            Explicit consent; defaults false
-  --eff-email-signup true|false     EFF signup; defaults true
-  --acme-environment production|staging  Defaults production
-  --s3-bucket BUCKET                Existing S3 bucket (required)
-  --s3-key KEY                      Current archive key (latest.tar.gz)
-  --s3-key-template TEMPLATE        Optional current key template
-  --archive-encryption MODE         auto | none | gpg-ocb
-  --config FILE                     Literal configuration file
-EOF
+  printf '%s\n' \
+    'Usage: certbotbot register [options]' \
+    '  --email ADDRESS                   Required contact address' \
+    '  --agree-tos true|false            Explicit consent; defaults false' \
+    '  --eff-email-signup true|false     EFF signup; defaults true' \
+    '  --acme-environment production|staging  Defaults production' \
+    '  --s3-bucket BUCKET                Existing S3 bucket (required)' \
+    '  --s3-key KEY                      Current archive key (latest.tar.gz)' \
+    '  --s3-key-template TEMPLATE        Optional current key template' \
+    '  --archive-encryption MODE         auto | none | gpg-ocb' \
+    '  --config FILE                     Literal configuration file'
 }
 
 ## @fn certbotbot_register_config()
