@@ -32,7 +32,7 @@ Usage: certbotbot [options] DNS_NAME
        certbotbot register [registration options]
 Options:
   --config FILE                    Read selected literal .env file
-  --domain NAME                    Supply primary DNS name
+  --domain NAME                    Supply primary DNS name\n  --acme-environment production|staging  Select CA (default production)
   --san NAME                       Add one SAN (repeatable; unrelated zones OK)
   --include-subdomains true|false  Add complementary apex/wildcard SAN
   --cert-name NAME                 Set stable Certbot lineage name
@@ -220,7 +220,7 @@ certbotbot_lifecycle_execute() {
     return 65
   }
 
-  account_dir="$config/accounts/acme-v02.api.letsencrypt.org/directory"
+  account_dir="$config/accounts/$CERTBOTBOT_CA_HOST/directory"
   for entry in "$account_dir/"*; do
     [[ -d "$entry" && ! -L "$entry" ]] || continue
     account_before="${entry##*/}"
