@@ -71,8 +71,9 @@ No arbitrary URL, `--staging` synonym, hidden fallback, or automatic
 environment selection based on downloaded archive contents is supported.
 The operator should use separate S3 keys for staging and production.
 Until a separate ADR authorizes CA selection in ordinary issuance, an
-account-only **staging** archive is not suitable for that existing
-production-only operation.
+account-only **staging** archive is suitable for the **separately selected**
+staging issuer under ADR-042 after its implementation and verification;
+it remains unsuitable for a production-selected invocation.
 
 ## Certbot Invocation
 
@@ -204,7 +205,8 @@ Milestone #4 records authorized real staging evidence separately.
   registration is the only sanctioned missing-object exception.
 - ADR-022/023: Portable Certbot account directories and strict
   production-only ordinary preflight.
-- ADR-024/025: Existing issuance/renewal remains production-only and
+- ADR-024/025 as refined by ADR-042: ordinary issuance/renewal remains
+  production by default and accepts explicit staging selection;
   never registers.
 - ADR-027/028: Selected certificate package/publication gates remain
   mandatory for ordinary issuance, not bypassed for account-only state.
