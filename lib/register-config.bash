@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
+# Registration settings are consumed by separately maintained assembled modules.
+# shellcheck disable=SC2034
 ## @file lib/register-config.bash
 ## @brief Resolves the explicit account registration CLI under ADR-041.
 ## @details
