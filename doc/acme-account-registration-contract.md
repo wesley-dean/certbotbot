@@ -41,7 +41,7 @@ mode-incompatible options return 64 before any remote operation.
 | --- | --- | --- | --- |
 | `--email ADDRESS` | `EMAIL` | None | Required nonempty recovery/contact email passed via Certbot `--email` |
 | `--agree-tos true\|false` | `AGREE_TOS` | `false` | Registration only if effectively `true` |
-| `--eff-email-signup true\|false` | `EFF_EMAIL_SIGNUP` | `false` | `false` passes `--no-eff-email`; `true` passes `--eff-email` |
+| `--eff-email-signup true\|false` | `EFF_EMAIL_SIGNUP` | `true` | `true` passes `--eff-email`; `false` passes `--no-eff-email` |
 | `--acme-environment production\|staging` | `ACME_ENVIRONMENT` | `production` | Chooses one of the two supported Let's Encrypt directory URLs |
 | `--s3-bucket BUCKET` | `S3_BUCKET` | None | Required existing authorized bucket |
 | `--s3-key KEY` | `S3_KEY` | `latest.tar.gz` | Exact authoritative object key |
@@ -88,7 +88,7 @@ certbot register
   --server <exact-selected-directory-URL>
   --email <selected-email>
   --agree-tos
-  --no-eff-email | --eff-email
+  --eff-email | --no-eff-email
 ```
 
 The vertical-bar line means **exactly one** of the two EFF preferences,
@@ -144,9 +144,12 @@ matching account governs the whole archive.
 `AGREE_TOS=false` means the user has not authorized agreement with
 the ACME subscriber terms.  It must fail even when other inputs
 are present.  Explicit `AGREE_TOS=true` does not imply EFF contact
-sharing.  `EFF_EMAIL_SIGNUP=false` actively selects Certbot
-`--no-eff-email`; leaving both EFF switches absent is **not**
-sufficient for noninteractive execution.
+sharing.  `EFF_EMAIL_SIGNUP=true` is the default and actively selects
+Certbot `--eff-email` for EFF email signup.  Operators can opt out using
+`EFF_EMAIL_SIGNUP=false`, which passes `--no-eff-email`.  Leaving both
+EFF switches absent is **not** sufficient for noninteractive execution.
+The default EFF preference has no effect until affirmative TOS consent
+permits registration.
 
 `--email` is a required contact input even when an existing account
 will be reused.  On reuse it does not change the registered contact.
@@ -169,7 +172,7 @@ GNU tar/gzip, private workspaces, and the **actual generated** development,
 ordinary and minified producer executables.  Ensure tests assert:
 
 1. Required email, explicit TOS acceptance, noninteractive execution,
-   correct EFF sharing opt-out and optional opt-in.
+   default-on EFF signup and optional explicit opt-out.
 2. Selected CA URL and account-directory identity; staging/production
    isolation without implicit fallback or third-party CA selection.
 3. First registration from a positively missing S3 object, canonical
