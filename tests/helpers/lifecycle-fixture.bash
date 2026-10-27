@@ -271,13 +271,13 @@ case "$verb" in
     esac
     location="$config/accounts/$host/directory/account-id"
     mkdir -p -- "$location" || exit 92
-    chmod 700 "$config/accounts" "$config/accounts/$host" \\
+    chmod 700 "$config/accounts" "$config/accounts/$host" \
       "$config/accounts/$host/directory" "$location" || exit 92
-    printf '%s\\n' '{"key":"synthetic-private-DO-NOT-LOG"}' \\
+    printf '%s\n' '{"key":"synthetic-private-DO-NOT-LOG"}' \
       >"$location/private_key.json" || exit 92
-    printf '%s\\n' '{"body":{"contact":["mailto:operator@example.org"]}}' \\
+    printf '%s\n' '{"body":{"contact":["mailto:operator@example.org"]}}' \
       >"$location/regr.json" || exit 92
-    printf '%s\\n' '{"creation":"synthetic"}' \\
+    printf '%s\n' '{"creation":"synthetic"}' \
       >"$location/meta.json" || exit 92
     chmod 600 "$location/"*.json || exit 92
     [[ "$LIFECYCLE_MODE" != register-partial-failure ]] || exit 9
