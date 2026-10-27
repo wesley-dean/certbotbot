@@ -27,10 +27,10 @@ never guessed from an arbitrary directory or account metadata.
 A nonempty, syntactically valid contact email and an explicit
 `AGREE_TOS=true` are required on every registration invocation.
 `AGREE_TOS` defaults to `false`, which **refuses registration**;
-consent is opt-in.  `EFF_EMAIL_SIGNUP` defaults to `false`, which
-passes Certbot `--no-eff-email` to avoid sharing the address with EFF.
-An explicit `true` passes `--eff-email`.  These values never depend on
-Certbot's interactive default.  No `--register-unsafely-without-email`
+consent is opt-in.  `EFF_EMAIL_SIGNUP` defaults to `true`, which
+passes Certbot `--eff-email` to opt into EFF email communications.
+An explicit `false` passes `--no-eff-email` to opt out.  These values
+never depend on Certbot's interactive default.  No `--register-unsafely-without-email`
 or other bypass of the contact/consent contract is supported.
 
 The operator chooses an existing S3 bucket and one current object key using
@@ -163,7 +163,7 @@ Certbot's `--dry-run` as proof of a durable staging lifecycle.
 
 | Boundary or asset | Required behavior | Residual limitation |
 | --- | --- | --- |
-| Operator contact and consent | Validate inputs; TOS must be affirmative; no EFF sharing by default | The program cannot attest that the operator read the external terms |
+| Operator contact and consent | Validate inputs; TOS must be affirmative; EFF signup defaults on but is independently configurable | The program cannot attest that the operator read the external terms |
 | ACME CA selection | Exact two-CA allowlist; isolated account selection; explicit private Certbot paths | Trusted Certbot and its dependencies retain network and filesystem authority |
 | Existing S3 bytes | Confirmed identity/absence; bounded extraction; reject unsafe state | S3 and IAM availability are external |
 | Account key and metadata | Retain native Certbot files privately; no logged secrets; no synthetic JSON | Host or runtime compromise is not contained by Bash |
@@ -187,8 +187,10 @@ the exact account into its existing archive.
 ordinary issuance must fail before remote ACME calls when seeded state is
 missing.  Silent account creation changes identity and consent authority.
 
-**Use `--agree-tos` or EFF sharing implicitly:** rejected; TOS consent is
-operator opt-in, and EFF sharing is an independent privacy choice.
+**Conflate TOS acceptance with EFF email signup:** rejected; TOS consent is
+operator opt-in and remains default-false.  EFF signup is an independent,
+explicitly documented default-true preference which operators may opt out
+of by setting `EFF_EMAIL_SIGNUP=false`.
 
 **Expose arbitrary `--server URL` for new ACME CAs:** rejected for this
 milestone; allowing arbitrary CA authorities creates a larger trust and
