@@ -49,9 +49,13 @@ certbotbot_register_usage() {
 certbotbot_register_config() {
   local arg key name value file='' explicit=false tier
   local -a args=("$@")
-  local -A cli=() defaults=([EMAIL]='' [AGREE_TOS]=false
-    [EFF_EMAIL_SIGNUP]=true [ACME_ENVIRONMENT]=production
-    [S3_BUCKET]='' [ARCHIVE_ENCRYPTION]=auto)
+  local -A cli=() defaults=()
+  defaults[EMAIL]=''
+  defaults[AGREE_TOS]=false
+  defaults[EFF_EMAIL_SIGNUP]=true
+  defaults[ACME_ENVIRONMENT]=production
+  defaults[S3_BUCKET]=''
+  defaults[ARCHIVE_ENCRYPTION]=auto
   local -i i=0
   CERTBOTBOT_FILE_VALUES=()
   while (( i < ${#args[@]} )); do
