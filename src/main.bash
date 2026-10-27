@@ -29,6 +29,7 @@
 certbotbot_usage() {
   cat <<'EOF'
 Usage: certbotbot [options] DNS_NAME
+       certbotbot register [registration options]
 Options:
   --config FILE                    Read selected literal .env file
   --domain NAME                    Supply primary DNS name
@@ -44,6 +45,7 @@ Options:
   --upload-no-renewal true|false   Republish successful unchanged archive\n  --archive-encryption MODE        auto | none | gpg-ocb\n  --archive-migration MODE         none | plaintext-to-gpg-ocb\n  --archive-migration-backup-confirmed true|false
   --help                           Show help
   --version                        Show build provenance
+  register                         Explicitly register an ACME account
 EOF
 }
 
@@ -322,6 +324,7 @@ certbotbot_main() {
   case "${1:-}" in
     --help|-h|help) certbotbot_usage; return 0 ;;
     --version|-V|version) certbotbot_version; return 0 ;;
+    register) shift; certbotbot_register_main "$@"; return $? ;;
   esac
   certbotbot_config_resolve "$@" || return $?
   certbotbot_identity_resolve || return $?
