@@ -120,17 +120,19 @@ all expected checks to execute, not an undisclosed skip.
 
 | Scenario | Fixtures and boundaries | Required observation | Current evidence |
 | --- | --- | --- | --- |
-| Seeded staging first issuance | Public script; mock AWS/Certbot; real local tar/OpenSSL | Exact HEAD/GET/provider/PUT sequence and valid published archive | Await CI |
-| Independent second runner | Same public script and simulated remote object, distinct TMPDIR roots | Account/lineage continuity, named renew no-op, no PUT | Await CI |
-| Simulated due renewal | Mock provider emits updated local cert | Named renew followed by verified publication | Await CI |
-| Missing/corrupt seed | Mock S3 and synthetic unsafe bytes | Fail before provider or publication | Await CI |
-| Failed provider/package | Mock Certbot or controlled local tar failure | Fail after allowed stages, no upload, known-good bytes unchanged | Await CI |
-| Failed S3 publication | Mock S3 returns error before acceptance | Nonzero, no false published status, known-good bytes unchanged | Await CI |
-| All producer flavors | Existing verified Make/CI artifact matrix | Same new Bats contract on development, ordinary and minified | Await CI |
+| Seeded staging first issuance | Public script; mock AWS/Certbot; real local tar/OpenSSL | Exact HEAD/GET/provider/PUT sequence and valid published archive | Verified mocked suite in [PR #223 Test CI](https://github.com/wesley-dean/certbotbot/actions/runs/40557276094) |
+| Independent second runner | Same public script and simulated remote object, distinct TMPDIR roots | Account/lineage continuity, named renew no-op, no PUT | Verified mocked suite in [PR #223 Test CI](https://github.com/wesley-dean/certbotbot/actions/runs/40557276094) |
+| Simulated due renewal | Mock provider emits updated local cert | Named renew followed by verified publication | Verified mocked suite in [PR #223 Test CI](https://github.com/wesley-dean/certbotbot/actions/runs/40557276094) |
+| Missing/corrupt seed | Mock S3 and synthetic unsafe bytes | Fail before provider or publication | Verified mocked suite in [PR #223 Test CI](https://github.com/wesley-dean/certbotbot/actions/runs/40557276094) |
+| Failed provider/package | Mock Certbot or controlled local tar failure | Fail after allowed stages, no upload, known-good bytes unchanged | Verified mocked suite in [PR #223 Test CI](https://github.com/wesley-dean/certbotbot/actions/runs/40557276094) |
+| Failed S3 publication | Mock S3 returns error before acceptance | Nonzero, no false published status, known-good bytes unchanged | Verified mocked suite in [PR #223 Test CI](https://github.com/wesley-dean/certbotbot/actions/runs/40557276094) |
+| All producer flavors | Existing verified Make/CI artifact matrix | Same new Bats contract on development, ordinary and minified | Verified mocked suite in [PR #223 Test CI](https://github.com/wesley-dean/certbotbot/actions/runs/40557276094) |
 | Authentic ACME/Route53/S3 | **Not exercised by this suite** | Independent operator-authorized staging record | **Not proven** |
 
-This document describes the observable testing contract, not results.
-Evidence becomes verified only after applicable CI jobs pass. Task #49
+This document describes the observable test contract. The mocked suite
+has passed in all three producer flavor jobs for merged PR #223, recorded in
+[the milestone 4 release-evidence matrix](milestone-4-release-evidence.md).
+That evidence does **not** establish any live ACME/Route53/S3 result. Task #49
 will connect the documented fixture/live distinction to the final
 milestone release evidence and reporting; [story #16](https://github.com/wesley-dean/certbotbot/issues/16)
 must remain open until **real staging** requirements have separately
