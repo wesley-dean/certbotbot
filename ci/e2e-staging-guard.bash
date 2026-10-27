@@ -3,7 +3,9 @@
 ## @file ci/e2e-staging-guard.bash
 ## @brief Rejects unapproved or non-staging GitHub Actions dispatches.
 ## @details
-## Credential-free, network-free entry guard for milestone 4.  The workflow
+## Credential-free, network-free entry guard for milestone 4. The manual
+## dispatch itself is the owner's affirmative action. No mutable build
+## parameters are permitted (CKV_GHA_7). The workflow
 ## also repeats an inline guard before checkout, since this file is not yet
 ## available before the first network-capable checkout operation.
 ## @par STDIN
@@ -13,7 +15,7 @@
 ## @par STDERR
 ## Fixed non-sensitive diagnostic categories; values are never echoed.
 ## @retval 0 All required admission checks passed.
-## @retval 64 Incorrect manual invocation or authorization.
+## @retval 64 Incorrect manual invocation or owner authorization.
 ## @retval 65 Missing or malformed scoped test resources.
 set -euo pipefail
 set +x
@@ -36,10 +38,11 @@ esac
   reject 'workflow ref is not main'
 [[ "${GITHUB_SHA-}" =~ ^[0-9a-f]{40}$ ]] ||
   reject 'missing immutable source commit'
+[[ "${GITHUB_ACTOR-}" == wesley-dean &&
+  "${GITHUB_TRIGGERING_ACTOR-}" == wesley-dean ]] ||
+  reject 'dispatch actor is not the authorized operator'
 [[ "${E2E_ACME_ENVIRONMENT-}" == staging ]] ||
   reject 'ACME selection is not explicitly staging'
-[[ "${E2E_OPERATOR_CONFIRMATION-}" == I_AUTHORIZE_STAGING_ONLY ]] ||
-  reject 'explicit staging authorization is missing'
 [[ -z "${ACME_ENVIRONMENT-}" ||
   "${ACME_ENVIRONMENT-}" == staging ]] ||
   reject 'conflicting exported CA selection'
