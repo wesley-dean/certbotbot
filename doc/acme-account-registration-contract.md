@@ -203,8 +203,8 @@ Milestone #4 records authorized real staging evidence separately.
 
 - ADR-020/021: Ordinary issuance requires a seeded archive.  Explicit
   registration is the only sanctioned missing-object exception.
-- ADR-022/023: Portable Certbot account directories and strict
-  production-only ordinary preflight.
+- ADR-022/023 as refined by ADR-042: Portable Certbot account directories
+  and strict preflight bound to the selected CA.
 - ADR-024/025 as refined by ADR-042: ordinary issuance/renewal remains
   production by default and accepts explicit staging selection;
   never registers.
