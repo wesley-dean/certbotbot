@@ -4,7 +4,7 @@
 
 ## Non-production boundary and existing blocker
 
-The **only** ACME endpoint permitted for milestone 4 is `https://acme-staging-v02.api.letsencrypt.org/directory`. No Let's Encrypt production registration, issuance, renewal, `--dry-run` substitute or fallback is authorized. Accepted ADR-041 supports explicitly selected staging **registration**, but ADRs 023–025 and the current public certificate lifecycle still restrict ordinary issuance/renewal to **production**. Consequently, **do not invoke the issuer against staging** until a separately approved CA-bound issuer ADR and implementation have passed the required checks. Task #219 is a proposed, unapproved design gate. Do not work around the current check in test code.
+The **only** ACME endpoint permitted for milestone 4 is `https://acme-staging-v02.api.letsencrypt.org/directory`. No Let's Encrypt production registration, issuance, renewal, `--dry-run` substitute or fallback is authorized. ADR-041 supports explicitly selected staging **registration**. ADR-042 and approved task #219 were merged in PR #222 and now support explicitly staging-selected ordinary issuance/renewal. **Do not invoke live staging issuance** until the separate credentialed workflow's staging-only pre-network checks and exact reviewed public artifact are independently verified and the operator authorizes each remote operation. Production remains the ordinary producer default; do not rely on it for E2E. Do not work around any product check in test code.
 
 ## GitHub Actions parameter inventory
 
@@ -59,7 +59,7 @@ Independent-runner evidence requires a second completely clean private workspace
 | Auth, DNS and zone | Test-only identity, correct authority | Private operator preflight; redacted result | Not run |
 | S3 bucket/key and permissions | Existing isolated seed; required read/write scope | Read checks / separate authorized write evidence | Not run |
 | Archive and staging account | Validated native staging state, no mixed CA | Private approved validator/probe | Not run |
-| Producer CA-bound staging support | Reviewed ADR + approved task + negative tests | Mock tests, PR and decision links | Blocked by #219 |
+| Producer CA-bound staging support | Reviewed ADR + approved task + negative tests | [ADR-042](adr/ADR-042-explicit-ca-bound-staging-issuance.md), merged PR #222, mocked CI | Implemented; live unverified |
 | Public artifact identity | Reviewed version, checked SHA-256, Bash 4.3 | Build/release provenance | Not run |
 | First issuance and S3 publication | Genuine staging + Route53 + S3 | Authorized live record | Not run |
 | Clean-runner no-op and optional due renewal | Same account/lineage, actual renewal policy | Authorized live record | Not run |
@@ -71,4 +71,4 @@ Record the exact approved public artifact version/digest, redacted workflow/run 
 
 - [ADR-020](adr/ADR-020-one-selected-certificate-and-one-durable-archive.md), [ADR-021](adr/ADR-021-fail-closed-seeded-s3-read.md), [ADR-022](adr/ADR-022-portable-certbot-state-archives.md), [ADR-023](adr/ADR-023-fail-closed-restored-acme-preflight.md), [ADR-024](adr/ADR-024-selected-only-certbot-route53-provider.md), [ADR-025](adr/ADR-025-selected-renewal-noop-contract.md), [ADR-041](adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md)
 - [ACME registration contract](acme-account-registration-contract.md), [testing](testing.md), [release verification](release-verification.md), [threat modeling](threat-modeling.md), [configuration reference](configuration-reference.md)
-- Approved issues #91/#104, #16/#48; proposed staging issuer design task #219.
+- Approved issues #91/#104, #16/#48; merged staging issuer task #219 / PR #222.
