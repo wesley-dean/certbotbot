@@ -1,0 +1,237 @@
+---
+name: Manual Let's Encrypt staging E2E
+
+# Separate credentialed acceptance: never PR, push, schedule or release.
+# CKV_GHA_7: the manual workflow accepts no user-controlled build inputs.
+# Only the repository owner can dispatch the fixed staging-only test.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize this workflow's writers; external writers remain the operator's
+# responsibility. Never cancel after a remote side effect may have begun.
+concurrency:
+  group: "${{ github.repository }}-manual-staging-e2e"
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Build verified credential-free producer
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'wesley-dean/certbotbot' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'wesley-dean' &&
+      github.triggering_actor == 'wesley-dean'
+    runs-on: ubuntu-24.04
+    outputs:
+      manifest_sha: ${{ steps.handoff.outputs.manifest_sha }}
+    env:
+      E2E_ACME_ENVIRONMENT: staging
+    steps:
+      # FIRST STEP. Reject prohibited dispatches before even checking out
+      # source, installing packages, or accessing any remote endpoint.
+      - name: Reject non-staging event before any network-capable step
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == wesley-dean/certbotbot ]]
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$GITHUB_ACTOR" == wesley-dean ]]
+          [[ "$GITHUB_TRIGGERING_ACTOR" == wesley-dean ]]
+          [[ "$E2E_ACME_ENVIRONMENT" == staging ]]
+
+      - name: Check out exact trusted main source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Recheck admission using maintained negative-tested guard
+        run: bash ci/e2e-staging-guard.bash dispatch
+
+      - name: Install credential-free build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes curl make shellcheck shfmt
+
+      - name: Verify source, pinned dependencies and public artifact bytes
+        run: |
+          set -euo pipefail
+          make check
+          make deps
+          make deps-check
+          make build "VERSION=0.0.0-dev"
+          for artifact in certbotbot.dev.bash certbotbot.bash certbotbot.min.bash certbotbot-client.bash; do
+            (cd dist && sha256sum -c "$artifact.sha256")
+          done
+
+      - name: Create same-run eight-file verified handoff
+        id: handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="$(bash ci/producer-handoff.bash create dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 0.0.0-dev)"
+          printf 'manifest_sha=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Upload credential-free one-day artifact handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  issue:
+    name: Real staging issuance and S3 publication (runner A)
+    needs: prepare
+    if: >-
+      needs.prepare.result == 'success' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'wesley-dean/certbotbot' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'wesley-dean' &&
+      github.triggering_actor == 'wesley-dean'
+    runs-on: ubuntu-24.04
+    outputs:
+      object_sha256: ${{ steps.stage.outputs.object_sha256 }}
+    env:
+      E2E_ACME_ENVIRONMENT: staging
+    steps:
+      - name: Reject prohibited CA and untrusted source before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == wesley-dean/certbotbot ]]
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$GITHUB_ACTOR" == wesley-dean ]]
+          [[ "$GITHUB_TRIGGERING_ACTOR" == wesley-dean ]]
+          [[ "$E2E_ACME_ENVIRONMENT" == staging ]]
+
+      - name: Check out same trusted main source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Recheck admission without AWS credentials
+        run: bash ci/e2e-staging-guard.bash dispatch
+
+      - name: Install real staging provider dependencies without credentials
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes awscli certbot python3-certbot-dns-route53 jq openssl
+
+      - name: Download same-run producer, no external credentials
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: staging-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      - name: Reject changed candidate bytes before injecting secrets
+        env:
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            0.0.0-dev "$EXPECTED_MANIFEST_SHA"
+
+      # The ONLY step in this job with AWS credentials and test DNS/S3 scope.
+      # Real operations require manually confirmed domain, public zone,
+      # existing staging account seed, and independently arranged recovery.
+      - name: Live first issuance using reviewed public staging producer
+        id: stage
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          CERTBOTBOT_AWS_REGION: ${{ secrets.CERTBOTBOT_AWS_REGION }}
+          E2E_DOMAIN: ${{ secrets.E2E_DOMAIN }}
+          E2E_ROUTE53_ZONE_ID: ${{ secrets.E2E_ROUTE53_ZONE_ID }}
+          E2E_S3_BUCKET: ${{ secrets.E2E_S3_BUCKET }}
+          E2E_S3_KEY: ${{ secrets.E2E_S3_KEY }}
+        run: bash ci/e2e-staging-live.bash issue
+
+  restore:
+    name: Independent staging restore and selected no-op (runner B)
+    needs: [prepare, issue]
+    if: >-
+      needs.prepare.result == 'success' &&
+      needs.issue.result == 'success' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'wesley-dean/certbotbot' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'wesley-dean' &&
+      github.triggering_actor == 'wesley-dean'
+    runs-on: ubuntu-24.04
+    env:
+      E2E_ACME_ENVIRONMENT: staging
+    steps:
+      - name: Reject prohibited CA and untrusted source before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == wesley-dean/certbotbot ]]
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$GITHUB_ACTOR" == wesley-dean ]]
+          [[ "$GITHUB_TRIGGERING_ACTOR" == wesley-dean ]]
+          [[ "$E2E_ACME_ENVIRONMENT" == staging ]]
+
+      - name: Check out same trusted main source on clean runner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Recheck staging-only policy without credentials
+        run: bash ci/e2e-staging-guard.bash dispatch
+
+      - name: Install real staging provider dependencies without credentials
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes awscli certbot python3-certbot-dns-route53 jq openssl
+
+      - name: Download the identical verified same-run public artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: staging-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      - name: Reject changed public bytes before injecting secrets
+        env:
+          EXPECTED_MANIFEST_SHA: ${{ needs.prepare.outputs.manifest_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for artifact in dist/certbotbot.dev.bash dist/certbotbot.bash dist/certbotbot.min.bash dist/certbotbot-client.bash; do
+            test -f "$artifact" && test ! -L "$artifact"
+            chmod 0755 "$artifact"
+          done
+          bash ci/producer-handoff.bash verify dist \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            0.0.0-dev "$EXPECTED_MANIFEST_SHA"
+
+      - name: Live independent clean-runner restore and normal no-op
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          CERTBOTBOT_AWS_REGION: ${{ secrets.CERTBOTBOT_AWS_REGION }}
+          E2E_DOMAIN: ${{ secrets.E2E_DOMAIN }}
+          E2E_ROUTE53_ZONE_ID: ${{ secrets.E2E_ROUTE53_ZONE_ID }}
+          E2E_S3_BUCKET: ${{ secrets.E2E_S3_BUCKET }}
+          E2E_S3_KEY: ${{ secrets.E2E_S3_KEY }}
+          EXPECTED_ARCHIVE_SHA256: ${{ needs.issue.outputs.object_sha256 }}
+        run: bash ci/e2e-staging-live.bash restore

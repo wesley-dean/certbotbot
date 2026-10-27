@@ -549,3 +549,8 @@ The ordinary certificate producer explicitly selects either Let's Encrypt produc
 
 See [ADR-042](adr/ADR-042-explicit-ca-bound-staging-issuance.md).
 
+### ADR-043: Manually Authorized Staging-Only Live E2E Workflow
+
+Live milestone 4 acceptance runs only through a parameterless, owner-initiated workflow dispatch on trusted main, with an independent pre-network staging-only admission gate and fixed CA selection. A credential-free build supplies one checksum-verified public artifact handoff to two separate credentialed runners for genuine staging issuance and S3 publication followed by independent restoration and the normal selected renewal/no-op decision. Registration, production ACME access, automatic privileged CI, forced renewal, and publication of raw secret-bearing evidence are excluded. The operator retains responsibility for account seeding, scoped resources, recovery, and writer serialization; code and mock CI alone do not prove real interoperability.
+
+See [ADR-043](adr/ADR-043-manual-staging-live-e2e-workflow.md).

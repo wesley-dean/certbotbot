@@ -139,10 +139,14 @@ acceptance criteria must be evidenced independently.
 
 ## Follow-up and status discipline
 
-Keep technical task #49 open until its actual CI gates and architectural
-review are complete.  Upon successful merge, the mocked fixture/release
-integration is complete, but story #16 still requires live first issuance,
+Technical task #49 was completed by the merged, verified PR #224. The
+mocked fixture/release integration is complete, but story #16 still requires
+live first issuance,
 a clean independent runner's no-op/selected renewal decision, and safe
 handling of any documented remaining due-renewal limitations.  Story
 #91 requires the authorized real staging seed, DNS/S3 rights and operator
-signoff.  A missing live test is **not** an automatically accepted waiver.
+signoff.  Approved task #225 introduces the separate manual-only
+[staging workflow](milestone-4-live-staging-workflow.md) under
+[ADR-043](adr/ADR-043-manual-staging-live-e2e-workflow.md). Its
+implementation is **not** proof of live staging acceptance. A missing live
+test is **not** an automatically accepted waiver.
