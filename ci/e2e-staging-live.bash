@@ -61,6 +61,26 @@ export AWS_EC2_METADATA_DISABLED=true
 unset GPG_SYMMETRIC_KEY
 unset ACME_ENVIRONMENT S3_KEY_TEMPLATE S3_KEY ADDITIONAL_SANS
 
+# Decode at most 32 MiB of untrusted remote archive data before asking
+# tar to list members. This is a nonextracting supplementary check; the
+# public producer applies its stronger native archive validator.
+list_bounded_archive() {
+  local source_archive="$1" member_list="$2" bytes
+  if ! (set -o pipefail
+    gzip -cd -- "$source_archive" 2>/dev/null |
+      head -c 33554433 >"$private/decoded.tar"
+  ); then
+    fail 'staging archive decompression failed or exceeded bounded limit'
+  fi
+  bytes="$(wc -c <"$private/decoded.tar")"
+  if (( bytes < 1024 || bytes > 33554432 )); then
+    fail 'staging archive exceeds safe decoded size'
+  fi
+  tar -tf "$private/decoded.tar" >"$member_list" 2>/dev/null ||
+    fail 'staging archive has invalid tar boundaries'
+  rm -f -- "$private/decoded.tar"
+}
+
 private="$(mktemp -d "$RUNNER_TEMP/staging-e2e.XXXXXXXX")" ||
   fail 'cannot allocate private runner workspace' 65
 trap 'rm -rf -- "$private"' EXIT
@@ -103,8 +123,7 @@ aws s3api head-object --bucket "$E2E_S3_BUCKET" \
 aws s3api get-object --bucket "$E2E_S3_BUCKET" \
   --key "$E2E_S3_KEY" "$private/before.tar.gz" >/dev/null 2>&1 ||
   fail 'staging archive cannot be read' 74
-tar -tzf "$private/before.tar.gz" >"$private/members" 2>/dev/null ||
-  fail 'staging archive is not valid gzip tar'
+list_bounded_archive "$private/before.tar.gz" "$private/members"
 # This checks the CA namespace without extracting untrusted tar members.
 # The public producer supplies the authoritative bounded archive validator.
 grep -Eq '^(\./)?accounts/acme-staging-v02\.api\.letsencrypt\.org/directory/[^/]+/regr\.json$' \
@@ -157,8 +176,7 @@ fi
 aws s3api get-object --bucket "$E2E_S3_BUCKET" \
   --key "$E2E_S3_KEY" "$private/after.tar.gz" >/dev/null 2>&1 ||
   fail 'published/current staging object is not independently readable' 74
-tar -tzf "$private/after.tar.gz" >/dev/null 2>&1 ||
-  fail 'new staging object failed archive integrity check'
+list_bounded_archive "$private/after.tar.gz" "$private/after-members"
 after_sha="$(sha256sum "$private/after.tar.gz" | awk '{print $1}')"
 if [[ "$stage" == restore ]]; then
   [[ "$after_sha" == "$before_sha" ]] ||
