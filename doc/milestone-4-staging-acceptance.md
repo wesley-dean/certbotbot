@@ -12,7 +12,7 @@ For credentials, zone/account checks and preservation, complete [the dedicated p
 
 ## 1. Operator authorization and resources
 
-Before each credentialed operation, record the operator's explicit authorization for the exact action, resource set and time. A manual operator-controlled `workflow_dispatch` from protected, reviewed `main` is an acceptable mechanism *after* its staging-only guard is validated. No `pull_request`, `pull_request_target`, unreviewed branch checkout, or automatically triggered privileged run.
+Before each credentialed operation, record the operator's explicit authorization for the exact action, resource set and time. A manual owner-only `workflow_dispatch` from protected, reviewed `main`, with **no user-supplied inputs**, is the accepted mechanism under ADR-043 *after* its staging-only guard is validated. Only `wesley-dean` is admitted as both dispatching and rerun actor; staging selection is fixed by trusted workflow code. No `pull_request`, `pull_request_target`, unreviewed branch checkout, or automatically triggered privileged run.
 
 Use these repository-level Actions **secrets** (not `vars.*`): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `CERTBOTBOT_AWS_REGION`, `E2E_CONTACT_EMAIL`, `E2E_DOMAIN`, `E2E_ROUTE53_ZONE_ID`, `E2E_S3_BUCKET` and `E2E_S3_KEY`. Confirm their effective presence privately and never emit their values. `GPG_SYMMETRIC_KEY`, Docker Hub and GHCR publishing secrets must **not** enter the initial plaintext staging job. Require `ARCHIVE_ENCRYPTION=none`, `UPLOAD_NO_RENEWAL=false`, `DATED_BACKUP_ENABLED=false`, `BACKUP_RETENTION_COUNT=0`; avoid format migration, unexpected backup deletions and unrelated SAN changes.
 
