@@ -4,7 +4,7 @@
 ## @brief Builds and validates one private portable Certbot archive candidate.
 ## @details
 ## Implements ADR-027: only a complete selected lineage, safe existing
-## production ACME account, and all canonical renewal configurations can enter
+## selected CA account, and all canonical renewal configurations can enter
 ## the candidate stage. Source state is never rewritten to validate paths.
 ## GNU tar/gzip serializes config contents, and the existing bounded
 ## archive validator checks the exact bytes before the candidate appears.
