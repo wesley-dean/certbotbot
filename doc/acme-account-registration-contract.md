@@ -1,9 +1,11 @@
 # Explicit ACME Account Registration Contract
 
-**Status:** Approved design under milestone #7 task #57, with a proposed
-implementation in task #58.  Task #59 must independently verify the
-shipped executables with mocked cross-runner and failure tests.  Neither
-the document nor mocked evidence establishes live ACME interoperability.  Governed by
+**Status:** Accepted design under milestone #7 task #57, implemented
+under task #58, with task #59 providing black-box mocked cross-runner
+continuity and failure verification.  See
+[the mocked-evidence boundary](acme-registration-mock-evidence.md).
+Neither the document nor mocked evidence establishes live ACME
+interoperability.  Governed by
 [ADR-041](adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md).
 
 ## Purpose and Scope
