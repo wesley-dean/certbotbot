@@ -73,10 +73,17 @@ privilege must be configured in IAM.
    before the first publication. Never use a production key.
 3. Open the repository **Actions** page, select
    **Manual Let's Encrypt staging E2E**, and select **Run workflow**
-   against `main`, after independent operator authorization.
-4. Enter `staging` in **acme_environment**. Type
-   `I_AUTHORIZE_STAGING_ONLY` in **confirmation**. There is no
-   production selection or defaulted consent.
+   against `main`, after independent operator authorization. The
+   workflow is restricted to owner-initiated, owner-retried runs;
+   collaborators cannot dispatch its privileged stages.
+4. Confirm that you are signed in as GitHub account `wesley-dean`.
+   The manual workflow has **no dispatch inputs** (Checkov CKV_GHA_7)
+   and always selects the staging CA; no user-provided selector can
+   switch it to production. Selecting **Run workflow** on `main`
+   is the affirmative dispatch action. A rerun by another account
+   is also refused. Confirm the exact domain, zone, isolated key,
+   and independent recovery plan *before* starting. A typed prompt is
+   intentionally absent and is **not** a substitute for that review.
 5. Start the run. The first job admits only trusted repository `main`
    and builds a same-run, 8-file verified public artifact handoff
    **without AWS secrets**. Runner A verifies the checksum and
