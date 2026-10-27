@@ -19,10 +19,12 @@ restored state. Diagnostics are fixed strings and never include account data.
 ## Supported account contract
 
 The seeded archive must contain precisely one account at
-`accounts/acme-v02.api.letsencrypt.org/directory/<account-id>/`, with
+the **selected** `accounts/<CA-host>/directory/<account-id>/`, with
 nonempty, regular, non-symlink `private_key.json`, `regr.json`,
-and `meta.json` files. The single production endpoint is an explicit
-MVP compatibility restriction. Account files and their parent directory
+and `meta.json` files. Supported CA hosts are
+`acme-v02.api.letsencrypt.org` (production, ordinary default) and
+`acme-staging-v02.api.letsencrypt.org` (explicit staging). ADR-042
+requires an exact match and rejects competing or mixed CA accounts. Account files and their parent directory
 must not be writable by group or others.
 
 The presence of these files does **not** prove that the account remains
