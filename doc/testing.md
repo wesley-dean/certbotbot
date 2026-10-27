@@ -113,6 +113,28 @@ adding another producer matrix flavor. The standalone client is also tested
 from a copied directory after `vendor/` has been removed.
 
 
+## Milestone 4 public E2E inventory and evidence
+
+`tests/milestone-4-public-e2e.bats` uses the shipped producer executable,
+synthetic staging account and S3/Certbot mocks to verify selected first
+issuance, clean-runner restore/no-op, simulated due renewal, exact stage order,
+and failure preservation. These **fixture-only** observations do not prove
+actual Let's Encrypt staging, Route53 or Amazon S3 interoperability.
+
+`make verify-m4-e2e-inventory` checks that the suite is a regular,
+non-symlink member of the full Bats inventory with at least one executable
+test. All `make test`, `make test-report`, `test-one` and
+`test-report-one` executions require that check; the PR Test and
+Versioning preparation workflows also invoke it before handing artifacts
+to the three independent Bats flavor jobs. It does not duplicate the suite,
+download dependencies or use live credentials. A missing suite fails the
+quality gate instead of silently reducing coverage.
+
+See [milestone 4 release evidence](milestone-4-release-evidence.md) and
+[public black-box E2E contract](milestone-4-public-black-box-e2e.md).
+Live acceptance stays exclusively under the
+[operator-controlled staging procedure](milestone-4-staging-acceptance.md).
+
 ## Real-GnuPG Shipped-Client Encryption Acceptance
 
 The standalone certificate client has an independent
