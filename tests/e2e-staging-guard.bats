@@ -14,8 +14,9 @@ dispatch() {
     GITHUB_EVENT_NAME=workflow_dispatch \
     GITHUB_REF=refs/heads/main \
     GITHUB_SHA=0123456789abcdef0123456789abcdef01234567 \
+    GITHUB_ACTOR=wesley-dean \
+    GITHUB_TRIGGERING_ACTOR=wesley-dean \
     E2E_ACME_ENVIRONMENT=staging \
-    E2E_OPERATOR_CONFIRMATION=I_AUTHORIZE_STAGING_ONLY \
     "$@" bash "$GUARD" dispatch
 }
 
@@ -25,8 +26,9 @@ scope() {
     GITHUB_EVENT_NAME=workflow_dispatch \
     GITHUB_REF=refs/heads/main \
     GITHUB_SHA=0123456789abcdef0123456789abcdef01234567 \
+    GITHUB_ACTOR=wesley-dean \
+    GITHUB_TRIGGERING_ACTOR=wesley-dean \
     E2E_ACME_ENVIRONMENT=staging \
-    E2E_OPERATOR_CONFIRMATION=I_AUTHORIZE_STAGING_ONLY \
     AWS_ACCESS_KEY_ID=TESTONLYID \
     AWS_SECRET_ACCESS_KEY=TESTONLYSECRET \
     CERTBOTBOT_AWS_REGION=us-east-1 \
@@ -44,7 +46,7 @@ scope() {
   [ "$status" -eq 0 ]
 }
 
-@test "explicit manual trusted-main staging admission is accepted without network access" {
+@test "owner-dispatched trusted-main fixed staging is admitted without network access" {
   dispatch
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -75,11 +77,18 @@ scope() {
   [ "$status" -eq 64 ]
 }
 
-@test "manual dispatch requires explicit human authorization and immutable source SHA" {
-  dispatch E2E_OPERATOR_CONFIRMATION=
+@test "manual dispatch requires the repository owner as original and rerun actor" {
+  dispatch GITHUB_ACTOR=other-collaborator
   [ "$status" -eq 64 ]
-  dispatch E2E_OPERATOR_CONFIRMATION=I_AUTHORIZE_PRODUCTION
+  dispatch GITHUB_TRIGGERING_ACTOR=other-collaborator
   [ "$status" -eq 64 ]
+  dispatch GITHUB_ACTOR=
+  [ "$status" -eq 64 ]
+  dispatch GITHUB_TRIGGERING_ACTOR=
+  [ "$status" -eq 64 ]
+}
+
+@test "manual dispatch requires an immutable trusted source SHA" {
   dispatch GITHUB_SHA=bad
   [ "$status" -eq 64 ]
 }
@@ -115,6 +124,12 @@ scope() {
 @test "workflow has only manual trigger and never imports credential secrets into build" {
   [ -f "$WORKFLOW" ]
   grep -Fxq '  workflow_dispatch:' "$WORKFLOW"
+  # CKV_GHA_7: dispatch carries zero inputs. The CA is compiled into the
+  # manually selected workflow and the original/triggering actor is checked.
+  ! grep -Eq '^[[:space:]]+inputs:' "$WORKFLOW"
+  ! grep -Fq '${{ inputs.' "$WORKFLOW"
+  [ "$(grep -c "github.actor == 'wesley-dean'" "$WORKFLOW")" -eq 3 ]
+  [ "$(grep -c "github.triggering_actor == 'wesley-dean'" "$WORKFLOW")" -eq 3 ]
   ! grep -Eq '^  (pull_request|pull_request_target|push|schedule|release|workflow_call):' "$WORKFLOW"
   ! grep -Fq 'vars.' "$WORKFLOW"
   ! awk '/^  prepare:/{ inside=1; next } /^  issue:/{ inside=0 } inside' "$WORKFLOW" | grep -Fq 'secrets.'
