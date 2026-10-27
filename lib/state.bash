@@ -30,6 +30,7 @@ certbotbot_ca_select() {
       return 64
       ;;
   esac
+  # shellcheck disable=SC2034
   CERTBOTBOT_CA_SERVER="https://$CERTBOTBOT_CA_HOST/directory"
 }
 
