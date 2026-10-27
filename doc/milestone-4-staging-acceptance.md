@@ -6,7 +6,7 @@
 
 Milestone 4 **must never access Let's Encrypt production**. Its only allowed ACME directory is `https://acme-staging-v02.api.letsencrypt.org/directory`. Never run Certbot `--dry-run` as a substitute for actual staging issuance, or pass a production archive, account or server to the staging test.
 
-As of the procedure's preparation, ADR-041 supports explicit staging *account registration*, but the ordinary producer remains production-only under ADRs 023/024/025. The separately approved task **#219** must deliver a reviewed Accepted CA-bound issuer ADR, code, negative tests and staging-only workflow gate **before any live issuance or renewal**. This document deliberately gives no executable ordinary issuer command while production is its default. Future commands must be taken from reviewed, exact, staging-explicit public CLI documentation, not inferred here.
+ADR-041 supports explicit staging *account registration*. ADR-042 and #219 (merged via PR #222) now provide explicit staging selection for ordinary issuance and renewal, using `--acme-environment staging`. Production remains the ordinary default, so **every** privileged milestone 4 issuer invocation must select staging explicitly. A staging-only workflow gate that rejects production **before any remote side effect** must still be independently implemented, reviewed and verified before live tests. This runbook alone does not authorize credentialed execution.
 
 For credentials, zone/account checks and preservation, complete [the dedicated preflight](milestone-4-staging-preflight.md). Do not confuse a merged preflight document with verified AWS permissions or a real seed archive.
 
@@ -90,14 +90,14 @@ Never disclose AWS credentials, email/domain values from repository secrets with
 | Scenario | Real ACME | Real Route53 | Real S3 | Public artifact/hash checked | Result | Limitations |
 | --- | --- | --- | --- | --- | --- | --- |
 | Preflight and seed | Not run | Not run | Not run | Not run | Pending | Credentials and seed unverified |
-| Initial staging issuance | Not run | Not run | Not run | Not run | Blocked until CA gate | #219 implementation |
-| Fresh-runner restore/no-op | Not run | Not run | Not run | Not run | Blocked | Requires initial issue |
+| Initial staging issuance | Not run | Not run | Not run | Not run | Blocked on live workflow/operator gates | CA-bound issuer merged; no live evidence |
+| Fresh-runner restore/no-op | Not run | Not run | Not run | Not run | Blocked | Requires authorized first issuance |
 | Due renewal or equivalent | Not run | Not run | Not run | Not run | Pending | Must distinguish mocks |
 | Failure preservation | Mocked tests may run separately | Mocked tests may run separately | Mocked tests may run separately | Pending | Not run | Do not sacrifice real seed |
-| Artifact flavor parity | Not applicable | Not applicable | Mocked | Pending | Not run | CI is not live evidence |
+| Artifact flavor parity | Not applicable | Not applicable | Mocked | PR #223 Test CI passed | Fixture only | No live parity evidence |
 
 Do not mark task #16 or story #91 accepted solely because this procedure is merged. Link actual independently observed results and limitations to the operator's acceptance decision.
 
 ## Governance and references
 
-[Preflight](milestone-4-staging-preflight.md), [release verification](release-verification.md), [testing](testing.md), [the public lifecycle](mvp-public-lifecycle.md), [explicit registration contract](acme-account-registration-contract.md), [ADR-020](adr/ADR-020-one-selected-certificate-and-one-durable-archive.md), [ADR-021](adr/ADR-021-fail-closed-seeded-s3-read.md), [ADR-022](adr/ADR-022-portable-certbot-state-archives.md), [ADR-023](adr/ADR-023-fail-closed-restored-acme-preflight.md), [ADR-024](adr/ADR-024-selected-only-certbot-route53-provider.md), [ADR-025](adr/ADR-025-selected-renewal-noop-contract.md), [ADR-041](adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md), and approved tasks #48/#219. The future issuer ADR, not this runbook, authorizes any change to the certificate issuance contract.
+[Preflight](milestone-4-staging-preflight.md), [release verification](release-verification.md), [testing](testing.md), [the public lifecycle](mvp-public-lifecycle.md), [explicit registration contract](acme-account-registration-contract.md), [ADR-020](adr/ADR-020-one-selected-certificate-and-one-durable-archive.md), [ADR-021](adr/ADR-021-fail-closed-seeded-s3-read.md), [ADR-022](adr/ADR-022-portable-certbot-state-archives.md), [ADR-023](adr/ADR-023-fail-closed-restored-acme-preflight.md), [ADR-024](adr/ADR-024-selected-only-certbot-route53-provider.md), [ADR-025](adr/ADR-025-selected-renewal-noop-contract.md), [ADR-041](adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md), and approved tasks #48/#219. Accepted ADR-042, not this runbook, governs the explicit staging issuer contract.
