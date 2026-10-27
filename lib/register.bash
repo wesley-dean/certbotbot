@@ -47,6 +47,10 @@ certbotbot_register_fetch() {
   rm -f -- "$error_file"
   [[ "$observed" =~ ^\"[0-9a-fA-F]{32}(-[0-9]+)?\"$ ]] ||
     { certbotbot_error 'unsupported S3 object identity'; return 69; }
+  # S3 returns the ETag with HTTP quotes; CLI condition values use the
+  # opaque ETag content rather than the surrounding transport quotes.
+  observed="${observed#\"}"
+  observed="${observed%\"}"
   CERTBOTBOT_REG_ETAG="$observed"
   if ! (umask 077; aws --no-cli-pager s3api get-object \
     --bucket "$bucket" --key "$key" --if-match "$observed" \
