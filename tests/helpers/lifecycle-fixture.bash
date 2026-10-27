@@ -32,6 +32,8 @@ lifecycle_fixture_setup() {
   export LIFECYCLE_CALLS="$ROOT/calls"
   export LIFECYCLE_CONTEXTS="$ROOT/certbot-contexts"
   export LIFECYCLE_MODE=ok
+  # Only task #59 tests enable registration-aware Certbot/S3 mock behavior.
+  export LIFECYCLE_REGISTRATION_MOCK=false
   export LIFECYCLE_EXPECTED_KEY=latest.tar.gz
   export LIFECYCLE_BACKUP_KEY=archive-20261020.tar.gz
   export LIFECYCLE_BACKUP_REMOTE="$ROOT/dated-backup.tar.gz"
@@ -140,8 +142,16 @@ case "$action" in
         ;;
     esac
     [[ -f "$LIFECYCLE_REMOTE" ]] || { printf '(404)\n' >&2; exit 1; }
+    if [[ "$LIFECYCLE_REGISTRATION_MOCK" == true &&
+      "$query" == ETag ]]; then
+      printf '%s\n' '"0123456789abcdef0123456789abcdef"'
+    fi
     ;;
   get-object)
+    if [[ "${LIFECYCLE_REGISTER_CALL:-false}" == true &&
+      "$match" != 0123456789abcdef0123456789abcdef ]]; then
+      exit 9
+    fi
     case "$LIFECYCLE_MODE" in
       get-failure) exit 9 ;;
       get-partial)
@@ -163,6 +173,15 @@ case "$action" in
     # Permit a successful local Certbot operation with an independent remote
     # failure, including acceptance followed by a lost response.
     put_mode="${LIFECYCLE_PUT_MODE:-$LIFECYCLE_MODE}"
+    if [[ "${LIFECYCLE_REGISTER_CALL:-false}" == true ]]; then
+      if [[ -f "$LIFECYCLE_REMOTE" ]]; then
+        [[ "$match" == 0123456789abcdef0123456789abcdef &&
+          -z "$none" ]] || exit 9
+      else
+        [[ "$none" == '*' && -z "$match" ]] || exit 9
+      fi
+      [[ "$put_mode" != conditional-conflict ]] || exit 9
+    fi
     if [[ "$put_mode" == put-failure ]]; then
       printf '%s\n' 'AWS failure mock-private-PUT-TOKEN' >&2
       exit 9
@@ -186,6 +205,12 @@ MOCK
 #!/usr/bin/env bash
 verb="$1"
 shift
+# Registration's account probe supplies global options before show_account.
+if [[ "${LIFECYCLE_REGISTRATION_MOCK:-false}" == true &&
+  "$verb" == --config-dir ]]; then
+  set -- --config-dir "$@"
+  verb=show_account
+fi
 if [[ -n "${GPG_SYMMETRIC_KEY+x}" ||
   -n "${CERTBOTBOT_GPG_SECRET+x}" ]]; then
   printf '%s\n' 'certbot:secret-inherited' >>"$LIFECYCLE_CALLS"
@@ -193,7 +218,7 @@ if [[ -n "${GPG_SYMMETRIC_KEY+x}" ||
 fi
 printf 'certbot:%s\n' "$verb" >>"$LIFECYCLE_CALLS"
 config='' work='' logs='' name='' account='' reconcile=false
-sanext=''
+sanext='' contact='' server=''
 while (( $# )); do
   case "$1" in
     --config-dir) config="$2"; shift 2 ;;
@@ -201,6 +226,8 @@ while (( $# )); do
     --logs-dir) logs="$2"; shift 2 ;;
     --cert-name) name="$2"; shift 2 ;;
     --account) account="$2"; shift 2 ;;
+    --email) contact="$2"; shift 2 ;;
+    --server) server="$2"; shift 2 ;;
     -d) sanext+="${sanext:+,}DNS:$2"; shift 2 ;;
     --renew-with-new-domains) reconcile=true; shift ;;
     *) shift ;;
@@ -216,7 +243,45 @@ if [[ "$reconcile" == true ]]; then
 fi
 case "$verb" in
   plugins) printf '* dns-route53\n' ;;
-  show_account) [[ "$account" == account-id ]] || exit 91 ;;
+  show_account)
+    [[ "$account" == account-id ]] || exit 91
+    if [[ "${LIFECYCLE_REGISTER_CALL:-false}" == true ]]; then
+      case "$server" in
+        https://acme-v02.api.letsencrypt.org/directory)
+          host=acme-v02.api.letsencrypt.org ;;
+        https://acme-staging-v02.api.letsencrypt.org/directory)
+          host=acme-staging-v02.api.letsencrypt.org ;;
+        *) exit 91 ;;
+      esac
+      [[ -f "$config/accounts/$host/directory/account-id/regr.json" ]] ||
+        exit 91
+    fi
+    ;;
+  register)
+    [[ "${LIFECYCLE_REGISTER_CALL:-false}" == true &&
+      "${LIFECYCLE_REGISTRATION_MOCK:-false}" == true ]] || exit 98
+    [[ "$LIFECYCLE_MODE" != register-failure ]] || exit 9
+    [[ "$contact" == operator@example.org ]] || exit 91
+    case "$server" in
+      https://acme-v02.api.letsencrypt.org/directory)
+        host=acme-v02.api.letsencrypt.org ;;
+      https://acme-staging-v02.api.letsencrypt.org/directory)
+        host=acme-staging-v02.api.letsencrypt.org ;;
+      *) exit 91 ;;
+    esac
+    location="$config/accounts/$host/directory/account-id"
+    mkdir -p -- "$location" || exit 92
+    chmod 700 "$config/accounts" "$config/accounts/$host" \\
+      "$config/accounts/$host/directory" "$location" || exit 92
+    printf '%s\\n' '{"key":"synthetic-private-DO-NOT-LOG"}' \\
+      >"$location/private_key.json" || exit 92
+    printf '%s\\n' '{"body":{"contact":["mailto:operator@example.org"]}}' \\
+      >"$location/regr.json" || exit 92
+    printf '%s\\n' '{"creation":"synthetic"}' \\
+      >"$location/meta.json" || exit 92
+    chmod 600 "$location/"*.json || exit 92
+    [[ "$LIFECYCLE_MODE" != register-partial-failure ]] || exit 9
+    ;;
   certonly)
     [[ "$LIFECYCLE_MODE" == certbot-failure ]] && exit 9
     [[ "$account" == account-id &&
