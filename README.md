@@ -7,6 +7,11 @@ Certbot account and certificate state in an **existing Amazon S3 object**,
 and can resume on a fresh Linux runner without relying on that runner's
 previous `/etc/letsencrypt` directory.
 
+An explicitly invoked `certbotbot register` operation can now provision and
+persist a Let's Encrypt account without requesting a certificate.  Ordinary
+issuance and renewal never register an account implicitly.  This new path
+has only mocked acceptance coverage pending milestone #4 live staging checks.
+
 It is designed for scheduled or manually initiated, **one-shot Bash**
 execution. Docker and rootless Podman are optional ways to run the same
 producer; neither is required.
@@ -50,9 +55,12 @@ state archives (optionally inside an authenticated GPG envelope), and
 **Certbot with Route53 DNS-01**. It relies on a **previously registered
 Let's Encrypt production account** and an **already seeded S3 archive**.
 
-The tool does **not** create Let's Encrypt accounts, S3 buckets, IAM roles,
-hosted zones, or the initial archive; provision a web server; install or
-reload certificates on target hosts; automatically renew all stored
+The ordinary certificate lifecycle does **not** create Let's Encrypt accounts,
+S3 buckets, IAM roles, hosted zones, or an initial archive.  The separate,
+explicit `register` command is the only path permitted to create a native
+account-only archive at a positively missing S3 key.  The tool does not
+provision a web server, install or reload target certificates, automatically
+renew all stored
 lineages; delete orphaned lineages; provide distributed locking; or
 implicitly migrate encrypted/plaintext formats. Other storage backends,
 DNS providers and archive formats are not supported by the current
@@ -105,6 +113,34 @@ renewal metadata. The exact configured **current S3 bucket/key**
 run does not imply downstream deployment. A failed or interrupted
 S3 PutObject may have changed the remote object even if the
 producer returns nonzero: the operation is **not** a transaction.
+
+## Explicit account registration
+
+The account-provisioning command is separate from certificate issuance.
+It requires a contact email, an existing S3 bucket, and affirmative consent
+to the Let's Encrypt subscriber terms.  EFF email signup defaults to
+`true` and may be disabled explicitly.  Production is the default CA;
+select `--acme-environment staging` when testing, with a **different S3
+key** to keep account contexts separate.  For example, after reviewing
+the terms and configuring AWS credentials:
+
+```bash
+./certbotbot.bash register \
+  --email operator@example.org \
+  --agree-tos true \
+  --eff-email-signup false \
+  --s3-bucket my-existing-certificates \
+  --s3-key latest.tar.gz
+```
+
+The address and bucket are illustrative.  The command uses isolated
+Certbot state, a verified account-only tar archive and conditional S3
+publication.  No certificate is issued.  A confirmed missing S3 key is
+permitted only for explicit registration; access errors and ambiguous state
+are fatal.  The current ordinary issuer remains production-only: creating
+a staging account does not yet authorize staging certificate issuance.
+See [the registration contract](doc/acme-account-registration-contract.md)
+and [ADR-041](doc/adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md).
 
 ## Quick start: existing account and seeded archive
 

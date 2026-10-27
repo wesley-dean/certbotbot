@@ -8,7 +8,15 @@ including its development and minified representations. The **separate**
 read-only `certbotbot-client.bash` has a different CLI; see the
 [client settings reference](client-settings.md).
 
-The command manages **one selected certificate lineage per invocation**,
+**Explicit account registration is a separate command:**
+`certbotbot register [registration options]`, documented in
+[the registration contract](acme-account-registration-contract.md).
+It requires an email address and affirmative TOS consent, defaults EFF
+email signup to `true`, and permits an account-only initialization of a
+positively missing object.  It does not issue a certificate or change the
+issuer's production-only ACME selection.
+
+The ordinary command manages **one selected certificate lineage per invocation**,
 within one **existing, authoritative S3 archive**. That archive may contain
 other complete lineages, which are validated and preserved. No option
 creates an initial ACME account, bucket, hosted zone, IAM role, or
