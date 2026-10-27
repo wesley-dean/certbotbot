@@ -155,6 +155,27 @@ and the post-merge release evaluation checklist.
 
 See ADR-003, ADR-006, ADR-009, ADR-011, ADR-012, ADR-035 and ADR-036.
 
+## Milestone 4 end-to-end fixture evidence versus live staging
+
+The public selected-certificate E2E suite
+(`tests/milestone-4-public-e2e.bats`) is part of the existing full
+`tests/*.bats` inventory. Both ordinary Test and the separate late-tagging
+Versioning pipeline exercise it on **all three** checksum-verified producer
+artifacts through their existing per-flavor Make gates. Each preparation
+stage additionally runs `make verify-m4-e2e-inventory`, which fails if
+the fixture suite is absent, unsafe, omitted from the discovered inventory
+or contains no executable tests. The single-flavor Make targets enforce
+the same precondition without rebuilding their handed-off artifacts.
+
+This proves **mocked public-command lifecycle behavior**, not authentic
+Let's Encrypt registration, issuance or renewal, Route53 DNS changes,
+AWS permissions or Amazon S3 persistence. The real non-production
+staging run is a separate explicitly authorized milestone 4 activity,
+never triggered by an untrusted PR. See the
+[milestone 4 verified/pending evidence matrix](milestone-4-release-evidence.md)
+and [operator runbook](milestone-4-staging-acceptance.md).
+No live staging result is claimed by a successful release check.
+
 ## Encrypted standalone-client CI gates
 
 The ordinary `.github/workflows/test.yml` quality aggregator retains the

@@ -5,9 +5,20 @@ setup() {
   mkdir -p "$TEST_ROOT/dist" "$TEST_ROOT/tests" "$TEST_ROOT/bin"
   cp "$BATS_TEST_DIRNAME/../Makefile" "$TEST_ROOT/Makefile"
   printf '@test "fixture" { true; }\n' > "$TEST_ROOT/tests/fixture.bats"
+  # This copied Makefile is tested in an intentionally minimal repository.
+  # Keep the required milestone 4 inventory visible to its new guard without
+  # copying private lifecycle fixtures or invoking the actual public issuer.
+  printf '@test "mock public E2E" { true; }\n' \
+    > "$TEST_ROOT/tests/milestone-4-public-e2e.bats"
   cat > "$TEST_ROOT/bin/bats" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+# The Make prerequisite queries the Bats inventory independently of the
+# selected-flavor execution. Do not record this check as an artifact test.
+if [[ "${1-}" == --count ]]; then
+  printf '%s\n' "${MOCK_BATS_COUNT:-1}"
+  exit 0
+fi
 printf '%s|%s\n' "$BASH_STARTER_ARTIFACT" "$*" >> "$MOCK_BATS_LOG"
 if [[ "${1-}" == --formatter ]]; then
   printf '<testsuite name="mock" tests="1" failures="0"/>\n'
@@ -41,7 +52,7 @@ teardown() {
       make -s -C "$TEST_ROOT" test-one "TEST_FLAVOR=$flavor"
     [ "$status" -eq 0 ]
     [ "$(wc -l < "$TEST_ROOT/log")" -eq 1 ]
-    grep -Fqx "$TEST_ROOT/dist/$artifact|tests/fixture.bats" "$TEST_ROOT/log"
+    grep -Fqx "$TEST_ROOT/dist/$artifact|tests/fixture.bats tests/milestone-4-public-e2e.bats" "$TEST_ROOT/log"
     [ ! -e "$TEST_ROOT/vendor" ]
     [ ! -e "$TEST_ROOT/test-results" ]
   done
@@ -56,7 +67,7 @@ teardown() {
     run env PATH="$TEST_ROOT/bin:$PATH" MOCK_BATS_LOG="$TEST_ROOT/log" \
       make -s -C "$TEST_ROOT" test-report-one "TEST_FLAVOR=$flavor"
     [ "$status" -eq 0 ]
-    grep -Fqx "$TEST_ROOT/dist/$artifact|--formatter junit tests/fixture.bats" "$TEST_ROOT/log"
+    grep -Fqx "$TEST_ROOT/dist/$artifact|--formatter junit tests/fixture.bats tests/milestone-4-public-e2e.bats" "$TEST_ROOT/log"
     grep -Fq '<testsuite name="mock"' "$TEST_ROOT/test-results/bats-$flavor.xml"
   done
   [ "$(find "$TEST_ROOT/test-results" -name '*.xml' -type f | wc -l)" -eq 3 ]
@@ -135,8 +146,32 @@ teardown() {
   [ ! -e "$TEST_ROOT/test-results/bats-development.xml" ]
 }
 
+@test "missing or symlinked required public E2E suite fails before Bats" {
+  local suite="$TEST_ROOT/tests/milestone-4-public-e2e.bats"
+  rm -- "$suite"
+  run env PATH="$TEST_ROOT/bin:$PATH" MOCK_BATS_LOG="$TEST_ROOT/log" \
+    make -s -C "$TEST_ROOT" test-one TEST_FLAVOR=development
+  [ "$status" -ne 0 ]
+  [ ! -e "$TEST_ROOT/log" ]
+
+  ln -s fixture.bats "$suite"
+  run env PATH="$TEST_ROOT/bin:$PATH" MOCK_BATS_LOG="$TEST_ROOT/log" \
+    make -s -C "$TEST_ROOT" test-one TEST_FLAVOR=development
+  [ "$status" -ne 0 ]
+  [ ! -e "$TEST_ROOT/log" ]
+}
+
+@test "empty public E2E case inventory fails before running any artifact" {
+  run env PATH="$TEST_ROOT/bin:$PATH" MOCK_BATS_LOG="$TEST_ROOT/log" \
+    MOCK_BATS_COUNT=0 make -s -C "$TEST_ROOT" test-report-one TEST_FLAVOR=ordinary
+  [ "$status" -ne 0 ]
+  [ ! -e "$TEST_ROOT/log" ]
+  [ ! -e "$TEST_ROOT/test-results/bats-ordinary.xml" ]
+}
+
 @test "empty Bats test inventory fails without invoking Bats" {
   rm -- "$TEST_ROOT/tests/fixture.bats"
+  rm -- "$TEST_ROOT/tests/milestone-4-public-e2e.bats"
   run env PATH="$TEST_ROOT/bin:$PATH" MOCK_BATS_LOG="$TEST_ROOT/log" \
     make -s -C "$TEST_ROOT" test-one TEST_FLAVOR=development
   [ "$status" -ne 0 ]
