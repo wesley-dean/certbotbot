@@ -37,6 +37,13 @@ scope() {
     "$@" bash "$GUARD" scope
 }
 
+@test "maintained guard and credentialed staging scripts pass Bash syntax validation" {
+  run bash -n "$GUARD"
+  [ "$status" -eq 0 ]
+  run bash -n "$LIVE"
+  [ "$status" -eq 0 ]
+}
+
 @test "explicit manual trusted-main staging admission is accepted without network access" {
   dispatch
   [ "$status" -eq 0 ]
@@ -110,6 +117,7 @@ scope() {
   grep -Fxq '  workflow_dispatch:' "$WORKFLOW"
   ! grep -Eq '^  (pull_request|pull_request_target|push|schedule|release|workflow_call):' "$WORKFLOW"
   ! grep -Fq 'vars.' "$WORKFLOW"
+  ! awk '/^  prepare:/{ inside=1; next } /^  issue:/{ inside=0 } inside' "$WORKFLOW" | grep -Fq 'secrets.'
   ! grep -Fq 'secrets.E2E_CONTACT_EMAIL' "$WORKFLOW"
   ! grep -Fq 'secrets.GPG_SYMMETRIC_KEY' "$WORKFLOW"
   ! grep -Fq 'secrets.GHCR_TOKEN' "$WORKFLOW"
