@@ -55,6 +55,12 @@ jobs:
       - name: Validate maintained source
         run: make check
 
+      # ADR-009 / #49: prove the staged public lifecycle suite is present in
+      # the same full Bats inventory used by all three exact producer flavors.
+      # This is a credential-free inventory check, not real staging acceptance.
+      - name: Require milestone 4 public E2E test inventory
+        run: make verify-m4-e2e-inventory
+
       - name: Synchronize and verify repository dependencies
         run: |
           make deps
