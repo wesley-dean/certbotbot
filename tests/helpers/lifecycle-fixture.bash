@@ -238,6 +238,20 @@ printf 'certbot-context:%s:%s:%s:%s:%s:%s\n' \
   >>"$LIFECYCLE_CONTEXTS"
 printf 'certbot-sans:%s:%s\n' "$verb" "$sanext" \
   >>"$LIFECYCLE_CONTEXTS"
+printf 'certbot-server:%s:%s\n' "$verb" "$server" \
+  >>"$LIFECYCLE_CONTEXTS"
+case "$server" in
+  https://acme-v02.api.letsencrypt.org/directory)
+    host=acme-v02.api.letsencrypt.org ;;
+  https://acme-staging-v02.api.letsencrypt.org/directory)
+    host=acme-staging-v02.api.letsencrypt.org ;;
+  *) exit 91 ;;
+esac
+if [[ "$verb" != plugins && "$verb" != register ]]; then
+  [[ "$account" == account-id &&
+    -f "$config/accounts/$host/directory/account-id/regr.json" ]] ||
+    exit 91
+fi
 if [[ "$reconcile" == true ]]; then
   printf 'certbot-reconcile:%s\n' "$name" >>"$LIFECYCLE_CONTEXTS"
 fi
@@ -326,7 +340,7 @@ fullchain = $config/live/$name/fullchain.pem
 [renewalparams]
 account = account-id
 authenticator = dns-route53
-server = https://acme-v02.api.letsencrypt.org/directory
+server = $server
 EOF
       chmod 600 "$config/renewal/$name.conf"
     fi
@@ -335,7 +349,7 @@ EOF
     [[ "$LIFECYCLE_MODE" == certbot-failure ]] && exit 9
     if [[ "$LIFECYCLE_MODE" == renew-partial-failure ]]; then
       printf '%s\n' '{"meta":"interrupted"}' \
-        >"$config/accounts/acme-v02.api.letsencrypt.org/directory/account-id/meta.json"
+        >"$config/accounts/$host/directory/account-id/meta.json"
       exit 9
     elif [[ "$LIFECYCLE_MODE" == renew-bad-leaf ]]; then
       openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
@@ -380,6 +394,7 @@ MOCK
   chmod 755 "$ROOT/bin/"*
   export PATH="$ROOT/bin:$PATH"
   unset DOMAIN S3_BUCKET S3_KEY S3_KEY_TEMPLATE BACKUP_KEY_TEMPLATE
+  unset ACME_ENVIRONMENT CERTBOTBOT_ACME_ENVIRONMENT
   unset CERT_NAME ADDITIONAL_SANS
   unset GPG_SYMMETRIC_KEY CERTBOTBOT_GPG_SECRET ARCHIVE_ENCRYPTION
   unset ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED
