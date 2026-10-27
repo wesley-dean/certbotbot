@@ -78,17 +78,17 @@ for ((i=0;i<${#args[@]};i++)); do
     --server) server="${args[i+1]}" ;;
   esac
 done
+case "$server" in
+  https://acme-v02.api.letsencrypt.org/directory)
+    host=acme-v02.api.letsencrypt.org ;;
+  https://acme-staging-v02.api.letsencrypt.org/directory)
+    host=acme-staging-v02.api.letsencrypt.org ;;
+  *) exit 93 ;;
+esac
 case "$action" in
   register)
     [[ "$*" == *--non-interactive* && "$*" == *--agree-tos* ]] || exit 90
     [[ "$MOCK_MODE" != certbot-failure ]] || exit 3
-    case "$server" in
-      https://acme-v02.api.letsencrypt.org/directory)
-        host=acme-v02.api.letsencrypt.org ;;
-      https://acme-staging-v02.api.letsencrypt.org/directory)
-        host=acme-staging-v02.api.letsencrypt.org ;;
-      *) exit 93 ;;
-    esac
     account="$config/accounts/$host/directory/account-id"
     mkdir -p -- "$account"
     chmod 700 "$config/accounts" "$config/accounts/$host" \
@@ -101,7 +101,7 @@ case "$action" in
     chmod 600 "$account/"*.json
     ;;
   show_account)
-    [[ -d "$config/accounts/"*"/directory/account-id" ]] && exit 0
+    [[ -d "$config/accounts/$host/directory/account-id" ]] && exit 0
     exit 1
     ;;
   *) exit 99 ;;
