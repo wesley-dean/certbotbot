@@ -28,6 +28,9 @@ MKTEXT_LIBRARY := vendor/mktext.bash
 ASSEMBLED_SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(MKTEXT_LIBRARY) $(ENTRYPOINT_SOURCE)
 CLIENT_ASSEMBLED_SOURCE_FILES := lib/client-config.bash lib/filename.bash $(MKTEXT_LIBRARY) lib/client-crypto.bash lib/client-s3.bash lib/archive.bash lib/restore.bash lib/client-extract.bash src/client.bash
 TEST_SCRIPTS := $(sort $(wildcard tests/*.bats))
+# Milestone 4: one dedicated public-CLI fixture suite is mandatory in every
+# producer flavor's existing unfiltered Bats inventory.
+M4_E2E_SUITE := tests/milestone-4-public-e2e.bats
 TEST_RESULTS_DIR := test-results
 
 VENDOR_DIR := vendor
@@ -50,7 +53,7 @@ BUILD_COMMIT ?= $(shell commit="$$(git rev-parse --short=12 HEAD 2>/dev/null || 
 BUILD_DATE ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || printf 'unknown')
 SHFMT_ARGUMENTS := -i 2 -bn -ci -sr -kp
 
-.PHONY: all adr-index build check checksums clean deps deps-check distclean docs docs-clean FORCE format test test-one test-report test-report-one verify-bashdeps
+.PHONY: all adr-index build check checksums clean deps deps-check distclean docs docs-clean FORCE format test test-one test-report test-report-one verify-bashdeps verify-m4-e2e-inventory
 
 ## Synchronize repository dependencies, then build consumer artifacts.
 all: deps
@@ -156,19 +159,28 @@ check:
 format:
 	shfmt $(SHFMT_ARGUMENTS) -w $(SOURCE_FILES)
 
+## Fail closed when milestone 4 public lifecycle acceptance is absent or empty.
+## The inventory is checked before all-flavor and single-flavor execution.
+## The count is intentionally required to be positive, not pinned to a brittle
+## number of individual Bats cases; new cases remain automatic additions.
+verify-m4-e2e-inventory:
+	@test -f "$(M4_E2E_SUITE)" && test ! -L "$(M4_E2E_SUITE)" || { printf '%s\\n' 'Missing or unsafe milestone 4 E2E Bats suite' >&2; exit 65; }
+	@case ' $(TEST_SCRIPTS) ' in *' $(M4_E2E_SUITE) '*) ;; *) printf '%s\\n' 'Milestone 4 E2E suite is absent from the full Bats inventory' >&2; exit 65 ;; esac
+	@count="$(bats --count "$(M4_E2E_SUITE)")" && [[ "$count" =~ ^[1-9][0-9]*$ ]] || { printf '%s\\n' 'Milestone 4 E2E Bats suite has no executable cases' >&2; exit 65; }
+
 ## Run the behavior suite against every generated artifact flavor.
-test: build
+test: build verify-m4-e2e-inventory
 	@set -e; for artifact in $(DIST_SCRIPTS); do printf 'Testing %s\n' "$$artifact"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" BASH_STARTER_CLIENT_ARTIFACT="$${PWD}/$(DIST_CLIENT_SCRIPT)" bats $(TEST_SCRIPTS); done
 
 ## Run every artifact flavor and emit one JUnit report per flavor.
-test-report: build
+test-report: build verify-m4-e2e-inventory
 	@mkdir -p "$(TEST_RESULTS_DIR)"
 	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" BASH_STARTER_CLIENT_ARTIFACT="$${PWD}/$(DIST_CLIENT_SCRIPT)" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
 
 ## Run one complete Bats suite against an already-built and verified producer flavor.
 ## CI uses this test-only entry point to avoid FORCE rebuilds of handed-off bytes.
 ## TEST_FLAVOR is passed through Make's environment, never interpolated into shell.
-test-one test-report-one:
+test-one test-report-one: verify-m4-e2e-inventory
 	@set -eu; \
 	case "$${TEST_FLAVOR-}" in \
 	  development) artifact='$(DIST_DEV_SCRIPT)' ;; \
