@@ -511,7 +511,8 @@ See [ADR-039](adr/ADR-039-alpine-oci-runtime.md).
 
 An operator-invoked `certbotbot register` operation requires an email address,
 explicit terms acceptance and a selected Let's Encrypt production or staging
-account context, with EFF sharing disabled by default. Registration never
+account context, with EFF email signup enabled by default and independently
+configurable. Registration never
 occurs implicitly during certificate issuance or renewal; explicit registration
 alone may initialize a positively missing current S3 object with a validated
 account-only archive. Existing suitable accounts are reused without rewriting
