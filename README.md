@@ -408,6 +408,18 @@ trust policy, release pin and schedule. Examples do not
 provision accounts or buckets, run live cloud operations on
 PRs, or deploy certificates to consumer servers.
 
+## Manual staging E2E acceptance
+
+Milestone 4's real Let's Encrypt staging acceptance is operator-controlled,
+using the separate [manual staging workflow](doc/milestone-4-live-staging-workflow.md)
+and governing [ADR-043](doc/adr/ADR-043-manual-staging-live-e2e-workflow.md).
+The workflow is never invoked from a pull request. It requires a trusted
+`main` dispatch, explicit staging selection, an independently seeded staging
+account-only S3 key, and a deliberate operator authorization. It does not
+register an account, contact Let's Encrypt production, or provide ordinary
+release publication authority. The successful fixture-only Bats suite does
+not constitute real staging evidence.
+
 ## Building, testing and contributing
 
 The maintained Bash source lives in `src/` and `lib/`.
