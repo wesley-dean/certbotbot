@@ -90,7 +90,7 @@ certbotbot_renewal_map() {
     printf '%s\n' 'certbotbot: unsupported renewal metadata size' >&2
     return 65
   fi
-  account_dir="$config/accounts/acme-v02.api.letsencrypt.org/directory"
+  account_dir="$config/accounts/$CERTBOTBOT_CA_HOST/directory"
   for entry in "$account_dir/"*; do
     [[ -d "$entry" && ! -L "$entry" ]] || continue
     account_id="${entry##*/}"
@@ -179,7 +179,7 @@ certbotbot_renewal_map() {
           [[ "$value" == dns-route53 ]] || { valid=false; break; }
           ;;
         server)
-          [[ "$value" == https://acme-v02.api.letsencrypt.org/directory ]] ||
+          [[ "$value" == "$CERTBOTBOT_CA_SERVER" ]] ||
             { valid=false; break; }
           ;;
         key_type)
