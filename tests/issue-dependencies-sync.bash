@@ -12,6 +12,10 @@ cat > "$work/bin/gh" <<'MOCK'
 set -euo pipefail
 case "$*" in
   'api /repos/example/repo/issues/100')
+    if [[ "${MOCK_GOVERNANCE:-0}" == 1 ]]; then
+      printf '%s\n' '{"id":1000,"number":100,"body":"## Dependencies and Governing Decisions\n\n#89, #90, and #88 are background references.\n## Verification\nNo blockers."}'
+      exit 0
+    fi
     printf '{"id":1000,"number":100,"body":"## Blocked by\\n\\n- #89\\n- #90\\n## Acceptance\\n#88 is not a dependency.","labels":[{"name":"type:task"}]}\n' ;;
   'api /repos/example/repo/issues/89')
     printf '{"id":890,"number":89}\n' ;;
@@ -47,6 +51,8 @@ chmod +x "$work/bin/gh"
 export PATH="$work/bin:$PATH" GH_REPO=example/repo GH_TOKEN=fake MOCK_STATE="$work"
 script="$root/scripts/update_issue_dependencies.bash"
 
+MOCK_GOVERNANCE=1 bash "$script" --issue 100 > "$work/output"
+[[ ! -e "$work/writes" ]] || { printf 'Governance references incorrectly linked\n' >&2; exit 1; }
 bash "$script" --issue 100 > "$work/output"
 grep -q 'LINKED #100 blocked by #89' "$work/output"
 grep -q 'LINKED #100 blocked by #90' "$work/output"
