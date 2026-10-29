@@ -43,7 +43,7 @@ errors=0
 ## @brief Extract unique #number references from the dependency section.
 ## @return One issue number per line, empty output if none are declared.
 declared_blockers() {
-  local body="$1" section word
+  local body="$1" section
   section="$(printf '%s\n' "$body" | awk '
     /^##[[:space:]]+(Dependencies|Blocked by)([[:space:]:]|$)/ {active=1; next}
     /^##[[:space:]]+/ {if (active) exit}
