@@ -1,0 +1,38 @@
+---
+name: "Test issue metadata synchronization"
+# yamllint disable-line rule:truthy
+on:
+  pull_request:
+    paths:
+      - "scripts/update_issue_parent_child_relationships.bash"
+      - "scripts/update_issue_project_status.bash"
+      - "tests/issue-metadata-sync.bash"
+      - ".github/workflows/issue-metadata-sync.yml"
+      - ".github/workflows/issue-metadata-sync-tests.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/update_issue_parent_child_relationships.bash"
+      - "scripts/update_issue_project_status.bash"
+      - "tests/issue-metadata-sync.bash"
+
+permissions:
+  contents: read
+
+jobs:
+  mock-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate Bash syntax
+        shell: bash
+        run: |
+          bash -n scripts/update_issue_parent_child_relationships.bash
+          bash -n scripts/update_issue_project_status.bash
+          bash -n tests/issue-metadata-sync.bash
+      - name: Run mocked metadata synchronization tests
+        shell: bash
+        run: bash tests/issue-metadata-sync.bash
