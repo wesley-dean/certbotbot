@@ -53,7 +53,7 @@ declared_parent() {
 
 ## @brief Reconcile a task; report conflicts without reparenting.
 reconcile() {
-  local number="$1" child declared current parent id labels
+  local number="$1" child declared current parent id labels lookup_error lookup_status
   child="$(gh api "$api/issues/$number")" || return 1
   [[ "$(jq -r '.pull_request // empty' <<<"$child")" == '' ]] || return 0
   labels="$(jq -r '[.labels[].name] | join(" ")' <<<"$child")"
@@ -66,9 +66,23 @@ reconcile() {
   [[ "$(jq -r '[.labels[].name] | index("type:story") != null' <<<"$parent")" == 'true' ]] || {
     log "CONFLICT #$number: parent #$declared is not type:story"; return 1;
   }
-  current="$(gh api "$api/issues/$number/parent" 2>/dev/null || true)"
+  # Only an explicit 404 permits a new relationship; other failures must stop.
+  lookup_error="$(mktemp)" || return 1
+  if current="$(gh api "$api/issues/$number/parent" 2>"$lookup_error")"; then
+    rm -f "$lookup_error"
+  else
+    lookup_status="$(cat "$lookup_error")"
+    rm -f "$lookup_error"
+    if [[ "$lookup_status" != *"HTTP 404"* && "$lookup_status" != *"status 404"* ]]; then
+      log "ERROR #$number: native parent lookup failed: $lookup_status"
+      return 1
+    fi
+    current=''
+  fi
   if [[ -n "$current" ]]; then
-    id="$(jq -r '.number // empty' <<<"$current")"
+    id="$(jq -er '.number | select(type == "number")' <<<"$current")" || {
+      log "ERROR #$number: invalid native parent payload"; return 1;
+    }
     if [[ "$id" == "$declared" ]]; then
       log "OK #$number -> #$declared"; return 0
     fi
