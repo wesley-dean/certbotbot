@@ -560,3 +560,9 @@ See [ADR-043](adr/ADR-043-manual-staging-live-e2e-workflow.md).
 A repository-local GitHub Actions workflow dispatches independently callable Bash scripts to reconcile native task-parent relationships and, optionally, GitHub Projects v2 Status from issue state. The scripts use `GH_TOKEN` and accept an issue number or whole-repository sweep; `PROJECT_NUMBER` missing or zero disables only Projects operations. Ambiguous parentage is reported rather than overwritten, and the mechanism does not grant approvals or change issue completion. A parameterless manual dispatch and scheduled sweep permit historical backfill and drift repair without hosting an external GitHub App.
 
 See [ADR-044](adr/ADR-044-github-issue-metadata-synchronization.md).
+
+### ADR-045: Additive Native Issue Dependency Synchronization
+
+Explicit task dependencies recorded under a Dependencies or Blocked by section are reconciled into native GitHub issue blocking relationships. The operation is additive, idempotent, and independent of parent-child and Projects Status synchronization, with GitHub's own API enforcing graph constraints. It neither infers dependencies from story membership or issue order nor removes native relationships absent from Markdown. Failures remain visible; approval and issue lifecycle are unchanged.
+
+See [ADR-045](adr/ADR-045-native-issue-dependency-synchronization.md).
