@@ -492,3 +492,44 @@ through [`.codingstandardrc`](.codingstandardrc).
 Dedicated to the public domain under **CC0 1.0 Universal**.
 See [LICENSE](LICENSE), [CONTRIBUTING.md](CONTRIBUTING.md),
 and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+## GitHub issue metadata synchronization
+
+The repository includes a GitHub Actions workflow and two independent Bash
+scripts for synchronizing GitHub's native issue relationships and optionally
+GitHub Projects v2 Status. This is repository administration tooling, not part
+of the certificate producer or its releases.
+
+Prerequisites: `gh`, `jq`, and an exported `GH_TOKEN` with appropriate
+Issues access. Configure the GitHub Actions repository secret `GH_TOKEN` to
+run the workflow. The workflow accepts no dispatch inputs; issue events
+process the affected issue, and a manual dispatch or weekly scheduled run
+processes the entire backlog.
+
+```bash
+export GH_REPO=wesley-dean/certbotbot
+bash scripts/update_issue_parent_child_relationships.bash --issue 100
+bash scripts/update_issue_parent_child_relationships.bash --all
+
+# Projects integration is optional and disabled by default:
+export PROJECT_NUMBER=0
+bash scripts/update_issue_project_status.bash --issue 100
+
+# To enable Projects v2, set a positive project number and ensure GH_TOKEN
+# has permission to update the target Project.
+export PROJECT_NUMBER=12
+export PROJECT_OWNER=wesley-dean
+bash scripts/update_issue_project_status.bash --all
+```
+
+Set repository Actions variable `PROJECT_NUMBER` to the appropriate positive
+GitHub Projects number to enable project synchronization. Unset, empty, or
+`0` skips the Projects job without affecting relationship reconciliation.
+An optional `PROJECT_OWNER` variable overrides the repository owner.
+
+Run the isolated mock checks with
+`bash tests/issue-metadata-sync.bash`. Existing native parents are not
+silently replaced when their Markdown declaration disagrees; failures
+must be investigated. Project synchronization mirrors only status and does
+not update approvals, issue closure, or milestones. See
+[ADR-044](doc/adr/ADR-044-github-issue-metadata-synchronization.md).
