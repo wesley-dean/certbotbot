@@ -1,0 +1,70 @@
+---
+name: "Synchronize issue metadata"
+# yamllint disable-line rule:truthy
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - labeled
+      - unlabeled
+      - closed
+      - reopened
+      - milestoned
+      - demilestoned
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-metadata-${{ github.repository }}-${{ github.event.issue.number || 'all' }}
+  cancel-in-progress: false
+
+jobs:
+  parent-child:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reconcile native issue relationships
+        shell: bash
+        run: |
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            bash scripts/update_issue_parent_child_relationships.bash --issue "$ISSUE_NUMBER"
+          else
+            bash scripts/update_issue_parent_child_relationships.bash --all
+          fi
+
+  project-status:
+    if: ${{ vars.PROJECT_NUMBER != '' && vars.PROJECT_NUMBER != '0' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER }}
+      PROJECT_OWNER: ${{ vars.PROJECT_OWNER || github.repository_owner }}
+      ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reconcile optional GitHub Projects Status
+        shell: bash
+        run: |
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            bash scripts/update_issue_project_status.bash --issue "$ISSUE_NUMBER"
+          else
+            bash scripts/update_issue_project_status.bash --all
+          fi
