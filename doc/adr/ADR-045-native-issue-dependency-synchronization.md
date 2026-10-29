@@ -73,3 +73,14 @@ independent. Live state changes occur only after review and merge.
 
 ADR-016 (privileged trust boundaries), ADR-018 and ADR-019 (governance and
 approvals), and ADR-044 (independent issue metadata synchronizers).
+
+## 2026-10-29 Safety Suspension
+
+A live repository-wide run revealed that the initial parser treated all issue
+references within `Dependencies and Governing Decisions` as blocking
+prerequisites. Many unintended native blocking relationships were created.
+The workflow's dependency job is suspended until the affected relationships
+are audited and corrected. The parser now recognizes only a dedicated
+`## Blocked by` heading with one bare `#number` per line. It does not infer
+blockers from general governance text. Re-enabling requires a separate
+reviewed change after the audit; this parser fix alone is insufficient.

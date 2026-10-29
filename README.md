@@ -537,9 +537,11 @@ not update approvals, issue closure, or milestones. See
 
 ### Native issue dependency synchronization
 
-To add native GitHub blocking relationships, write a level-two `Dependencies`
-or `Blocked by` section in an issue description with references such as
-`Blocked by #89 and #90`. Only references within that section are used.
+To add native GitHub blocking relationships, write a dedicated level-two `Blocked by` section with one bare issue reference
+per line, for example `- #89` followed by `- #90`. References in
+`Dependencies and Governing Decisions` are NOT blocking dependencies.
+Dependency synchronization is temporarily disabled in Actions pending audit
+and cleanup of incorrectly created relationships.
 The script adds missing native blockers, verifies them, and preserves existing
 relationships; it never removes them or infers dependencies from parentage.
 

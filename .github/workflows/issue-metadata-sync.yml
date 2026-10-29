@@ -50,6 +50,9 @@ jobs:
           fi
 
   dependencies:
+    # Emergency stop: old parser interpreted governance references as blockers.
+    # Restore only after audit and reconciliation of mistakenly created links.
+    if: ${{ false }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
