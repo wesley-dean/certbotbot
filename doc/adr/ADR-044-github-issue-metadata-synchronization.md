@@ -12,7 +12,9 @@ Introduce a repository-local, event-dispatched GitHub Actions workflow that invo
 
 Both programs obtain credentials from the standard `GH_TOKEN` environment variable and take `--issue NUMBER` or `--all`, with the target repository supplied through `GH_REPO` or `--repo`. The workflow supplies dispatch inputs, while the scripts are independent of GitHub Actions. Events synchronize the affected issue; a parameterless manual dispatch and a weekly schedule reconcile the entire repository.
 
-`PROJECT_NUMBER` is an optional GitHub Actions repository variable. If unset, empty, or zero, the project job is skipped and parent-child reconciliation still runs. Other values must be positive decimal integers. `PROJECT_OWNER` is optional and defaults to repository owner. The workflow uses the `GH_TOKEN` Actions secret for authenticated GitHub CLI calls. Project Status option IDs are discovered from the target Project rather than hard-coded.
+`PROJECT_NUMBER` is an optional GitHub Actions repository variable. If unset, empty, or zero, the project job is skipped and parent-child reconciliation still runs. Other values must be positive decimal integers. `PROJECT_OWNER` is optional and defaults to repository owner. In Actions, native parent-child updates use the built-in `github.token` with
+`issues: write`, supplied to the script as `GH_TOKEN`. Only the optional
+Projects job uses the separately configured `GH_TOKEN` Actions secret. Project Status option IDs are discovered from the target Project rather than hard-coded.
 
 ## Context, Boundaries, and Assumptions
 
@@ -37,7 +39,10 @@ Project updates require access to the target Project, including project field mu
 
 The repository gains one event-driven workflow, two independent Bash commands, and offline mock verification. An initial manual dispatch can backfill native relationships; future events and weekly sweeps maintain consistency. Credentials and Projects configuration remain operator-owned, and failure to grant Projects permissions cannot prevent the independent parent-child job from completing. Checkov's user-input restriction is respected through a parameterless manual dispatch. No live API mutation is performed by mocked tests.
 
-The scripts must remain idempotent; tests cover creation and rerun of a relationship, Projects opt-out, and invalid project configuration. Production deployment requires the operator to add the `GH_TOKEN` secret and optionally configure `PROJECT_NUMBER` / `PROJECT_OWNER`, then review a test run. Future enhancements, such as milestone propagation, PR traceability, and governance enforcement, require separate scope review.
+The scripts must remain idempotent; tests cover creation and rerun of a relationship, Projects opt-out, and invalid project configuration. Production deployment requires no additional secret for parent-child updates.
+If Projects synchronization is enabled, the operator must configure the
+`GH_TOKEN` secret and positive `PROJECT_NUMBER` (and optionally `PROJECT_OWNER`),
+then review a test run. Future enhancements, such as milestone propagation, PR traceability, and governance enforcement, require separate scope review.
 
 ## Related Decisions
 
