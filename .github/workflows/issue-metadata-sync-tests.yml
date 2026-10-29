@@ -6,7 +6,10 @@ on:
     paths:
       - "scripts/update_issue_parent_child_relationships.bash"
       - "scripts/update_issue_project_status.bash"
+      - "scripts/update_issue_dependencies.bash"
       - "tests/issue-metadata-sync.bash"
+      - "scripts/update_issue_dependencies.bash"
+      - "tests/issue-dependencies-sync.bash"
       - ".github/workflows/issue-metadata-sync.yml"
       - ".github/workflows/issue-metadata-sync-tests.yml"
   push:
@@ -15,7 +18,10 @@ on:
     paths:
       - "scripts/update_issue_parent_child_relationships.bash"
       - "scripts/update_issue_project_status.bash"
+      - "scripts/update_issue_dependencies.bash"
       - "tests/issue-metadata-sync.bash"
+      - "scripts/update_issue_dependencies.bash"
+      - "tests/issue-dependencies-sync.bash"
 
 permissions:
   contents: read
@@ -33,6 +39,10 @@ jobs:
           bash -n scripts/update_issue_parent_child_relationships.bash
           bash -n scripts/update_issue_project_status.bash
           bash -n tests/issue-metadata-sync.bash
+          bash -n scripts/update_issue_dependencies.bash
+          bash -n tests/issue-dependencies-sync.bash
       - name: Run mocked metadata synchronization tests
         shell: bash
-        run: bash tests/issue-metadata-sync.bash
+        run: |
+          bash tests/issue-metadata-sync.bash
+          bash tests/issue-dependencies-sync.bash
