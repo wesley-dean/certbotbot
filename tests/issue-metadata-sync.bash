@@ -12,6 +12,11 @@ set -euo pipefail
 cmd="$*"
 case "$cmd" in
   'api /repos/example/repo/issues/100')
+    case "${MOCK_ISSUE_MODE:-todo}" in
+      progress) printf '%s\n' '{"number":100,"state":"open","labels":[{"name":"approved"},{"name":"in-progress"}],"html_url":"https://github.com/example/repo/issues/100"}'; exit 0 ;;
+      done) printf '%s\n' '{"number":100,"state":"closed","state_reason":"completed","labels":[],"html_url":"https://github.com/example/repo/issues/100"}'; exit 0 ;;
+      declined) printf '%s\n' '{"number":100,"state":"closed","state_reason":"not_planned","labels":[],"html_url":"https://github.com/example/repo/issues/100"}'; exit 0 ;;
+    esac
     printf '%s\n' '{"id":10000,"number":100,"body":"## Parent Story or Maintenance Exception\n\n#89 - test parent.\n\n## Objective\n","labels":[{"name":"type:task"},{"name":"approved"}],"state":"open","html_url":"https://github.com/example/repo/issues/100"}' ;;
   'api /repos/example/repo/issues/89')
     printf '%s\n' '{"id":8900,"number":89,"labels":[{"name":"type:story"}]}' ;;
@@ -83,6 +88,14 @@ MOCK_ITEM_MODE=absent PROJECT_NUMBER=12 bash "$project" --issue 100 >/dev/null
 grep -q 'project item-add' "$work/writes" || exit 1
 grep -q -- '--id ITEM_2' "$work/writes" || exit 1
 : > "$work/writes"
+MOCK_ISSUE_MODE=progress PROJECT_NUMBER=12 bash "$project" --issue 100 >/dev/null
+grep -q -- '--single-select-option-id O_PROGRESS' "$work/writes" || exit 1
+: > "$work/writes"
+MOCK_ISSUE_MODE=done PROJECT_NUMBER=12 bash "$project" --issue 100 >/dev/null
+grep -q -- '--single-select-option-id O_DONE' "$work/writes" || exit 1
+: > "$work/writes"
+MOCK_ISSUE_MODE=declined PROJECT_NUMBER=12 bash "$project" --issue 100 >/dev/null
+[[ ! -s "$work/writes" ]] || exit 1
 if MOCK_EDIT_FAIL=1 PROJECT_NUMBER=12 bash "$project" --issue 100 >/dev/null 2>&1; then
   printf 'Project edit error was swallowed\n' >&2; exit 1
 fi
