@@ -12,7 +12,7 @@ set -euo pipefail
 cmd="$*"
 case "$cmd" in
   'api /repos/example/repo/issues/100')
-    printf '%s\n' '{"id":10000,"number":100,"body":"## Parent Story or Maintenance Exception\\n\\n#89 - test parent.\\n\\n## Objective\\n","labels":[{"name":"type:task"},{"name":"approved"}],"state":"open","html_url":"https://github.com/example/repo/issues/100"}' ;;
+    printf '%s\n' '{"id":10000,"number":100,"body":"## Parent Story or Maintenance Exception\n\n#89 - test parent.\n\n## Objective\n","labels":[{"name":"type:task"},{"name":"approved"}],"state":"open","html_url":"https://github.com/example/repo/issues/100"}' ;;
   'api /repos/example/repo/issues/89')
     printf '%s\n' '{"id":8900,"number":89,"labels":[{"name":"type:story"}]}' ;;
   'api /repos/example/repo/issues/100/parent')
