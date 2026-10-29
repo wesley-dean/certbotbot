@@ -44,17 +44,19 @@ errors=0
 ## @return One issue number per line, empty output if none are declared.
 declared_blockers() {
   local body="$1" section
+  # A section named "Dependencies and Governing Decisions" records background
+  # references, not an explicit execution prerequisite. Only a dedicated
+  # "Blocked by" heading authorizes an automated dependency mutation.
   section="$(printf '%s\n' "$body" | awk '
-    /^##[[:space:]]+(Dependencies|Blocked by)([[:space:]:]|$)/ {active=1; next}
+    /^##[[:space:]]+Blocked by[[:space:]]*$/ {active=1; next}
     /^##[[:space:]]+/ {if (active) exit}
     active {print}
   ')"
-  # Tokenize on nonreference separators; do not match parts of URLs or
-  # unrelated prose outside the explicit section.
+  # Require a standalone issue reference on its own bullet or line. Other
+  # prose, including historical and governance references, is not actionable.
   printf '%s\n' "$section" |
-    grep -Eo '#[1-9][0-9]*' |
-    tr -d '#' |
-    sort -nu || true
+    sed -nE 's/^[[:space:]]*(-[[:space:]]*)?#([1-9][0-9]*)[[:space:]]*$/\2/p' |
+    sort -nu
 }
 
 ## @brief List complete native blockers; propagate API failures.
