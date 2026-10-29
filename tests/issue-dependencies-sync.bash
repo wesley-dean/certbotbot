@@ -12,7 +12,7 @@ cat > "$work/bin/gh" <<'MOCK'
 set -euo pipefail
 case "$*" in
   'api /repos/example/repo/issues/100')
-    printf '{"id":1000,"number":100,"body":"## Dependencies\\n\\nBlocked by #89 and #90.\\n## Acceptance\\n#88 is not a dependency.","labels":[{"name":"type:task"}]}\n' ;;
+    printf '{"id":1000,"number":100,"body":"## Blocked by\\n\\n- #89\\n- #90\\n## Acceptance\\n#88 is not a dependency.","labels":[{"name":"type:task"}]}\n' ;;
   'api /repos/example/repo/issues/89')
     printf '{"id":890,"number":89}\n' ;;
   'api /repos/example/repo/issues/90')
