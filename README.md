@@ -500,9 +500,10 @@ scripts for synchronizing GitHub's native issue relationships and optionally
 GitHub Projects v2 Status. This is repository administration tooling, not part
 of the certificate producer or its releases.
 
-Prerequisites: `gh`, `jq`, and an exported `GH_TOKEN` with appropriate
-Issues access. Configure the GitHub Actions repository secret `GH_TOKEN` to
-run the workflow. The workflow accepts no dispatch inputs; issue events
+Prerequisites for local use: `gh`, `jq`, and an exported `GH_TOKEN` with
+appropriate permissions. In Actions, native relationships use the built-in
+token with `issues: write`; only optional Projects synchronization requires
+the repository secret `GH_TOKEN`. The workflow accepts no dispatch inputs; issue events
 process the affected issue, and a manual dispatch or weekly scheduled run
 processes the entire backlog.
 
