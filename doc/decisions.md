@@ -554,3 +554,9 @@ See [ADR-042](adr/ADR-042-explicit-ca-bound-staging-issuance.md).
 Live milestone 4 acceptance runs only through a parameterless, owner-initiated workflow dispatch on trusted main, with an independent pre-network staging-only admission gate and fixed CA selection. A credential-free build supplies one checksum-verified public artifact handoff to two separate credentialed runners for genuine staging issuance and S3 publication followed by independent restoration and the normal selected renewal/no-op decision. Registration, production ACME access, automatic privileged CI, forced renewal, and publication of raw secret-bearing evidence are excluded. The operator retains responsibility for account seeding, scoped resources, recovery, and writer serialization; code and mock CI alone do not prove real interoperability.
 
 See [ADR-043](adr/ADR-043-manual-staging-live-e2e-workflow.md).
+
+### ADR-044: GitHub Issue Metadata Synchronization
+
+A repository-local GitHub Actions workflow dispatches independently callable Bash scripts to reconcile native task-parent relationships and, optionally, GitHub Projects v2 Status from issue state. The scripts use `GH_TOKEN` and accept an issue number or whole-repository sweep; `PROJECT_NUMBER` missing or zero disables only Projects operations. Ambiguous parentage is reported rather than overwritten, and the mechanism does not grant approvals or change issue completion. A parameterless manual dispatch and scheduled sweep permit historical backfill and drift repair without hosting an external GitHub App.
+
+See [ADR-044](adr/ADR-044-github-issue-metadata-synchronization.md).
