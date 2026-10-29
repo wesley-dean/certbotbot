@@ -51,12 +51,13 @@ status_for_issue() {
   reason="$(jq -r '.state_reason // ""' <<<"$obj")"
   labels="$(jq -r '[.labels[].name] | join(" ")' <<<"$obj")"
   if [[ "$state" == closed ]]; then
-    [[ "$reason" == completed ]] && printf 'Done'
+    if [[ "$reason" == completed ]]; then printf 'Done'; fi
   elif [[ " $labels " == *' approved '* ]]; then
     if [[ " $labels " == *' in-progress '* ]]; then printf 'In Progress'; else printf 'Todo'; fi
   else
     printf 'Backlog'
   fi
+  return 0
 }
 
 ## @brief Find and synchronize exactly one issue item in the configured project.
