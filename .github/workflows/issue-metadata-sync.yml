@@ -49,6 +49,28 @@ jobs:
             bash scripts/update_issue_parent_child_relationships.bash --all
           fi
 
+  dependencies:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4.2.2
+        with:
+          persist-credentials: false
+      - name: Reconcile native issue dependencies
+        shell: bash
+        run: |
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            bash scripts/update_issue_dependencies.bash --issue "$ISSUE_NUMBER"
+          else
+            bash scripts/update_issue_dependencies.bash --all
+          fi
+
   project-status:
     if: ${{ vars.PROJECT_NUMBER != '' && vars.PROJECT_NUMBER != '0' }}
     runs-on: ubuntu-22.04
