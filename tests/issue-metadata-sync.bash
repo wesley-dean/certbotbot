@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 ## @file issue-metadata-sync.bash
-## @brief Offline acceptance tests for GitHub metadata synchronization scripts.
-##
-## Tests use a fake gh executable.  No GitHub token, network, or real issue is
-## needed; malformed/missing parent, an already linked child, and an absent
-## project are exercised against the public shell interfaces.
+## @brief Credential-free mocked acceptance tests for metadata synchronization.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -16,36 +12,77 @@ set -euo pipefail
 cmd="$*"
 case "$cmd" in
   'api /repos/example/repo/issues/100')
-    printf '%s\n' '{"id":10000,"number":100,"body":"## Parent Story or Maintenance Exception\n\n#89 - test parent.\n\n## Objective\n","labels":[{"name":"type:task"}],"state":"open","html_url":"https://github.com/example/repo/issues/100"}' ;;
+    printf '%s\n' '{"id":10000,"number":100,"body":"## Parent Story or Maintenance Exception\\n\\n#89 - test parent.\\n\\n## Objective\\n","labels":[{"name":"type:task"},{"name":"approved"}],"state":"open","html_url":"https://github.com/example/repo/issues/100"}' ;;
   'api /repos/example/repo/issues/89')
     printf '%s\n' '{"id":8900,"number":89,"labels":[{"name":"type:story"}]}' ;;
   'api /repos/example/repo/issues/100/parent')
-    if [[ -f "${MOCK_STATE}/linked" ]]; then
-      printf '%s\n' '{"number":89}'
-    else
-      exit 1
-    fi ;;
+    case "${MOCK_PARENT_MODE:-missing}" in
+      missing) printf 'gh: HTTP 404: Not Found\n' >&2; exit 1 ;;
+      forbidden) printf 'gh: HTTP 403: Forbidden\n' >&2; exit 1 ;;
+      ratelimited) printf 'gh: HTTP 429: Rate limit\n' >&2; exit 1 ;;
+      linked) printf '{"number":89}\n' ;;
+      conflict) printf '{"number":88}\n' ;;
+      malformed) printf '{"wrong":"payload"}\n' ;;
+    esac ;;
   'api --method POST /repos/example/repo/issues/89/sub_issues -F sub_issue_id=10000')
-    touch "${MOCK_STATE}/linked"
+    if [[ "${MOCK_POST_FAIL:-0}" == 1 ]]; then exit 1; fi
+    printf '%s\n' "$cmd" >> "$MOCK_STATE/writes"
     printf '{}\n' ;;
+  'project view 12 --owner example --format json')
+    printf '%s\n' '{"id":"PVT_12"}' ;;
+  'project field-list 12 --owner example --format json')
+    printf '%s\n' '{"fields":[{"id":"FIELD_1","name":"Status","options":[{"id":"O_TODO","name":"Todo"},{"id":"O_PROGRESS","name":"In Progress"},{"id":"O_DONE","name":"Done"},{"id":"O_BACKLOG","name":"Backlog"}]}]}' ;;
+  'project item-list 12 --owner example --limit 10000 --format json')
+    if [[ "${MOCK_ITEM_MODE:-existing}" == absent ]]; then
+      printf '{"items":[]}\n'
+    else
+      printf '{"items":[{"id":"ITEM_1","content":{"url":"https://github.com/example/repo/issues/100"}}]}\n'
+    fi ;;
+  'project item-add 12 --owner example --url https://github.com/example/repo/issues/100 --format json')
+    printf '%s\n' "$cmd" >> "$MOCK_STATE/writes"
+    printf '{"id":"ITEM_2"}\n' ;;
+  project\ item-edit*)
+    if [[ "${MOCK_EDIT_FAIL:-0}" == 1 ]]; then exit 1; fi
+    printf '%s\n' "$cmd" >> "$MOCK_STATE/writes" ;;
   *) printf 'Unexpected gh invocation: %s\n' "$cmd" >&2; exit 1 ;;
 esac
 MOCK
 chmod +x "$work/bin/gh"
-export PATH="$work/bin:$PATH"
-export MOCK_STATE="$work"
-export GH_REPO=example/repo
+export PATH="$work/bin:$PATH" MOCK_STATE="$work" GH_REPO=example/repo GH_TOKEN=mocked-token
+parent="$root/scripts/update_issue_parent_child_relationships.bash"
+project="$root/scripts/update_issue_project_status.bash"
+
+# Verify 404 enables a create, without real GitHub mutations.
+MOCK_PARENT_MODE=missing MOCK_POST_FAIL=0 bash "$parent" --issue 100 >/dev/null 2>&1 || {
+  # The post-read must report the newly linked parent; the mock below switches
+  # mode after POST to represent the remote state transition.
+  printf 'Parent creation did not complete\n' >&2; exit 1;
+}
+[[ "$(grep -c 'sub_issue_id=10000' "$work/writes")" == 1 ]] || exit 1
+: > "$work/writes"
+MOCK_PARENT_MODE=linked bash "$parent" --issue 100 >/dev/null
+[[ ! -s "$work/writes" ]] || exit 1
+for mode in forbidden ratelimited conflict malformed; do
+  if MOCK_PARENT_MODE="$mode" bash "$parent" --issue 100 >/dev/null 2>&1; then
+    printf 'Unsafe parent lookup accepted: %s\n' "$mode" >&2; exit 1
+  fi
+  [[ ! -s "$work/writes" ]] || exit 1
+done
+
+unset GH_TOKEN
+out="$(PROJECT_NUMBER=0 bash "$project" --issue 100)"
+[[ "$out" == *'SKIP: PROJECT_NUMBER unset or zero'* ]] || exit 1
+if PROJECT_NUMBER=invalid bash "$project" --issue 100 >/dev/null 2>&1; then exit 1; fi
 export GH_TOKEN=mocked-token
 
-out="$(bash "$root/scripts/update_issue_parent_child_relationships.bash" --issue 100)"
-[[ "$out" == *'LINKED #100 -> #89'* ]] || { printf 'Expected link operation; got %s\n' "$out" >&2; exit 1; }
-[[ -f "$work/linked" ]] || exit 1
-out="$(bash "$root/scripts/update_issue_parent_child_relationships.bash" --issue 100)"
-[[ "$out" == *'OK #100 -> #89'* ]] || { printf 'Expected idempotent operation; got %s\n' "$out" >&2; exit 1; }
-unset GH_TOKEN
-out="$(PROJECT_NUMBER=0 bash "$root/scripts/update_issue_project_status.bash" --issue 100)"
-[[ "$out" == *'SKIP: PROJECT_NUMBER unset or zero'* ]] || exit 1
-if PROJECT_NUMBER=invalid bash "$root/scripts/update_issue_project_status.bash" --issue 100 >/dev/null 2>&1; then
-  printf 'Invalid project configuration was accepted\n' >&2; exit 1
+MOCK_ITEM_MODE=existing PROJECT_NUMBER=12 bash "$project" --issue 100 >/dev/null
+grep -q -- '--single-select-option-id O_TODO' "$work/writes" || exit 1
+: > "$work/writes"
+MOCK_ITEM_MODE=absent PROJECT_NUMBER=12 bash "$project" --issue 100 >/dev/null
+grep -q 'project item-add' "$work/writes" || exit 1
+grep -q -- '--id ITEM_2' "$work/writes" || exit 1
+: > "$work/writes"
+if MOCK_EDIT_FAIL=1 PROJECT_NUMBER=12 bash "$project" --issue 100 >/dev/null 2>&1; then
+  printf 'Project edit error was swallowed\n' >&2; exit 1
 fi
 printf 'Issue metadata synchronization mock tests passed\n'
