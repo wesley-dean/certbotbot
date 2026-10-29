@@ -33,7 +33,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4.2.2
         with:
           persist-credentials: false
       - name: Reconcile native issue relationships
@@ -57,7 +57,7 @@ jobs:
       PROJECT_OWNER: ${{ vars.PROJECT_OWNER || github.repository_owner }}
       ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4.2.2
         with:
           persist-credentials: false
       - name: Reconcile optional GitHub Projects Status
