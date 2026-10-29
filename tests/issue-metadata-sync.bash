@@ -17,7 +17,7 @@ case "$cmd" in
     printf '%s\n' '{"id":8900,"number":89,"labels":[{"name":"type:story"}]}' ;;
   'api /repos/example/repo/issues/100/parent')
     case "${MOCK_PARENT_MODE:-missing}" in
-      missing) printf 'gh: HTTP 404: Not Found\n' >&2; exit 1 ;;
+      missing) if [[ -f "$MOCK_STATE/linked" ]]; then printf '{"number":89}\n'; else printf 'gh: HTTP 404: Not Found\n' >&2; exit 1; fi ;;
       forbidden) printf 'gh: HTTP 403: Forbidden\n' >&2; exit 1 ;;
       ratelimited) printf 'gh: HTTP 429: Rate limit\n' >&2; exit 1 ;;
       linked) printf '{"number":89}\n' ;;
@@ -27,6 +27,7 @@ case "$cmd" in
   'api --method POST /repos/example/repo/issues/89/sub_issues -F sub_issue_id=10000')
     if [[ "${MOCK_POST_FAIL:-0}" == 1 ]]; then exit 1; fi
     printf '%s\n' "$cmd" >> "$MOCK_STATE/writes"
+    touch "$MOCK_STATE/linked"
     printf '{}\n' ;;
   'project view 12 --owner example --format json')
     printf '%s\n' '{"id":"PVT_12"}' ;;
