@@ -66,7 +66,7 @@ reconcile() {
   [[ "$(jq -r '[.labels[].name] | index("type:story") != null' <<<"$parent")" == 'true' ]] || {
     log "CONFLICT #$number: parent #$declared is not type:story"; return 1;
   }
-  current="$(gh api "$api/issues/$number/parent" --silent 2>/dev/null || true)"
+  current="$(gh api "$api/issues/$number/parent" 2>/dev/null || true)"
   if [[ -n "$current" ]]; then
     id="$(jq -r '.number // empty' <<<"$current")"
     if [[ "$id" == "$declared" ]]; then
