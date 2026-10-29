@@ -534,3 +534,24 @@ silently replaced when their Markdown declaration disagrees; failures
 must be investigated. Project synchronization mirrors only status and does
 not update approvals, issue closure, or milestones. See
 [ADR-044](doc/adr/ADR-044-github-issue-metadata-synchronization.md).
+
+### Native issue dependency synchronization
+
+To add native GitHub blocking relationships, write a level-two `Dependencies`
+or `Blocked by` section in an issue description with references such as
+`Blocked by #89 and #90`. Only references within that section are used.
+The script adds missing native blockers, verifies them, and preserves existing
+relationships; it never removes them or infers dependencies from parentage.
+
+```bash
+export GH_REPO=wesley-dean/certbotbot
+# GH_TOKEN must be available, as with the other issue scripts.
+bash scripts/update_issue_dependencies.bash --issue 100
+bash scripts/update_issue_dependencies.bash --all
+# Offline mocked checks:
+bash tests/issue-dependencies-sync.bash
+```
+
+The existing issue metadata workflow invokes this script independently using
+its built-in token with `issues: write`, and its dedicated read-only PR test
+workflow checks the mocked behavior. See [ADR-045](doc/adr/ADR-045-native-issue-dependency-synchronization.md).
