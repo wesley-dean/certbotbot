@@ -575,3 +575,24 @@ they share a cell; other approved tasks are included in a standalone/cross-lane
 group rather than being hidden or misrepresented. This is a point-in-time
 read-only report, not a GitHub Projects board or a new source of lifecycle
 state. Run `bash tests/issue-kanban-report.bash` for mocked validation.
+
+### Publish Kanban into a managed issue
+
+The metadata workflow also publishes the Markdown board to the exact issue
+title `Development Kanban` on issue events, manual dispatch, and schedule.
+It creates the issue if no exact title matches. Once created, the issue body
+includes a `managed-by` marker, so future runs can safely replace its
+contents. An existing issue with the same title but no marker is **not**
+overwritten; duplicate exact-title matches also fail closed.
+
+Local execution (requires `GH_TOKEN` with `issues: write`):
+
+```bash
+GH_REPO=wesley-dean/certbotbot bash scripts/publish_issue_kanban.bash
+# Override the title for manual use:
+bash scripts/publish_issue_kanban.bash --title 'Development Kanban'
+```
+
+The generated issue is deliberately unlabeled and unapproved. It is excluded
+from the board, and the Actions job skips issue events for the generated title.
+Use `bash tests/issue-kanban-publisher.bash` for offline mock checks.
