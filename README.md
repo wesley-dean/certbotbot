@@ -557,3 +557,21 @@ bash tests/issue-dependencies-sync.bash
 The existing issue metadata workflow invokes this script independently using
 its built-in token with `issues: write`, and its dedicated read-only PR test
 workflow checks the mocked behavior. See [ADR-045](doc/adr/ADR-045-native-issue-dependency-synchronization.md).
+
+### Read-only Markdown Kanban report
+
+Generate a Markdown board directly from live GitHub Issues:
+
+```bash
+GH_REPO=wesley-dean/certbotbot bash scripts/render_issue_kanban.bash > kanban.md
+# Or use --repo owner/repo; gh CLI authentication is required.
+```
+
+The report displays Todo, In Progress, and Done columns, with High, Medium
+(default/normal), and Low priority rows. Only issues currently carrying the
+`approved` label appear, and declined/not-planned closures are excluded.
+Approved technical tasks are indented under an approved parent story when
+they share a cell; other approved tasks are included in a standalone/cross-lane
+group rather than being hidden or misrepresented. This is a point-in-time
+read-only report, not a GitHub Projects board or a new source of lifecycle
+state. Run `bash tests/issue-kanban-report.bash` for mocked validation.
