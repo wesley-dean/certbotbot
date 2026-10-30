@@ -124,8 +124,13 @@ jobs:
 
       - name: Install real staging provider dependencies without credentials
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes awscli certbot python3-certbot-dns-route53 jq openssl
+          sudo apt-get install --yes certbot python3-certbot-dns-route53 jq openssl python3-venv
+          python3 -m venv "$RUNNER_TEMP/awscli"
+          "$RUNNER_TEMP/awscli/bin/python" -m pip install 'awscli>=1.35,<2'
+          "$RUNNER_TEMP/awscli/bin/aws" --version
+          printf '%s\n' "$RUNNER_TEMP/awscli/bin" >> "$GITHUB_PATH"
 
       - name: Download same-run producer, no external credentials
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -200,8 +205,13 @@ jobs:
 
       - name: Install real staging provider dependencies without credentials
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes awscli certbot python3-certbot-dns-route53 jq openssl
+          sudo apt-get install --yes certbot python3-certbot-dns-route53 jq openssl python3-venv
+          python3 -m venv "$RUNNER_TEMP/awscli"
+          "$RUNNER_TEMP/awscli/bin/python" -m pip install 'awscli>=1.35,<2'
+          "$RUNNER_TEMP/awscli/bin/aws" --version
+          printf '%s\n' "$RUNNER_TEMP/awscli/bin" >> "$GITHUB_PATH"
 
       - name: Download the identical verified same-run public artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
