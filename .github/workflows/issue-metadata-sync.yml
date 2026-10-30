@@ -74,6 +74,26 @@ jobs:
             bash scripts/update_issue_dependencies.bash --all
           fi
 
+  kanban-report:
+    # An issue created with the default token does not retrigger workflows.
+    # Also explicitly skip an issue whose title is the generated target.
+    if: ${{ github.event.issue.title != 'Development Kanban' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      KANBAN_ISSUE_TITLE: Development Kanban
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4.2.2
+        with:
+          persist-credentials: false
+      - name: Publish Markdown Kanban issue
+        shell: bash
+        run: bash scripts/publish_issue_kanban.bash
+
   project-status:
     if: ${{ vars.PROJECT_NUMBER != '' && vars.PROJECT_NUMBER != '0' }}
     runs-on: ubuntu-22.04
