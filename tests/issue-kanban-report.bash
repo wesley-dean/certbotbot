@@ -30,6 +30,7 @@ esac
 MOCK
 chmod +x "$work/bin/gh"
 PATH="$work/bin:$PATH" GH_REPO=example/repo bash "$root/scripts/render_issue_kanban.bash" > "$work/board.md"
+cat "$work/board.md" >&2
 grep -Fq '| Priority | Todo | In Progress | Done |' "$work/board.md"
 grep -Fq 'Story high' "$work/board.md"
 grep -Fq '↳ [#2 Task high]' "$work/board.md"
