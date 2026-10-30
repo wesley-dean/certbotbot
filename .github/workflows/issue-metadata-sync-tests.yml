@@ -10,6 +10,8 @@ on:
       - "tests/issue-metadata-sync.bash"
       - "scripts/update_issue_dependencies.bash"
       - "tests/issue-dependencies-sync.bash"
+      - "scripts/render_issue_kanban.bash"
+      - "tests/issue-kanban-report.bash"
       - ".github/workflows/issue-metadata-sync.yml"
       - ".github/workflows/issue-metadata-sync-tests.yml"
   push:
@@ -22,6 +24,8 @@ on:
       - "tests/issue-metadata-sync.bash"
       - "scripts/update_issue_dependencies.bash"
       - "tests/issue-dependencies-sync.bash"
+      - "scripts/render_issue_kanban.bash"
+      - "tests/issue-kanban-report.bash"
 
 permissions:
   contents: read
@@ -41,8 +45,11 @@ jobs:
           bash -n tests/issue-metadata-sync.bash
           bash -n scripts/update_issue_dependencies.bash
           bash -n tests/issue-dependencies-sync.bash
+          bash -n scripts/render_issue_kanban.bash
+          bash -n tests/issue-kanban-report.bash
       - name: Run mocked metadata synchronization tests
         shell: bash
         run: |
           bash tests/issue-metadata-sync.bash
           bash tests/issue-dependencies-sync.bash
+          bash tests/issue-kanban-report.bash
