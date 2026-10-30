@@ -92,16 +92,16 @@ jq -r --arg repo "$repo" --argjson parents "$parents" '
     ($stories | map(select(.lane == $lane and .status == $status)) | sort_by(.number)) as $in |
     ($in | map(. as $s |
       ($tasks | map(select(($parents[(.number|tostring)] // -1) == $s.number)) | sort_by(.number)) as $children |
-      "**\($s.link)**" +
+      "**\($s | link)**" +
       (if ($children|length) > 0 then
-         "<br>" + ($children | map("↳ " + .link) | join("<br>"))
+         "<br>" + ($children | map("↳ " + link) | join("<br>"))
        else "" end))) as $groups |
     ($tasks | map(select(.lane == $lane and .status == $status) |
       select(($parents[(.number|tostring)] // -1) as $p |
         ($stories | any(.number == $p and .lane == $lane and .status == $status)) | not))
       | sort_by(.number)) as $other |
     (($groups + (if ($other|length) > 0 then
-         ["**Standalone / cross-lane tasks**<br>" + ($other | map("↳ " + .link) | join("<br>"))]
+         ["**Standalone / cross-lane tasks**<br>" + ($other | map("↳ " + link) | join("<br>"))]
        else [] end)) | join("<br><br>")) as $out |
     if $out == "" then "—" else $out end;
   "# Kanban — \($repo)",
