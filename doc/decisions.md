@@ -566,3 +566,21 @@ See [ADR-044](adr/ADR-044-github-issue-metadata-synchronization.md).
 Explicit task dependencies recorded under a Dependencies or Blocked by section are reconciled into native GitHub issue blocking relationships. The operation is additive, idempotent, and independent of parent-child and Projects Status synchronization, with GitHub's own API enforcing graph constraints. It neither infers dependencies from story membership or issue order nor removes native relationships absent from Markdown. Failures remain visible; approval and issue lifecycle are unchanged.
 
 See [ADR-045](adr/ADR-045-native-issue-dependency-synchronization.md).
+
+### ADR-046: Isolated Pebble and SeaweedFS Protocol-Level E2E Trust Boundary
+
+Milestone #16 tests the real checksum-verified public certbotbot producer with
+container-confined Pebble ACME, a private DNS-01/Route53 bridge, and SeaweedFS
+S3-compatible storage, without adding arbitrary public CA endpoints or weakening
+ADR-042's production/staging account and TLS validation. A disposable,
+network-isolated harness supplies test-only staging-name mediation, a runner-only
+TLS root, synthetic credentials, verified immutable upstream image pins, and
+negative no-egress evidence; incompatible providers must fail the feasibility
+gate rather than be disguised by mocks. Acceptance requires explicit account
+registration, genuine DNS-01 issuance, independent fresh-runner restoration,
+a proven non-due no-op and a **second real ACME renewal order** with independent
+remote verification; local protocol evidence remains separate from milestone
+#4's manually authorized live Let's Encrypt/AWS staging acceptance. Runtime,
+credential, archive, release and issue-sync boundaries remain unchanged.
+
+See [ADR-046](adr/ADR-046-isolated-pebble-seaweedfs-protocol-e2e.md).
