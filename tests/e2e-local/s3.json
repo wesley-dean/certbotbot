@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "certbotbot-local-e2e-only",
+      "credentials": [
+        {
+          "accessKey": "CBOTBOT_LOCAL_TEST_ACCESS_ONLY",
+          "secretKey": "CBOTBOT_LOCAL_TEST_SECRET_NOT_A_CLOUD_KEY"
+        }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
