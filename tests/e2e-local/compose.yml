@@ -6,7 +6,6 @@ services:
     image: ghcr.io/letsencrypt/pebble-challtestsrv:sha-b1e1ca4@sha256:1994a326ec60e0de5e8051aa192269c1aaeff0969a4b703d11fa51370f3dc1a8
     platform: linux/amd64
     command: ["-defaultIPv6", "", "-defaultIPv4", "172.31.248.3", "-http01", "", "-https01", "", "-tlsalpn01", ""]
-    network_mode: ""
     networks:
       isolated:
         ipv4_address: 172.31.248.3
