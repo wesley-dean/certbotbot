@@ -26,11 +26,18 @@ readonly PEBBLE_IP='172.31.248.2'
 readonly CHALL_IP='172.31.248.3'
 readonly SEAWEED_IP='172.31.248.4'
 
+## @fn report_error()
+## @brief Emits a bounded nonsecret error without selecting the exit status.
+## @param message Fixed error string without credentials.
+report_error() {
+  printf 'local-e2e: %s\n' "$1" >&2
+}
+
 ## @fn fail()
-## @brief Emits one bounded nonsecret diagnostic and returns failure.
+## @brief Reports a failure and returns status one to the caller.
 ## @param message Fixed error string without credentials.
 fail() {
-  printf 'local-e2e: %s\n' "$1" >&2
+  report_error "$1"
   return 1
 }
 
@@ -187,10 +194,10 @@ teardown() {
 ## @brief Selects explicit provisioning, startup, inspection, and cleanup modes.
 main() {
   local action="${1-}"
-  (( $# == 1 )) || { fail 'usage: run.bash fetch|up|status|down'; return 64; }
+  (( $# == 1 )) || { report_error 'usage: run.bash fetch|up|status|down'; return 64; }
   case "$action" in
     fetch|up|status|down) ;;
-    *) fail 'usage: run.bash fetch|up|status|down'; return 64 ;;
+    *) report_error 'usage: run.bash fetch|up|status|down'; return 64 ;;
   esac
   require_tools || return 69
   if [[ "$action" == down ]]; then
@@ -217,12 +224,12 @@ main() {
   trap 'teardown >/dev/null 2>&1 || true; exit 143' TERM
   if ! compose up --no-build --pull never --detach; then
     teardown >/dev/null 2>&1 || true
-    fail 'container startup failed; private resources removed'
+    report_error 'container startup failed; private resources removed'
     return 74
   fi
   if ! check_running_isolation || ! probe_services; then
     teardown >/dev/null 2>&1 || true
-    fail 'readiness/isolation failed; private resources removed'
+    report_error 'readiness/isolation failed; private resources removed'
     return 74
   fi
   trap - HUP INT TERM
