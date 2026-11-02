@@ -1,0 +1,56 @@
+# Milestone 16 / ADR-046: prebuilt immutable upstream server images only.
+# The manifest is intentionally Docker/linux-amd64 specific until verified elsewhere.
+# No host ports, no external network, and no host state/credential mounts.
+services:
+  challtestsrv:
+    image: ghcr.io/letsencrypt/pebble-challtestsrv:sha-b1e1ca4@sha256:1994a326ec60e0de5e8051aa192269c1aaeff0969a4b703d11fa51370f3dc1a8
+    platform: linux/amd64
+    command: ["-defaultIPv6", "", "-defaultIPv4", "172.31.248.3", "-http01", "", "-https01", "", "-tlsalpn01", ""]
+    network_mode: ""
+    networks:
+      isolated:
+        ipv4_address: 172.31.248.3
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:sha-b1e1ca4@sha256:5080492187bea12909c053d7a2b90a9e95104ef1c82381828e7823db71ce7e54
+    platform: linux/amd64
+    command: ["-config", "test/config/pebble-config.json", "-strict", "-dnsserver", "172.31.248.3:8053"]
+    environment:
+      PEBBLE_VA_NOSLEEP: "1"
+    depends_on:
+      - challtestsrv
+    networks:
+      isolated:
+        ipv4_address: 172.31.248.2
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+
+  seaweedfs:
+    # Official published version; digest obtained from an external
+    # Docker Hub RepoDigests inventory, not independently pulled here.
+    # The bootstrap verifies image availability, not real S3 compatibility.
+    image: docker.io/chrislusf/seaweedfs:4.01@sha256:d91cdf769018b143f1c944085b36d29893d9af199e656b2537367c35744fc221
+    platform: linux/amd64
+    command: ["server", "-s3", "-ip=seaweedfs", "-ip.bind=0.0.0.0", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data"]
+    volumes:
+      - ./s3.json:/etc/seaweedfs/s3.json:ro
+    tmpfs:
+      - /data:size=536870912
+    networks:
+      isolated:
+        ipv4_address: 172.31.248.4
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+
+networks:
+  isolated:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.248.0/24
