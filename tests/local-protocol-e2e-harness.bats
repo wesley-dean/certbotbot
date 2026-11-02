@@ -16,6 +16,14 @@ setup() {
   run bash "$HARNESS" no-such-mode
   [ "$status" -eq 64 ]
   [[ "$output" == *'usage: run.bash fetch|up|status|down'* ]]
+
+  run bash "$HARNESS"
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'usage: run.bash fetch|up|status|down'* ]]
+
+  run bash "$HARNESS" up unexpected-extra-argument
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'usage: run.bash fetch|up|status|down'* ]]
 }
 
 @test "all upstream images are pinned to full immutable digests" {
