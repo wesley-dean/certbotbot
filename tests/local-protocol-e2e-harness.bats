@@ -37,7 +37,7 @@ setup() {
 }
 
 @test "test-only SeaweedFS credentials are literal and not host secrets" {
-  run jq -e '.identities | length == 1 and .[0].credentials | length == 1' "$S3_CREDS"
+  run jq -e '(.identities | length) == 1 and (.identities[0].credentials | length) == 1' "$S3_CREDS"
   [ "$status" -eq 0 ]
   run grep -F 'CBOTBOT_LOCAL_TEST_ACCESS_ONLY' "$S3_CREDS"
   [ "$status" -eq 0 ]
