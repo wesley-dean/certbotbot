@@ -159,7 +159,7 @@ probe_services() {
     if response="$(curl --noproxy '*' -4 -fsS --connect-timeout 1 \
       --max-time 2 -d '{"host":"health.invalid."}' \
       "http://$CHALL_IP:8055/dns-request-history" 2>/dev/null)" &&
-      jq -e 'type == "array"' <<<"$response" >/dev/null 2>&1; then
+      jq -e 'type == "array" or . == null' <<<"$response" >/dev/null 2>&1; then
       break
     fi
     sleep 1
