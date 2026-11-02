@@ -211,6 +211,10 @@ main() {
   fi
 
   validate_cached_images || return 69
+  # Preserve project-scoped cleanup even when startup is interrupted.
+  trap 'teardown >/dev/null 2>&1 || true; exit 129' HUP
+  trap 'teardown >/dev/null 2>&1 || true; exit 130' INT
+  trap 'teardown >/dev/null 2>&1 || true; exit 143' TERM
   if ! compose up --no-build --pull never --detach; then
     teardown >/dev/null 2>&1 || true
     fail 'container startup failed; private resources removed'
@@ -221,6 +225,7 @@ main() {
     fail 'readiness/isolation failed; private resources removed'
     return 74
   fi
+  trap - HUP INT TERM
   printf '%s\n' 'local-e2e: isolated services responding; no ACME/S3 lifecycle proven'
 }
 
