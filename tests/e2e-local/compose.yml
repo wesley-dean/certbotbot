@@ -25,7 +25,7 @@ services:
     image: docker.io/library/caddy:2.10.2@sha256:d8c17a862962def15cde69863a3a463f25a2664942eafd7bdbf050e9c3116b83
     platform: linux/amd64
     user: "10001:10001"
-    command: ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
     depends_on:
       - pebble
     volumes:
