@@ -337,11 +337,16 @@ verify_selected_only() {
   names="$(grep -E '^\./renewal/[^/]+\.conf$' <<<"$entries" || true)"
   [[ "$names" == "./renewal/$NAME.conf" ]] ||
     { error 'unexpected selected renewal configuration'; return 65; }
-  if grep -E '^\./(archive|live)/[^/]+/' <<<"$entries" |
-    grep -Ev "^\./(archive|live)/$NAME/" >/dev/null; then
-    error 'unexpected additional lineage'
-    return 65
-  fi
+  local item
+  while IFS= read -r item; do
+    case "$item" in
+      "./archive/$NAME/"*|"./live/$NAME/"*) ;;
+      ./archive/*/*|./live/*/*)
+        error 'unexpected additional lineage'
+        return 65
+        ;;
+    esac
+  done <<<"$entries"
 }
 
 ## @fn verify_no_force_persistence()
