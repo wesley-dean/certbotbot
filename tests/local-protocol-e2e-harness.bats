@@ -14,6 +14,8 @@ setup() {
   RUNNER_DOCKERFILE="$REPO_ROOT/tests/e2e-local/runner.Dockerfile"
   PEBBLE_CONFIG="$REPO_ROOT/tests/e2e-local/pebble-config.json"
   CERTBOT_RENEW_ADAPTER="$REPO_ROOT/tests/e2e-local/certbot-force-renewal.bash"
+  S3_FAULT="$REPO_ROOT/tests/e2e-local/aws-put-reject.bash"
+  NEGATIVE_SCENARIOS="$REPO_ROOT/tests/e2e-local/negative-scenarios.bash"
 }
 
 @test "local harness Bash syntax is valid without Docker" {
@@ -118,9 +120,13 @@ setup() {
 @test "provider gate runs child through empty environment with only local AWS endpoints" {
   run grep -F 'env -i PATH=' "$PROVIDER"
   [ "$status" -eq 0 ]
-  run grep -F 'AWS_ENDPOINT_URL_S3="http://$S3_IP:8333"' "$PROVIDER"
+  run grep -F 's3_endpoint="http://$S3_IP:8333"' "$PROVIDER"
   [ "$status" -eq 0 ]
-  run grep -F 'AWS_ENDPOINT_URL_ROUTE53="http://$ROUTE53_IP:8056"' "$PROVIDER"
+  run grep -F 'AWS_ENDPOINT_URL_S3="$s3_endpoint"' "$PROVIDER"
+  [ "$status" -eq 0 ]
+  run grep -F 'route53_endpoint="http://$ROUTE53_IP:8056"' "$PROVIDER"
+  [ "$status" -eq 0 ]
+  run grep -F 'AWS_ENDPOINT_URL_ROUTE53="$route53_endpoint"' "$PROVIDER"
   [ "$status" -eq 0 ]
   run grep -F 'AWS_EC2_METADATA_DISABLED=true' "$PROVIDER"
   [ "$status" -eq 0 ]
@@ -329,4 +335,84 @@ setup() {
       --non-interactive --no-directory-hooks
   ' -- "$CERTBOT_RENEW_ADAPTER" "$workspace"
   [ "$status" -eq 65 ]
+}
+
+@test "negative fault helpers parse and no provider is run for invalid selectors" {
+  run bash -n "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run bash -n "$S3_FAULT"
+  [ "$status" -eq 0 ]
+  run bash -n "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run bash -n "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+
+  run bash "$FIRST_ISSUE" fault unexpected "$(printf '%064d' 0)"
+  [ "$status" -eq 64 ]
+  run bash "$FIRST_ISSUE" fault route53-unavailable invalid-digest
+  [ "$status" -eq 64 ]
+  run bash "$FIRST_ISSUE" baseline unexpected
+  [ "$status" -eq 64 ]
+  run env LOCAL_E2E_FAULT_MODE=unapproved bash "$PROVIDER" -- /bin/sh --acme-environment staging
+  [ "$status" -eq 64 ]
+}
+
+@test "negative provider endpoints are fixed, synthetic, and cannot take arbitrary URLs" {
+  run grep -F "s3_endpoint='http://127.0.0.1:9'" "$PROVIDER"
+  [ "$status" -eq 0 ]
+  run grep -F "route53_endpoint='http://127.0.0.1:9'" "$PROVIDER"
+  [ "$status" -eq 0 ]
+  run grep -F 'LOCAL_E2E_FAULT_MODE="$fault"' "$PROVIDER"
+  [ "$status" -eq 0 ]
+  run grep -F 'AWS_EC2_METADATA_DISABLED=true' "$PROVIDER"
+  [ "$status" -eq 0 ]
+  run grep -F 'REQUESTS_CA_BUNDLE="$TRUST_FILE"' "$PROVIDER"
+  [ "$status" -eq 0 ]
+}
+
+@test "test-only S3 fault wrapper denies PUT while forwarding all other operations" {
+  run grep -F 'COPY tests/e2e-local/aws-put-reject.bash /usr/local/bin/aws' "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+  run grep -F 'test -x /usr/bin/aws' "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+  run grep -F 'exec "$AWS_REAL" "$@"' "$S3_FAULT"
+  [ "$status" -eq 0 ]
+  run grep -F '[[ "$bucket" == certbotbot-local-e2e && "$key" == latest.tar.gz ]]' "$S3_FAULT"
+  [ "$status" -eq 0 ]
+  run grep -F 'synthetic-s3-put-rejected' "$S3_FAULT"
+  [ "$status" -eq 0 ]
+  run grep -F 'negative_issue_foreign_name' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+}
+
+@test "failure scenarios preserve current S3 bytes, metadata and selected account" {
+  run grep -F 'negative_corrupt_archive' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run grep -F "corrupt_key='latest-corrupt.tar.gz'" "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run grep -F 'cmp -s "$workspace/before.meta" "$workspace/after.meta"' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run grep -F '[[ "$actual" == "$expected" ]]' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run grep -F 'verify_account "$workspace/after.tar.gz"' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run grep -F 'verify_certificate "$workspace/after.tar.gz" "$workspace"' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run grep -F 'published=true' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+}
+
+@test "negative orchestration restores Pebble and independently rechecks each failure" {
+  run grep -F 'run-faults) run_faults "$image"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'docker pause "$pebble_id"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'docker unpause "$pebble_id"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'run_phase "$image" "$cert_ca" baseline' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'remote_unchanged=true; provider_success=false' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'all-negative-scenarios=passed; dns-validation=bypassed' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
 }
