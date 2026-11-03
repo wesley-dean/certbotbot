@@ -434,6 +434,11 @@ run_isolation_probe() (
         'local-first-issue: private runner resolved forbidden external DNS name') reason=forbidden-dns-resolved ;;
       esac
     done <"$tmp/isolation.log"
+    if [[ "$reason" == unclassified ]] &&
+      grep -Fqx 'local-first-issue: isolation_passed=true; challenge_validation=bypassed' \
+        "$tmp/isolation.log"; then
+      reason=runner-reported-success-but-exited
+    fi
     if [[ "$reason" == unclassified ]]; then
       case "$phase_status" in
         124|137) reason=runner-timeout ;;
@@ -459,7 +464,7 @@ run_isolation_probe() (
         fi
       fi
     fi
-    problem "sealed runner isolation probe failed: $reason"
+    problem "sealed runner isolation probe failed: $reason; exit_status=$phase_status"
     return 65
   fi
   grep -Fqx 'local-first-issue: isolation_passed=true; challenge_validation=bypassed' \
