@@ -154,8 +154,10 @@ probe_no_egress() {
       provider-default-route missing-test-root missing-verifier \
       staging-dns-failed staging-dns-mismatch production-dns-resolved \
       staging-tls-or-http-failed staging-directory-mismatch \
-      runner-default-route missing-route-table external-tcp-succeeded \
-      forbidden-dns-resolved; do
+      provider-admission-failed runner-default-route missing-route-table \
+      external-tcp-succeeded forbidden-dns-resolved \
+      runner-timeout docker-startup-rejected runner-executable-unavailable \
+      runner-inner-exit runner-exit-other; do
       if grep -Fqx -- \
         "local-first-issue-host: sealed runner isolation probe failed: $classification" \
         "$logfile"; then
@@ -163,6 +165,21 @@ probe_no_egress() {
         break
       fi
     done
+    # Earlier host-side failures also have stable, static messages.
+    if [[ "$reason" == unclassified ]]; then
+      local line
+      while IFS= read -r line; do
+        case "$line" in
+          'local-first-issue-host: checked isolation runner image missing') reason=runner-image-missing ;;
+          'local-first-issue-host: isolated Compose project is not in a verified running state') reason=project-unhealthy ;;
+          'local-first-issue-host: private probe scratch unavailable') reason=probe-scratch-unavailable ;;
+          'local-first-issue-host: isolation gateway container missing') reason=gateway-container-missing ;;
+          'local-first-issue-host: public-only gateway root unavailable for isolation probe') reason=gateway-root-unavailable ;;
+          'local-first-issue-host: isolation gateway public root invalid') reason=gateway-root-invalid ;;
+          'local-first-issue-host: bounded isolation test receipt missing') reason=probe-receipt-missing ;;
+        esac
+      done <"$logfile"
+    fi
     error "active no-egress and staging TLS probe failed: $reason"
     return 65
   fi
