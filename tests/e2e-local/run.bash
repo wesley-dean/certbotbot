@@ -99,6 +99,8 @@ validate_topology() {
     and (.networks.isolated.driver == "bridge")
     and ([.services | keys[]] | sort == ["acme-gateway","pebble","route53-bridge","seaweedfs"])
     and ([.services[] | .platform] | all(. == "linux/amd64"))
+    and (.services.pebble.environment.PEBBLE_VA_ALWAYS_VALID == "1")
+    and (.services["route53-bridge"].networks.isolated.ipv4_address == "172.31.248.6")
     and ([.services[] | .image] |
        all(test("^[a-z0-9./:-]+@sha256:[0-9a-f]{64}$")))
     and ([.services[] | has("ports")] | all(. == false))
