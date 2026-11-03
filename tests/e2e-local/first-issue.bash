@@ -264,6 +264,27 @@ certbotbot: selected certificate or chain is unusable|certificate-verification
 certbotbot: certificate and private key verification failed|certificate-key
 certbotbot: selected publication state is unsuitable|publish-preflight
 certbotbot: S3 archive upload failed; remote state is uncertain|s3-publish
+certbotbot: unsupported archived renewal metadata|renewal-metadata
+certbotbot: unsupported renewal configuration|renewal-dialect
+certbotbot: selected lineage unavailable for mapping|renewal-lineage
+certbotbot: unsafe renewal metadata file|renewal-unsafe
+certbotbot: unsupported renewal metadata size|renewal-size
+certbotbot: renewal mapping staging unavailable|renewal-staging
+certbotbot: renewal mapping update failed|renewal-write
+certbotbot: selected lineage is ambiguous|lineage-ambiguous
+certbotbot: restored ACME account identity changed|account-identity-changed
+certbotbot: cannot verify unselected certificate state|unselected-state-verify
+certbotbot: unselected certificate state changed|unselected-state-modified
+certbotbot: cannot snapshot unselected certificate state|unselected-state-snapshot
+certbotbot: certificate verification tooling unavailable|certificate-tools
+certbotbot: occupied certificate verification workspace|certificate-workspace
+certbotbot: invalid archive boundaries|archive-boundary
+certbotbot: unsafe or unsupported archive contents|archive-contents
+certbotbot: unsupported ACME environment|acme-selection
+certbotbot: invalid or oversized archive|archive-size
+certbotbot: private workspace unavailable|workspace-unavailable
+certbotbot: AWS CLI v2 is required for publication|s3-cli
+certbotbot: cannot install isolated configuration|archive-install
 ISSUE_REASONS
     error 'real Pebble certificate issuance or S3 publication failed'
     # Emit the more specific category last so the host's sequential

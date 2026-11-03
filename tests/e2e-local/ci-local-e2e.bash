@@ -221,7 +221,15 @@ run_positive() {
       issue-authenticator-probe issue-route53-plugin issue-account-probe \
       issue-certonly issue-lineage-incomplete issue-post-issue-state \
       issue-certificate-verification issue-certificate-key \
-      issue-publish-preflight issue-s3-publish issue-unclassified; do
+      issue-publish-preflight issue-s3-publish \
+      issue-renewal-metadata issue-renewal-dialect issue-renewal-lineage \
+      issue-renewal-unsafe issue-renewal-size issue-renewal-staging \
+      issue-renewal-write issue-lineage-ambiguous issue-account-identity-changed \
+      issue-unselected-state-verify issue-unselected-state-modified \
+      issue-unselected-state-snapshot issue-certificate-tools \
+      issue-certificate-workspace issue-archive-boundary issue-archive-contents \
+      issue-acme-selection issue-archive-size issue-workspace-unavailable \
+      issue-s3-cli issue-archive-install issue-unclassified; do
       if grep -Fqx -- "local-first-issue-host: bootstrap-failure=$category" \
         "$logfile"; then
         reason="$category"
