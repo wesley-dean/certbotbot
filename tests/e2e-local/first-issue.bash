@@ -236,6 +236,36 @@ bootstrap() {
   fi
 
   if ! issuer >"$workspace/issue.log" 2>&1; then
+    # The shipped producer emits fixed, reviewed diagnostics.  Classify
+    # those exact lines without printing private Certbot or AWS output.
+    local issue_reason='unclassified' candidate
+    while IFS='|' read -r candidate reason; do
+      if grep -Fqx -- "$candidate" "$workspace/issue.log"; then
+        issue_reason="$reason"
+        break
+      fi
+    done <<'ISSUE_REASONS'
+certbotbot: existing S3 archive was not found|s3-archive-missing
+certbotbot: S3 object cannot be inspected safely|s3-object-preflight
+certbotbot: S3 archive download failed|s3-fetch
+certbotbot: archive rejected before extraction|archive-restore
+certbotbot: restored account or lineage is unsuitable|restored-state
+certbotbot: unsupported shared archive state|shared-state
+certbotbot: restored ACME account is unavailable|account-unavailable
+certbotbot: existing account or lineage unsuitable|issuance-preflight
+certbotbot: unsupported ACME account identity|issuance-account-identity
+certbotbot: Certbot authenticator probe failed|authenticator-probe
+certbotbot: Certbot Route53 authenticator unavailable|route53-plugin
+certbotbot: restored account is not recognized by Certbot|account-probe
+certbotbot: selected certificate issuance failed|certonly
+certbotbot: newly issued lineage is incomplete|lineage-incomplete
+certbotbot: selected certificate state is unsuitable|post-issue-state
+certbotbot: selected certificate or chain is unusable|certificate-verification
+certbotbot: certificate and private key verification failed|certificate-key
+certbotbot: selected publication state is unsuitable|publish-preflight
+certbotbot: S3 archive upload failed; remote state is uncertain|s3-publish
+ISSUE_REASONS
+    error "issuance_stage=$issue_reason"
     error 'real Pebble certificate issuance or S3 publication failed'
     return 74
   fi
