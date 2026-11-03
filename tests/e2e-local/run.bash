@@ -235,6 +235,15 @@ probe_services() {
       --output /dev/null >/dev/null || true
   else
     report_error 'canonical gateway public root did not materialize'
+    # Public root only, before ACME account registration.  Show the actual
+    # Docker copy error and public-root path metadata, never key material.
+    report_error 'retrying one public-root Docker copy with stderr visible'
+    docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$ca_file" \
+      >/dev/null || true
+    report_error 'listing public-root file location inside isolated Caddy'
+    docker exec "$cid" sh -c \
+      'ls -ld /data /data/caddy /data/caddy/pki /data/caddy/pki/authorities/local; ls -l /data/caddy/pki/authorities/local/root.crt' \
+      2>&1 || true
   fi
   rm -f -- "$ca_file"
   fail 'verified canonical staging gateway readiness timed out'
