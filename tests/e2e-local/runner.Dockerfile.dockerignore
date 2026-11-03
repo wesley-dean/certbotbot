@@ -1,0 +1,21 @@
+# Private runner-only build context allowlist. Production .dockerignore stays
+# unchanged: production images must never import test helpers, public certbot
+# tools or arbitrary checkout data. Dockerfile-specific ignore rules take
+# precedence for tests/e2e-local/runner.Dockerfile alone (BuildKit).
+**
+!oci/
+!oci/alpine-repositories
+!dist/
+!dist/certbotbot.dev.bash
+!dist/certbotbot.dev.bash.sha256
+!dist/certbotbot.bash
+!dist/certbotbot.bash.sha256
+!dist/certbotbot.min.bash
+!dist/certbotbot.min.bash.sha256
+!tests/
+!tests/e2e-local/
+!tests/e2e-local/provider-env.bash
+!tests/e2e-local/first-issue.bash
+!tests/e2e-local/negative-scenarios.bash
+!tests/e2e-local/certbot-force-renewal.bash
+!tests/e2e-local/aws-put-reject.bash
