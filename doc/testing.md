@@ -135,6 +135,18 @@ See [milestone 4 release evidence](milestone-4-release-evidence.md) and
 Live acceptance stays exclusively under the
 [operator-controlled staging procedure](milestone-4-staging-acceptance.md).
 
+## Native Certbot Registration Contact Compatibility
+
+Real Certbot 5.8 writes native registration state with an empty `regr.json`
+body and the account URI, not necessarily a literal `mailto:` contact.
+The standalone register mock must reproduce that storage shape while returning
+a distinct `show_account` response for the exact selected CA. Test exact
+single-email acceptance, missing and extra emails, a changed contact,
+unavailable account query, and no-PutObject refusal, including reuse of a
+previously archived account. Mocked output is not proof of real ACME
+compatibility; milestone #16's isolated Pebble CI remains the independent
+genuine Certbot/ACME gate. See ADR-050 and issue #261.
+
 ## Real-GnuPG Shipped-Client Encryption Acceptance
 
 The standalone certificate client has an independent

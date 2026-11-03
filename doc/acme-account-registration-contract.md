@@ -106,8 +106,14 @@ Actual external stdout/stderr remain private; the public command
 emits bounded nonsecret success/no-op status and static failure messages.
 If Certbot succeeds, independently verify that exactly one appropriate
 native account identity was created, that its three required private
-files exist, and that Certbot can recognize the account.  Do not
-fabricate registration JSON.  Refuse unexpected new certificate state.
+files exist, and that Certbot can recognize the account.  The native
+`regr.json` stores registration identity, but Certbot 5.8 does not
+necessarily persist the contact in that file.  Instead, require
+Certbot's `show_account` query to the exact selected CA to return
+the requested **single** contact email.  Missing, additional or
+mismatched contacts fail before publication.  Neither query output
+nor account material is emitted by certbotbot.  Do not fabricate
+registration JSON.  See [ADR-050](adr/ADR-050-verify-registration-contact-through-certbot.md).  Refuse unexpected new certificate state.
 
 ## State Transition and Publication Matrix
 
