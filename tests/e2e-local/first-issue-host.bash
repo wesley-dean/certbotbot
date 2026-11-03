@@ -87,7 +87,8 @@ verified_artifact() {
     "$REPO/dist/certbotbot.dev.bash" "$REPO/dist/certbotbot.bash" \
     "$REPO/dist/certbotbot.min.bash" \
     "$E2E/runner.Dockerfile" "$E2E/first-issue.bash" \
-    "$E2E/provider-env.bash" | sha256sum | awk '{print $1}')" || return 74
+    "$E2E/provider-env.bash" "$E2E/certbot-force-renewal.bash" | \
+    sha256sum | awk '{print $1}')" || return 74
   [[ "$sum" =~ ^[a-f0-9]{64}$ ]] || return 65
   printf '%s:sha-%s\n' "$IMAGE_PREFIX" "${sum:0:12}"
 }
@@ -162,7 +163,7 @@ pebble_order_count() {
 ## @param image Already built and locally cached checked runner tag.
 run_lifecycle() (
   local image="$1" tmp='' cert_ca='' cid='' log='' digest='' result=''
-  local flavor count_before count_after
+  local flavor count_before count_after renewed_digest='' renewed_cert='' old_cert=''
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'runner image missing; use build before starting sealed services'; return 69; }
   bash "$HARNESS" status >/dev/null ||
@@ -197,8 +198,108 @@ run_lifecycle() (
     problem 'independent fresh runner could not verify stored certificate'
     return 74
   fi
-  grep -Eq '^local-first-issue: independently_verified_cert_der_sha256=[a-f0-9]{64}$' "$result" ||
+  grep -Eq '^local-first-issue: independently_verified_cert_der_sha256=[a-f0-9]{64}
+  printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
+  sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
+
+  # The pinned Pebble server records a nonsecret counter for every new order.
+  # A no-op succeeds only when this count remains unchanged for each exact
+  # producer flavor, proving no new order was added to Pebble's DB.
+  count_before="$(pebble_order_count)" || return $?
+  for flavor in development ordinary minified; do
+    if ! run_phase "$image" "$cert_ca" noop "$flavor" "$digest" \
+      >"$tmp/noop-$flavor.log" 2>&1; then
+      problem 'fresh-runner selected renewal/no-op failed'
+      return 74
+    fi
+    grep -Fqx "local-first-issue: fresh_runner_noop=$flavor; archive_sha256=$digest" \
+      "$tmp/noop-$flavor.log" ||
+      { problem 'fresh-runner no-op attestation missing'; return 65; }
+    count_after="$(pebble_order_count)" || return $?
+    [[ "$count_after" == "$count_before" ]] ||
+      { problem 'new Pebble ACME order appeared during supposed no-op'; return 65; }
+    printf 'local-first-issue-host: restored_noop=%s; no_new_order=true; no_republish=true\n' "$flavor"
+  done
+
+  # The first runner is long gone; this separate runner restores the current
+  # S3 state, requests exactly one selected renewal using a one-shot private
+  # force marker, and publishes through the unchanged public producer.
+  count_before="$(pebble_order_count)" || return $?
+  if ! run_phase "$image" "$cert_ca" renew "$digest" \
+    >"$tmp/renew.log" 2>&1; then
+    problem 'isolated second real Certbot renewal or S3 republication failed'
+    return 74
+  fi
+  grep -Fqx 'local-first-issue: real_certbot_force_trigger_consumed=true' \
+    "$tmp/renew.log" ||
+    { problem 'real Certbot single-use renewal trigger not evidenced'; return 65; }
+  renewed_digest="$(sed -nE 's/^local-first-issue: renewed_archive_sha256=([0-9a-f]{64})$/\1/p' "$tmp/renew.log")"
+  renewed_cert="$(sed -nE 's/^local-first-issue: renewed_cert_der_sha256=([0-9a-f]{64})$/\1/p' "$tmp/renew.log")"
+  [[ "$renewed_digest" =~ ^[0-9a-f]{64}$ && "$renewed_digest" != "$digest" &&
+    "$renewed_cert" =~ ^[0-9a-f]{64}$ && "$renewed_cert" != "$old_cert" ]] ||
+    { problem 'renewal did not produce a different archive and certificate'; return 65; }
+  count_after="$(pebble_order_count)" || return $?
+  [[ "$count_before" =~ ^[0-9]+$ && "$count_after" =~ ^[0-9]+$ &&
+    "$count_after" -eq $((count_before + 1)) ]] ||
+    { problem 'a second, and only one second, Pebble ACME order was not evidenced'; return 65; }
+
+  # A third-party real S3 download from an entirely new container must
+  # independently establish remote archive and certificate identity.
+  if ! run_phase "$image" "$cert_ca" verify "$renewed_digest" \
+    >"$tmp/renew-verify.log" 2>&1; then
+    problem 'fresh independent validator rejected renewed S3 archive'
+    return 74
+  fi
+  grep -Fqx "local-first-issue: independently_verified_cert_der_sha256=$renewed_cert" \
+    "$tmp/renew-verify.log" ||
+    { problem 'independent DER identity did not match renewed certificate'; return 65; }
+  printf 'local-first-issue-host: second_real_pebble_order=true; renewed_archive_sha256=%s; renewed_cert_der_sha256=%s\n' "$renewed_digest" "$renewed_cert"
+
+  # Nothing in the renewed archive may silently force later public renewals.
+  # The same normal, unchanged no-op behavior must hold in another fresh
+  # runner even after the deliberate one-shot renewal completed.
+  if ! run_phase "$image" "$cert_ca" noop ordinary "$renewed_digest" \
+    >"$tmp/noop-after-renew.log" 2>&1; then
+    problem 'normal post-renewal check failed or unexpectedly republished'
+    return 74
+  fi
+  grep -Fqx "local-first-issue: fresh_runner_noop=ordinary; archive_sha256=$renewed_digest" \
+    "$tmp/noop-after-renew.log" ||
+    { problem 'ordinary no-op did not survive real renewal'; return 65; }
+  [[ "$(pebble_order_count)" == "$count_after" ]] ||
+    { problem 'ordinary no-op after renewal created another ACME order'; return 65; }
+  printf '%s\n' 'local-first-issue-host: renewed_object_independently_verified=true; subsequent_normal_noop=true'
+)
+
+## @fn main()
+## @brief Dispatches explicit dependency-fetch and sealed-test phases only.
+main() {
+  local action="${1-}" image=''
+  (( $# == 1 )) ||
+    { problem 'usage: first-issue-host.bash build|run'; return 64; }
+  case "$action" in
+    build|run) ;;
+    *) problem 'usage: first-issue-host.bash build|run'; return 64 ;;
+  esac
+  reject_cloud_env || return $?
+  require_engine || return $?
+  image="$(verified_artifact)" || return $?
+  if [[ "$action" == build ]]; then
+    build_runner "$image"
+    return $?
+  fi
+  # No remote image pull, package installation, or source compilation here.
+  # Cleanup is deliberately scoped to this run's two fixed container names.
+  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew >/dev/null 2>&1 || true' EXIT
+  run_lifecycle "$image"
+}
+
+main "$@"
+ "$result" ||
     { problem 'independent certificate proof missing'; return 65; }
+  old_cert="$(sed -nE 's/^local-first-issue: independently_verified_cert_der_sha256=([0-9a-f]{64})$/\1/p' "$result")"
+  [[ "$old_cert" =~ ^[0-9a-f]{64}$ ]] ||
+    { problem 'initial independently verified DER fingerprint missing'; return 65; }
   printf '%s\n' 'local-first-issue-host: real local ACME and SeaweedFS first issuance verified (DNS-01 validation bypassed)'
   printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
   sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
