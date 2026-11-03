@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file tests/e2e-local/first-issue.bash
-## @brief Exercises first local Pebble issuance and independently reads SeaweedFS.
+## @brief Exercises real Pebble certificate lifecycles and local failures.
 ## @details
-## Test-only, inside the ephemeral sealed runner.  The bootstrap and verify
-## modes execute in distinct containers with no shared Certbot workspace.
+## Test-only, inside the ephemeral sealed runner. Each positive or negative
+## mode executes in a distinct container with no shared Certbot workspace.
 ## Every provider response and certificate/key stays in disposable mode-0700
 ## tmpfs.  Only bounded status and nonsecret digests leave this process.
 ## Pebble explicitly skips validation of DNS-01: ADR-047.  The Route53 stub
@@ -13,6 +13,8 @@
 ## @code{.sh}
 ## first-issue.bash bootstrap
 ## first-issue.bash verify ARCHIVE_SHA256
+## first-issue.bash baseline
+## first-issue.bash fault SCENARIO ARCHIVE_SHA256
 ## @endcode
 
 set -euo pipefail
