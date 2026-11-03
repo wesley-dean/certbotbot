@@ -15,6 +15,8 @@ RUN set -eu; \
     certbot plugins --text 2>&1 | grep -F 'dns-route53' >/dev/null; \
     aws --version >/dev/null 2>&1; \
     mkdir -p /run/certbotbot-e2e /usr/local/share/certbotbot-e2e /usr/local/libexec/certbotbot-e2e; \
+    addgroup -S -g 65532 local-e2e; \
+    adduser -S -D -H -u 65532 -G local-e2e -h /tmp local-e2e; \
     printf '' > /usr/local/share/certbotbot-e2e/empty.env
 
 # The exact public output of 'make build'; Docker builds fail if absent.
