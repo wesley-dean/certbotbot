@@ -1,0 +1,77 @@
+---
+name: Local protocol E2E (challenge validation bypassed)
+
+# ADR-048: heavyweight tests run on push, not on pull_request.
+# yamllint disable-line rule:truthy
+on:
+  push:
+  workflow_dispatch:
+
+# No cloud secrets, identity federation, write authority, or live-provider keys.
+permissions:
+  contents: read
+
+concurrency:
+  group: local-protocol-e2e-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-protocol-e2e:
+    name: Real Pebble/SeaweedFS lifecycle and seven negative cases
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check native Docker, Compose and local scenario syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          docker version
+          docker compose version
+          for source in \
+            tests/e2e-local/ci-local-e2e.bash \
+            tests/e2e-local/run.bash \
+            tests/e2e-local/first-issue-host.bash \
+            tests/e2e-local/first-issue.bash \
+            tests/e2e-local/provider-env.bash \
+            tests/e2e-local/negative-scenarios.bash \
+            tests/e2e-local/aws-put-reject.bash \
+            tests/e2e-local/certbot-force-renewal.bash; do
+            bash -n "$source"
+          done
+          test ! -e dist/certbotbot.bash
+
+      - name: Fetch before isolation and enforce all local protocol acceptance gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/e2e-local/ci-local-e2e.bash
+
+      - name: Verify disposal of the isolated project even after failure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          project=certbotbot-local-e2e
+          compose=tests/e2e-local/compose.yml
+          if docker compose --env-file /dev/null -f "$compose" -p "$project" ps -q pebble >/dev/null 2>&1; then
+            cid="$(docker compose --env-file /dev/null -f "$compose" -p "$project" ps -q pebble)"
+            if [[ -n "$cid" &&
+              "$(docker inspect "$cid" --format '{{.State.Paused}}' 2>/dev/null)" == true ]]; then
+              docker unpause "$cid" >/dev/null
+            fi
+          fi
+          docker compose --env-file /dev/null -f "$compose" -p "$project" \
+            down --volumes --remove-orphans --timeout 10 >/dev/null
+          if docker network inspect "\${project}_isolated" >/dev/null 2>&1; then
+            printf '%s\n' 'local-e2e-ci: disposable private network survived cleanup' >&2
+            exit 1
+          fi
+          printf '%s\n' 'local-e2e-ci: private network and volume cleanup verified'
