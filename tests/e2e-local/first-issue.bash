@@ -462,7 +462,19 @@ main() {
       [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
         { error 'invalid renewal archive digest'; return 64; }
       ;;
-    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256 | renew ARCHIVE_SHA256'; return 64 ;;
+    baseline)
+      (( $# == 1 )) || { error 'unexpected baseline arguments'; return 64; }
+      ;;
+    fault)
+      (( $# == 3 )) || { error 'expected fault name and archive digest'; return 64; }
+      case "$2" in
+        ca-production|s3-unavailable|route53-unavailable|acme-unavailable|s3-put-reject|corrupt-archive) ;;
+        *) error 'unsupported fault scenario'; return 64 ;;
+      esac
+      [[ "$3" =~ ^[a-f0-9]{64}$ ]] ||
+        { error 'invalid fault archive digest'; return 64; }
+      ;;
+    *) error 'usage: first-issue.bash bootstrap|verify|noop|renew|baseline|fault'; return 64 ;;
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
@@ -476,6 +488,15 @@ main() {
     verify) verify "$workspace" "$2" ;;
     noop) noop "$workspace" "$2" "$3" ;;
     renew) renew "$workspace" "$2" ;;
+    baseline)
+      # Test-only helpers are never sourced in release or positive runs.
+      source /usr/local/libexec/certbotbot-e2e/negative-scenarios.bash
+      negative_baseline "$workspace"
+      ;;
+    fault)
+      source /usr/local/libexec/certbotbot-e2e/negative-scenarios.bash
+      negative_scenario "$workspace" "$2" "$3"
+      ;;
   esac
 }
 
