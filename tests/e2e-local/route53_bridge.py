@@ -153,6 +153,12 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
             return
         if path.startswith(f"/{VERSION}/change/") and not request.query:
             change_id = path[len(f"/{VERSION}/change/"):]
+            # Botocore percent-encodes the Route53 /change/ ID prefix
+            # emitted by the actual service. Accept only that exact form
+            # or the already supported bare ID, never arbitrary escapes.
+            encoded_prefix = "%2Fchange%2F"
+            if change_id.startswith(encoded_prefix):
+                change_id = change_id[len(encoded_prefix):]
             if change_id not in self.server.changes:
                 raise ApiError("NoSuchChange", 404)
             root = element("GetChangeResponse")
@@ -218,8 +224,14 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
         # Botocore's ChangeResourceRecordSets RequestUri terminates with
         # "/rrset/". Requiring the exact modeled route avoids accidentally
         # accepting unrelated synthetic API paths.
-        if (request.path != f"/{VERSION}/hostedzone/{ZONE_ID}/rrset/"
-                or request.query):
+        # Real Botocore encodes the native /hostedzone/ prefix from the
+        # ListHostedZones Id into the {Id} URI parameter. Permit exactly
+        # the expected bare-ID and encoded native-ID resource paths.
+        allowed_paths = (
+            f"/{VERSION}/hostedzone/{ZONE_ID}/rrset/",
+            f"/{VERSION}/hostedzone/%2Fhostedzone%2F{ZONE_ID}/rrset/",
+        )
+        if request.path not in allowed_paths or request.query:
             raise ApiError("AccessDenied", 403)
         length = self.headers.get("Content-Length", "")
         if not length.isdecimal() or not 0 < int(length) <= MAX_BODY:
