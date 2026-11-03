@@ -105,9 +105,12 @@ main() {
       (($# >= 2)) ||
         { provider_error 'public artifact and CLI required'; return 64; }
       file="$1"
+      # Reject malformed CA options before inspecting the candidate artifact.
+      # This preserves usage status 64 even when the candidate is a symlink
+      # or missing. Accepted options still require a verified public binary.
+      provider_validate_args "$@" || return $?
       [[ "$file" == /* && -x "$file" && -f "$file" && ! -L "$file" ]] ||
         { provider_error 'invalid public artifact'; return 65; }
-      provider_validate_args "$@" || return $?
       command -v sha256sum >/dev/null 2>&1 ||
         { provider_error 'checksum tool unavailable'; return 69; }
       [[ -f "$file.sha256" && ! -L "$file.sha256" ]] ||
