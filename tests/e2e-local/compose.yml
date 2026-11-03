@@ -59,6 +59,27 @@ services:
       - no-new-privileges:true
     pids_limit: 128
 
+  route53-bridge:
+    # Official Python 3.12.16 Alpine 3.24 linux/amd64 manifest.
+    # No package installation, upstream server build, or host Python daemon.
+    image: docker.io/library/python:3.12.16-alpine3.24@sha256:69ebe56e2a764c399514a0a6117131cb730cc4d0e71e85c08deb9af74cbb9f41
+    platform: linux/amd64
+    user: "10001:10001"
+    read_only: true
+    command: ["python3", "-B", "-I", "/app/route53_bridge.py"]
+    depends_on:
+      - challtestsrv
+    volumes:
+      - ./route53_bridge.py:/app/route53_bridge.py:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    networks:
+      isolated:
+        ipv4_address: 172.31.248.6
+
   seaweedfs:
     # Official published version; digest obtained from an external
     # Docker Hub RepoDigests inventory, not independently pulled here.
