@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file tests/e2e-local/first-issue-host.bash
-## @brief Builds and runs the first genuine local ACME/S3 lifecycle test.
+## @brief Builds and runs credential-free positive and negative local E2E tests.
 ## @details
 ## The explicit 'build' phase is the only phase allowed to fetch runner
 ## dependencies. 'run' requires the already cached runner image, a running
 ## validated private Compose project and the private gateway's public root.
-## The two phases of 'run' use separate unprivileged, read-only containers,
+## Positive run stages use separate unprivileged, read-only containers,
 ## each with its own disposable tmpfs and no Docker socket or default route.
+## The distinct run-faults action requires a successful positive S3 seed and
+## verifies each expected refusal against independent SeaweedFS readback.
 ## The file never accepts user-provided cloud credentials, bucket, CA or URLs.
 ## @par Usage
 ## @code{.sh}
@@ -16,6 +18,7 @@
 ## bash tests/e2e-local/run.bash fetch
 ## bash tests/e2e-local/run.bash up
 ## bash tests/e2e-local/first-issue-host.bash run
+## bash tests/e2e-local/first-issue-host.bash run-faults
 ## bash tests/e2e-local/run.bash down
 ## @endcode
 
@@ -395,7 +398,7 @@ main() {
     return $?
   fi
   # No remote image pull, package installation, or source compilation here.
-  # Cleanup is deliberately scoped to this run's two fixed container names.
+  # Cleanup is deliberately scoped to this project's known ephemeral runner names.
   trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable >/dev/null 2>&1 || true' EXIT
   case "$action" in
     run) run_lifecycle "$image" ;;
