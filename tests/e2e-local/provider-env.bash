@@ -73,7 +73,7 @@ provider_verify_isolation() {
   # 'getent ahostsv4' is glibc-specific; the prebuilt Alpine runner has
   # a portable 'getent hosts' interface. Only one pinned IPv4 is permitted.
   addresses="$(getent hosts "$STAGING" |
-    awk '$1 ~ /^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$/ { print $1 }' |
+    awk '$1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { print $1 }' |
     LC_ALL=C sort -u)" ||
     { provider_error 'canonical staging name resolution failed'; return 65; }
   [[ "$addresses" == "$GATEWAY_IP" ]] ||
