@@ -108,6 +108,7 @@ class Route53StubTests(unittest.TestCase):
             ("GET", "/2013-04-01/hostedzone?marker=untrusted", GOOD_AUTH),
             ("GET", "/2013-04-01/hostedzone/ZOTHER", GOOD_AUTH),
             ("GET", "/2013-04-01/change/CFAKE", GOOD_AUTH),
+            ("GET", "/2013-04-01/change/%2Fchange%2FCFAKE", GOOD_AUTH),
         ]
         for method, path, auth in attempts:
             with self.subTest(path=path, auth=bool(auth)):
@@ -146,6 +147,29 @@ class Route53StubTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertFalse(self.server.records)
 
+    def test_botocore_encoded_native_ids_for_update_and_poll(self) -> None:
+        """Use the actual SDK URI encoding of Route53 native Id values."""
+        path = (
+            f"/2013-04-01/hostedzone/%2Fhostedzone%2F"
+            f"{bridge.ZONE_ID}/rrset/"
+        )
+        status, created = self.request("POST", path, change_xml())
+        self.assertEqual(status, 200)
+        self.assertEqual(self.server.records[DOMAIN], (TXT,))
+        change_id = created.findtext(f".//{bridge.tag('Id')}")
+        self.assertTrue(change_id.startswith("/change/CLOCAL"))
+        poll = "/2013-04-01/change/%2Fchange%2F" + change_id.split("/")[-1]
+        status, found = self.request("GET", poll)
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            found.findtext(f".//{bridge.tag('Status')}"), "INSYNC"
+        )
+        status, _ = self.request(
+            "POST", path, change_xml(action="DELETE")
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(self.server.records)
+
     def test_multiple_values_do_not_require_real_dns(self) -> None:
         path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset/"
         values = (TXT, OTHER_TXT)
@@ -165,6 +189,8 @@ class Route53StubTests(unittest.TestCase):
             # A noncanonical path must still fail closed.
             (valid_path.removesuffix("/"), change_xml()),
             ("/2013-04-01/hostedzone/ZOTHER/rrset/", change_xml()),
+            ("/2013-04-01/hostedzone/%2Fhostedzone%2FZOTHER/rrset/", change_xml()),
+            ("/2013-04-01/hostedzone/%252Fhostedzone%252FZLOCALONLY123456/rrset/", change_xml()),
             (valid_path, change_xml(name="_acme-challenge.example.org.")),
             (valid_path, change_xml(name="_acme-challenge.www.e2e.test..")),
             (valid_path, change_xml(name="www.e2e.test.")),
