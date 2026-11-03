@@ -70,11 +70,15 @@ provider_verify_isolation() {
     command -v "$executable" >/dev/null 2>&1 ||
       { provider_error 'endpoint verifier unavailable'; return 69; }
   done
-  addresses="$(getent ahostsv4 "$STAGING" | awk '{print $1}' | sort -u)" ||
+  # 'getent ahostsv4' is glibc-specific; the prebuilt Alpine runner has
+  # a portable 'getent hosts' interface. Only one pinned IPv4 is permitted.
+  addresses="$(getent hosts "$STAGING" |
+    awk '$1 ~ /^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$/ { print $1 }' |
+    LC_ALL=C sort -u)" ||
     { provider_error 'canonical staging name resolution failed'; return 65; }
   [[ "$addresses" == "$GATEWAY_IP" ]] ||
     { provider_error 'staging name is not bound to test gateway'; return 65; }
-  if getent ahostsv4 acme-v02.api.letsencrypt.org >/dev/null 2>&1; then
+  if getent hosts acme-v02.api.letsencrypt.org >/dev/null 2>&1; then
     provider_error 'production CA name must not resolve'
     return 65
   fi
