@@ -211,7 +211,10 @@ run_positive() {
       registration-created-lineage issuance-or-publish issuance-receipt \
       s3-object-read s3-object-empty certificate-archive-unreadable \
       certificate-lineage-missing certificate-missing certificate-extraction \
-      certificate-san certificate-pem certificate-key-mismatch; do
+      certificate-san certificate-pem certificate-key-mismatch \
+      register-acme register-s3-publish register-account-packaging \
+      register-account-final-preflight register-account-initial-preflight \
+      register-s3-preflight register-certbot-unavailable register-unclassified; do
       if grep -Fqx -- "local-first-issue-host: bootstrap-failure=$category" \
         "$logfile"; then
         reason="$category"
