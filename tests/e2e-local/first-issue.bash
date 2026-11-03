@@ -470,7 +470,7 @@ main() {
     fault)
       (( $# == 3 )) || { error 'expected fault name and archive digest'; return 64; }
       case "$2" in
-        ca-production|s3-unavailable|route53-unavailable|acme-unavailable|s3-put-reject|corrupt-archive) ;;
+        ca-production|s3-unavailable|route53-unavailable|acme-unavailable|acme-order-rejected|s3-put-reject|corrupt-archive) ;;
         *) error 'unsupported fault scenario'; return 64 ;;
       esac
       [[ "$3" =~ ^[a-f0-9]{64}$ ]] ||
