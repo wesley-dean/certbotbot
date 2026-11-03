@@ -8,6 +8,7 @@ setup() {
   PROVIDER="$REPO_ROOT/tests/e2e-local/provider-env.bash"
   GATEWAY="$REPO_ROOT/tests/e2e-local/gateway.Caddyfile"
   PEBBLE_CA="$REPO_ROOT/tests/e2e-local/pebble-upstream.pem"
+  ROUTE53_STUB_TEST="$REPO_ROOT/tests/e2e-local/route53_bridge_test.py"
 }
 
 @test "local harness Bash syntax is valid without Docker" {
@@ -114,10 +115,26 @@ setup() {
   [ "$status" -eq 0 ]
   run grep -F 'AWS_ENDPOINT_URL_S3="http://$S3_IP:8333"' "$PROVIDER"
   [ "$status" -eq 0 ]
-  run grep -F 'AWS_ENDPOINT_URL_ROUTE53=http://127.0.0.1:9' "$PROVIDER"
+  run grep -F 'AWS_ENDPOINT_URL_ROUTE53="http://$ROUTE53_IP:8056"' "$PROVIDER"
   [ "$status" -eq 0 ]
   run grep -F 'AWS_EC2_METADATA_DISABLED=true' "$PROVIDER"
   [ "$status" -eq 0 ]
   run grep -F 'REQUESTS_CA_BUNDLE="$TRUST_FILE"' "$PROVIDER"
+  [ "$status" -eq 0 ]
+}
+
+@test "local Route53 test double passes offline protocol contract checks" {
+  run python3 -B "$ROUTE53_STUB_TEST"
+  [ "$status" -eq 0 ]
+}
+
+@test "isolated Pebble bypasses DNS validation and mock has no real DNS client" {
+  run grep -F 'PEBBLE_VA_ALWAYS_VALID: "1"' "$TOPOLOGY"
+  [ "$status" -eq 0 ]
+  run grep -F 'CHALL_IP=' "$HARNESS"
+  [ "$status" -ne 0 ]
+  run grep -F 'CHALLENGE_HOST' "$REPO_ROOT/tests/e2e-local/route53_bridge.py"
+  [ "$status" -ne 0 ]
+  run grep -F 'route53-bridge' "$TOPOLOGY"
   [ "$status" -eq 0 ]
 }
