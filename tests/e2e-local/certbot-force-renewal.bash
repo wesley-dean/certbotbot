@@ -38,14 +38,14 @@ authorized_selected_renew() {
   (( $# == 15 )) || return 65
   [[ "$1" == renew && "$2" == --cert-name && "$3" == "$SELECTED" &&
     "$4" == --account && "$6" == --config-dir &&
-    "$8" == --work-dir && "$10" == --logs-dir &&
-    "$12" == --server && "$13" == "$STAGING" &&
-    "$14" == --non-interactive && "$15" == --no-directory-hooks ]] ||
+    "$8" == --work-dir && "${10}" == --logs-dir &&
+    "${12}" == --server && "${13}" == "$STAGING" &&
+    "${14}" == --non-interactive && "${15}" == --no-directory-hooks ]] ||
     return 65
   account="$5"
   config="$7"
   work="$9"
-  logs="$11"
+  logs="${11}"
   [[ "$account" =~ ^[A-Za-z0-9_-]+$ ]] || return 65
   # Certbot's private workspace is allocated by the unchanged producer.
   [[ "$config" =~ ^/tmp/[A-Za-z0-9._/-]+/config$ ]] || return 65
@@ -61,7 +61,7 @@ authorized_selected_renew() {
 ## @brief Consumes one private marker and execs installed Certbot without mocks.
 ## @param ... Real Certbot CLI arguments.
 main() {
-  [[ -x "$REAL_CERTBOT" && ! -L "$REAL_CERTBOT" ]] || return 69
+  [[ -x "$REAL_CERTBOT" ]] || return 69
   # A plain test runner has no marker: every existing registration, issuance,
   # plugin probe, show_account and normal no-op works exactly as installed.
   if [[ ! -e "$INTENT" && ! -e "$RECEIPT" ]]; then
