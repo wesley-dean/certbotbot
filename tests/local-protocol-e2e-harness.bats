@@ -205,6 +205,7 @@ setup() {
   run jq -e '
     (.pebble.profiles | keys == ["default"])
     and (.pebble.profiles.default.validityPeriod == 7776000)
+    and (.pebble.domainBlocklist == ["blocked-domain.example","blocked.e2e.test"])
   ' "$PEBBLE_CONFIG"
   [ "$status" -eq 0 ]
   run grep -F './pebble-config.json:/opt/local-e2e-pebble.json:ro' "$TOPOLOGY"
@@ -414,5 +415,16 @@ setup() {
   run grep -F 'remote_unchanged=true; provider_success=false' "$FIRST_HOST"
   [ "$status" -eq 0 ]
   run grep -F 'all-negative-scenarios=passed; dns-validation=bypassed' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+}
+
+@test "real Pebble WFE rejects the owned blocked name at newOrder" {
+  run grep -F '"domainBlocklist": ["blocked-domain.example", "blocked.e2e.test"]' "$PEBBLE_CONFIG"
+  [ "$status" -eq 0 ]
+  run grep -F 'acme-order-rejected)' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run grep -F 'negative_issue_foreign_name "$scenario" blocked.e2e.test' "$NEGATIVE_SCENARIOS"
+  [ "$status" -eq 0 ]
+  run grep -F 'for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected' "$FIRST_HOST"
   [ "$status" -eq 0 ]
 }
