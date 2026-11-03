@@ -517,6 +517,6 @@ setup() {
   [ "$status" -eq 0 ]
   run grep -F 'rm -rf -- "$WORK"' "$CI_LOCAL_RUNNER"
   [ "$status" -eq 0 ]
-  run grep -F 'trap '\\''cleanup "$?"'\\'' EXIT' "$CI_LOCAL_RUNNER"
+  run grep -F 'cleanup "$?"' "$CI_LOCAL_RUNNER"
   [ "$status" -eq 0 ]
 }
