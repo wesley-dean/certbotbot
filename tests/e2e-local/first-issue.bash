@@ -31,6 +31,12 @@ readonly NAME=test.e2e.test
 readonly EMAIL=local-e2e@example.invalid
 readonly FORCE_STATE=/tmp/.certbotbot-e2e-renewal
 
+## @var E2E_CLEANUP_WORKSPACE
+## @brief Retains main's private scratch path until the shell EXIT trap runs.
+## @details Bash destroys local variables when main returns, before EXIT traps
+## run. The trap must not expand a main-local variable under set -u.
+E2E_CLEANUP_WORKSPACE=''
+
 ## @fn error()
 ## @brief Emits a static, nonsecret diagnostic.
 ## @param message Literal fixed diagnostic without raw provider output.
@@ -553,12 +559,16 @@ main() {
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
+  # EXIT traps run after main() has returned, so main-local variables are
+  # unavailable under nounset. Preserve only the owned cleanup pathname in
+  # global state; use the local value for all ordinary phase operations.
+  E2E_CLEANUP_WORKSPACE="$workspace"
   if [[ "$mode" == renew ]]; then
-    trap 'rm -rf -- "$workspace" "$FORCE_STATE"' EXIT
+    trap 'rm -rf -- "$E2E_CLEANUP_WORKSPACE" "$FORCE_STATE"' EXIT
   elif [[ "$mode" == isolation ]]; then
-    trap 'isolation_cleanup "$?" "$workspace"' EXIT
+    trap 'isolation_cleanup "$?" "$E2E_CLEANUP_WORKSPACE"' EXIT
   else
-    trap 'rm -rf -- "$workspace"' EXIT
+    trap 'rm -rf -- "$E2E_CLEANUP_WORKSPACE"' EXIT
   fi
   case "$mode" in
     bootstrap) bootstrap "$workspace" ;;
