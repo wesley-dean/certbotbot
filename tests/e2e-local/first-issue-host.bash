@@ -127,7 +127,7 @@ run_phase() {
       ;;
     fault)
       case "${1-}" in
-        ca-production|s3-unavailable|route53-unavailable|acme-unavailable|s3-put-reject|corrupt-archive) ;;
+        ca-production|s3-unavailable|route53-unavailable|acme-unavailable|acme-order-rejected|s3-put-reject|corrupt-archive) ;;
         *) problem 'invalid negative scenario container name'; return 64 ;;
       esac
       name="${name}-${1}"
