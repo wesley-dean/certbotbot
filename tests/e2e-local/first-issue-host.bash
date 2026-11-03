@@ -191,7 +191,7 @@ run_lifecycle() (
     -p certbotbot-local-e2e ps -q acme-gateway)" || return 74
   [[ -n "$cid" ]] ||
     { problem 'canonical gateway container missing'; return 65; }
-  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$cert_ca" >/dev/null 2>&1 ||
+  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$cert_ca" 2>/dev/null ||
     { problem 'ephemeral public gateway CA unavailable'; return 74; }
   chmod 0644 "$cert_ca"
   openssl x509 -in "$cert_ca" -noout >/dev/null 2>&1 ||
@@ -315,7 +315,7 @@ run_faults() (
     -p certbotbot-local-e2e ps -q acme-gateway)" || return 74
   [[ -n "$cid" ]] ||
     { problem 'local canonical staging gateway absent'; return 65; }
-  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$cert_ca" >/dev/null 2>&1 ||
+  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$cert_ca" 2>/dev/null ||
     { problem 'temporary gateway public root unavailable'; return 74; }
   chmod 0644 "$cert_ca"
   openssl x509 -in "$cert_ca" -noout >/dev/null 2>&1 ||
@@ -406,7 +406,7 @@ run_isolation_probe() (
     -p certbotbot-local-e2e ps -q acme-gateway)" || return 74
   [[ -n "$cid" ]] ||
     { problem 'isolation gateway container missing'; return 65; }
-  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt "$ca_file" >/dev/null 2>&1 ||
+  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$ca_file" 2>/dev/null ||
     { problem 'public-only gateway root unavailable for isolation probe'; return 74; }
   chmod 0644 "$ca_file"
   openssl x509 -in "$ca_file" -noout >/dev/null 2>&1 ||
