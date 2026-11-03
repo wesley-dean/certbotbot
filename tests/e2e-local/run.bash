@@ -239,7 +239,7 @@ probe_services() {
     # Exact public-only read error and file metadata, never key material.
     report_error 'retrying public-only root read with stderr visible'
     docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$ca_file" \
-      >/dev/null || true
+      2>/dev/null || true
     report_error 'listing public-root file location inside isolated Caddy'
     docker exec "$cid" sh -c \
       'ls -ld /data /data/caddy /data/caddy/pki /data/caddy/pki/authorities/local; ls -l /data/caddy/pki/authorities/local/root.crt' \
