@@ -57,7 +57,7 @@ aws_local() {
     AWS_EC2_METADATA_DISABLED=true AWS_CONFIG_FILE=/dev/null \
     AWS_SHARED_CREDENTIALS_FILE=/dev/null \
     AWS_ENDPOINT_URL_S3=http://172.31.248.4:8333 \
-    AWS_ENDPOINT_URL_ROUTE53=http://172.31.248.6:8056 \
+    AWS_ENDPOINT_URL_ROUTE_53=http://172.31.248.6:8056 \
     aws --no-cli-pager "$@"
 }
 

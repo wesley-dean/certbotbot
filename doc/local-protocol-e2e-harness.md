@@ -80,7 +80,8 @@ successful local issuance **does not prove AWS Route53 or DNS-01 correctness**.
 This reduces test complexity while retaining real ACME registration, orders,
 certificate issuance, SeaweedFS persistence, and native Certbot state, once
 those end-to-end tests are implemented and executed. The upstream plugin must
-still be verified to honor `AWS_ENDPOINT_URL_ROUTE53`; a public fallback is
+still be verified to honor `AWS_ENDPOINT_URL_ROUTE_53` (Botocore's
+Route 53 service identifier is `route-53`); a public fallback is
 forbidden. The synthetic hosted zone currently uses a fixed test fixture; the
 ID/name selection enhancement in issue #252 is separately tracked.
 
@@ -159,7 +160,7 @@ Failures are fail-closed. In particular, SeaweedFS must genuinely support
 `If-None-Match` and `If-Match` as applicable, real ETag identity and
 independent `GetObject`. A response fabricated by the harness cannot
 establish these semantics. The installed Certbot plugin must respect
-`AWS_ENDPOINT_URL_ROUTE53`; an ignored override cannot be replaced by
+`AWS_ENDPOINT_URL_ROUTE_53`; an ignored override cannot be replaced by
 live Route53. A failing runtime probe is a compatibility blocker, not
 permission to disable certificate validation or modify the producer.
 
