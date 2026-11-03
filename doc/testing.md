@@ -178,7 +178,7 @@ The approved local failure-isolation suite is
 `bash tests/e2e-local/first-issue-host.bash run-faults`. It runs only
 **after** an independent successful positive `run` has stored a genuine
 Pebble-issued certificate in the disposable private SeaweedFS bucket.
-Six literal fail-closed cases exercise the unchanged checksum-verified public
+Seven literal fail-closed cases exercise the unchanged checksum-verified public
 producer at external-provider and archive boundaries, with an independent
 current-object SHA-256 readback after every scenario. The suite requires no
 real AWS credentials or public ACME provider. Mocked Route53 failure and
