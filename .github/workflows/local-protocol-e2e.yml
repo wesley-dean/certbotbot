@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: local-protocol-e2e-\${{ github.ref }}
+  group: local-protocol-e2e-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -70,7 +70,7 @@ jobs:
           fi
           docker compose --env-file /dev/null -f "$compose" -p "$project" \
             down --volumes --remove-orphans --timeout 10 >/dev/null
-          if docker network inspect "\${project}_isolated" >/dev/null 2>&1; then
+          if docker network inspect "${project}_isolated" >/dev/null 2>&1; then
             printf '%s\n' 'local-e2e-ci: disposable private network survived cleanup' >&2
             exit 1
           fi
