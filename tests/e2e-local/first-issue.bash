@@ -458,7 +458,10 @@ renew() {
 ## @retval 65 Unexpected gateway, resolver, or connectivity boundary.
 isolation() {
   local destination='' peer=''
-  bash "$PROVIDER" --check >/dev/null 2>&1 ||
+  # The provider emits only fixed, nonsecret classification messages here.
+  # Preserve them for the host's allowlisted failure classifier; never print
+  # raw Docker, HTTP, ACME, or cloud-provider output.
+  bash "$PROVIDER" --check ||
     { error 'private staging TLS and route admission check failed'; return 65; }
   [[ -r /proc/net/route ]] ||
     { error 'isolation route table missing'; return 65; }
