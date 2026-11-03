@@ -7,8 +7,7 @@ are supported.  Never use as an Internet-facing Route53 replacement.
 
 from __future__ import annotations
 
-import base64
-import datetime
+import json
 import http.client
 import http.server
 import re
@@ -186,13 +185,13 @@ class Route53Bridge(http.server.BaseHTTPRequestHandler):
 
     @staticmethod
     def update_challenge(action: str, name: str, value: str) -> None:
-        data = urllib.parse.urlencode({"host": name, "value": value}).encode("ascii")
+        data = json.dumps({"host": name, "value": value}).encode("ascii")
         if action == "DELETE":
-            data = urllib.parse.urlencode({"host": name}).encode("ascii")
+            data = json.dumps({"host": name}).encode("ascii")
         conn = http.client.HTTPConnection(CHALLENGE_HOST, CHALLENGE_PORT, timeout=3)
         try:
             conn.request("POST", "/set-txt" if action == "UPSERT" else "/clear-txt",
-                         body=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+                         body=data, headers={"Content-Type": "application/json"})
             response = conn.getresponse()
             response.read(4096)
             if response.status != 200:
