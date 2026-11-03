@@ -6,7 +6,9 @@ services:
     # Challenges bypassed only for local lifecycle integration, per ADR-047.
     image: ghcr.io/letsencrypt/pebble:sha-b1e1ca4@sha256:5080492187bea12909c053d7a2b90a9e95104ef1c82381828e7823db71ce7e54
     platform: linux/amd64
-    command: ["-config", "test/config/pebble-config.json", "-strict"]
+    command: ["-config", "/opt/local-e2e-pebble.json", "-strict"]
+    volumes:
+      - ./pebble-config.json:/opt/local-e2e-pebble.json:ro
     environment:
       PEBBLE_VA_NOSLEEP: "1"
       PEBBLE_VA_ALWAYS_VALID: "1"

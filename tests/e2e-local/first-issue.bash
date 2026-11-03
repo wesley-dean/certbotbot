@@ -20,6 +20,8 @@ umask 077
 
 readonly PROVIDER=/usr/local/libexec/certbotbot-e2e/provider-env.bash
 readonly ARTIFACT=/usr/local/bin/certbotbot.bash
+readonly ARTIFACT_DEV=/usr/local/bin/certbotbot.dev.bash
+readonly ARTIFACT_MIN=/usr/local/bin/certbotbot.min.bash
 readonly CONFIG=/usr/local/share/certbotbot-e2e/empty.env
 readonly BUCKET=certbotbot-local-e2e
 readonly KEY=latest.tar.gz
@@ -54,13 +56,22 @@ aws_local() {
 ## @brief Runs exactly the genuine checked public producer through the guard.
 ## @param ... Real public producer options including explicit staging.
 provider() {
-  bash "$PROVIDER" -- "$ARTIFACT" "$@"
+  local flavor="$1" executable=''
+  shift
+  case "$flavor" in
+    development) executable="$ARTIFACT_DEV" ;;
+    ordinary) executable="$ARTIFACT" ;;
+    minified) executable="$ARTIFACT_MIN" ;;
+    *) error 'unknown producer flavor'; return 64 ;;
+  esac
+  bash "$PROVIDER" -- "$executable" "$@"
 }
 
 ## @fn issuer()
 ## @brief Calls ordinary issuance with the selected real Pebble account.
 issuer() {
-  provider \
+  local flavor="${1:-ordinary}"
+  provider "$flavor" \
     --config "$CONFIG" \
     --acme-environment staging \
     --domain "$NAME" \
@@ -175,7 +186,7 @@ bootstrap() {
     return 69
   fi
 
-  if ! provider register \
+  if ! provider ordinary register \
     --config "$CONFIG" --acme-environment staging \
     --email "$EMAIL" --agree-tos true --eff-email-signup false \
     --s3-bucket "$BUCKET" --s3-key "$KEY" \
@@ -229,6 +240,69 @@ verify() {
   printf 'local-first-issue: independently_verified_cert_der_sha256=%s\n' "$leaf_sha"
 }
 
+## @fn object_metadata()
+## @brief Reads the selected SeaweedFS object identity with the real AWS CLI.
+## @param output Private destination for parsed metadata.
+## @retval 0 The object has valid quoted ETag and LastModified fields.
+## @retval 69 Missing or malformed S3 metadata.
+object_metadata() {
+  local output="$1" raw=''
+  raw="$(aws_local s3api head-object --bucket "$BUCKET" --key "$KEY" \
+    --output json 2>/dev/null)" ||
+    { error 'selected S3 object metadata unavailable'; return 69; }
+  jq -ce '(.ETag | type == "string")
+    and (.LastModified | type == "string")
+    and (.ContentLength | type == "number")' <<<"$raw" >/dev/null ||
+    { error 'selected S3 object metadata malformed'; return 69; }
+  jq -c '[.ETag, .LastModified, .ContentLength]' <<<"$raw" >"$output" ||
+    { error 'selected S3 identity parsing failed'; return 69; }
+}
+
+## @fn noop()
+## @brief Restores one exact public producer flavor and checks a non-due no-op.
+## @details
+## Uses fresh runner state with no local account, keys or renewal files.
+## Compares independently fetched bytes, ETag, modification metadata, and the
+## existing leaf/key against pre- and post-execution S3 object observations.
+## The host harness separately rejects any increment in Pebble's new-order
+## counter. Provider output plus S3 metadata are not a raw S3 PUT packet trace.
+## @param workspace Disposable local tmpfs directory.
+## @param flavor development, ordinary, or minified.
+## @param expected Bootstrap archive SHA-256.
+noop() {
+  local workspace="$1" flavor="$2" expected="$3" actual=''
+  [[ "$expected" =~ ^[a-f0-9]{64}$ ]] ||
+    { error 'invalid archive digest for no-op'; return 64; }
+  fetch_archive "$workspace/before.tar.gz" || return $?
+  actual="$(sha256sum "$workspace/before.tar.gz" | awk '{print $1}')" || return 74
+  [[ "$actual" == "$expected" ]] ||
+    { error 'fresh-runner input archive differs'; return 65; }
+  verify_account "$workspace/before.tar.gz" || return $?
+  verify_certificate "$workspace/before.tar.gz" "$workspace" || return $?
+  object_metadata "$workspace/before.meta" || return $?
+
+  # A real producer invocation (not a Certbot mock) fetches and restores
+  # account, lineage, renewal paths and keys from SeaweedFS itself.
+  if ! issuer "$flavor" >"$workspace/noop.log" 2>&1; then
+    error 'fresh-runner selected renewal/no-op failed'
+    return 74
+  fi
+  grep -Fq 'certbotbot: checked ' "$workspace/noop.log" &&
+    grep -Fq '; published=false' "$workspace/noop.log" ||
+    { error 'selected no-op unexpectedly changed or published state'; return 65; }
+
+  object_metadata "$workspace/after.meta" || return $?
+  cmp -s "$workspace/before.meta" "$workspace/after.meta" ||
+    { error 'S3 object identity changed during no-op'; return 65; }
+  fetch_archive "$workspace/after.tar.gz" || return $?
+  actual="$(sha256sum "$workspace/after.tar.gz" | awk '{print $1}')" || return 74
+  [[ "$actual" == "$expected" ]] ||
+    { error 'S3 archive bytes changed during no-op'; return 65; }
+  verify_account "$workspace/after.tar.gz" || return $?
+  verify_certificate "$workspace/after.tar.gz" "$workspace" || return $?
+  printf 'local-first-issue: fresh_runner_noop=%s; archive_sha256=%s\n' "$flavor" "$expected"
+}
+
 ## @fn main()
 ## @brief Runs one bounded phase and removes private state on every exit.
 main() {
@@ -236,7 +310,14 @@ main() {
   case "$mode" in
     bootstrap) (( $# == 1 )) || { error 'unexpected bootstrap arguments'; return 64; } ;;
     verify) (( $# == 2 )) || { error 'expected one digest'; return 64; } ;;
-    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256'; return 64 ;;
+    noop)
+      (( $# == 3 )) || { error 'expected flavor and archive digest'; return 64; }
+      case "$2" in development|ordinary|minified) ;; *)
+        error 'invalid no-op producer flavor'; return 64 ;;
+      esac
+      [[ "$3" =~ ^[a-f0-9]{64}$ ]] || { error 'invalid no-op digest'; return 64; }
+      ;;
+    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256'; return 64 ;;
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
@@ -244,6 +325,7 @@ main() {
   case "$mode" in
     bootstrap) bootstrap "$workspace" ;;
     verify) verify "$workspace" "$2" ;;
+    noop) noop "$workspace" "$2" "$3" ;;
   esac
 }
 

@@ -170,3 +170,64 @@ Docker build, or independent readback is claimed until a qualified Linux
 Docker host executes the above steps successfully and records its exact
 image and artifact identities. Milestone #4's manual live-provider
 acceptance remains separate.
+
+## Fresh-runner selected renewal no-op (task #245)
+
+After the first genuine account registration and certificate issuance, the
+host-side first-issue runner launches **three additional separate, fresh
+containers**, one for each checksum-verified public producer flavor:
+`certbotbot.dev.bash`, `certbotbot.bash`, and
+`certbotbot.min.bash`. They share **no** Certbot workspace, home state,
+account files, client cache, or ephemeral files with the bootstrap container.
+Each must independently fetch and validate the current SeaweedFS object,
+then invoke the actual selected normal renewal/check command through the
+existing `provider-env.bash` gate. The producer itself restores the native
+Certbot account, selected renewal lineage and private key from the S3
+archive; no host-state or copied account directory is provided.
+
+The test compares both SeaweedFS `HeadObject` identity (ETag,
+LastModified, ContentLength) and an independently downloaded archive's
+SHA-256 **before and after each invocation**. It also requires the actual
+producer to return `checked` with `published=false` under
+`--upload-no-renewal false`. The archive must still contain the canonical
+staging account, renewal metadata, matching selected certificate SAN, and
+corresponding private key. Unchanged ETag or bytes *alone* cannot prove
+zero S3 requests; these are independent observable checks paired with the
+real producer's no-publication outcome, not packet-level instrumentation.
+
+To establish that no ACME order was created, the host harness inspects
+**only the nonsecret integer order count** emitted by the pinned upstream
+Pebble WFE whenever its in-memory database adds a new order. The counter
+must exist after initial issuance and must not advance during any no-op
+runner. A missing or unparseable counter is an **evidence failure**, never
+interpreted as zero new orders. Raw Pebble logs and account details are
+not printed in a success report.
+
+Pebble's upstream sample config offers a randomized short-lived profile.
+Such an issuance could be due immediately even on the same test run, making
+a no-op test flaky or semantically wrong. The local-only, read-only
+[pebble-config.json](../tests/e2e-local/pebble-config.json) uses upstream's
+90-day default profile as its **only** available profile. The harness
+checks the profile's precise 7776000-second validity period, and rejects
+unexpected configuration before startup. This changes no production
+Certbot/client policy and does not shorten or force renewal. Genuine
+due renewal remains task #248, governed by its own review.
+
+The same documented commands for task #244 now cover task #245:
+
+```bash
+make build
+bash tests/e2e-local/first-issue-host.bash build
+bash tests/e2e-local/run.bash fetch
+bash tests/e2e-local/run.bash up
+bash tests/e2e-local/first-issue-host.bash run
+bash tests/e2e-local/run.bash down
+```
+
+A successful run must report three explicit
+`restored_noop=<flavor>; no_new_order=true; no_republish=true` results
+and one independent certificate DER SHA-256. All of these claims depend on
+running the actual pinned Docker service stack. Static Bats assertions,
+source-level reasoning and passing ordinary PR CI do **not** substitute
+for a real container-backed run. No successful engine-backed run is claimed
+from this development environment.

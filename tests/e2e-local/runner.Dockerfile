@@ -20,17 +20,19 @@ RUN set -eu; \
     printf '' > /usr/local/share/certbotbot-e2e/empty.env
 
 # The exact public output of 'make build'; Docker builds fail if absent.
-COPY dist/certbotbot.bash dist/certbotbot.bash.sha256 /usr/local/bin/
+COPY dist/certbotbot.dev.bash dist/certbotbot.dev.bash.sha256 dist/certbotbot.bash dist/certbotbot.bash.sha256 dist/certbotbot.min.bash dist/certbotbot.min.bash.sha256 /usr/local/bin/
 COPY tests/e2e-local/provider-env.bash tests/e2e-local/first-issue.bash /usr/local/libexec/certbotbot-e2e/
 
 RUN set -eu; \
     cd /usr/local/bin; \
-    sha256sum -c certbotbot.bash.sha256; \
-    bash -n certbotbot.bash; \
+    for flavor in certbotbot.dev.bash certbotbot.bash certbotbot.min.bash; do \
+      sha256sum -c "$flavor.sha256"; \
+      bash -n "$flavor"; \
+      chmod 0755 "$flavor"; \
+      chmod 0644 "$flavor.sha256"; \
+    done; \
     bash -n /usr/local/libexec/certbotbot-e2e/provider-env.bash; \
     bash -n /usr/local/libexec/certbotbot-e2e/first-issue.bash; \
-    chmod 0755 certbotbot.bash; \
-    chmod 0644 certbotbot.bash.sha256; \
     chmod 0555 /usr/local/libexec/certbotbot-e2e/*.bash
 
 ENV HOME=/tmp TMPDIR=/tmp XDG_CACHE_HOME=/tmp/cache
