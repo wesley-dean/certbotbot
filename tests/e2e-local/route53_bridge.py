@@ -24,7 +24,7 @@ ZONE = "e2e.test."
 ZONE_ID = "ZLOCALONLY123456"
 ACCESS_KEY = "CBOTBOT_LOCAL_TEST_ACCESS_ONLY"
 VALUE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
-NAME_RE = re.compile(r"^_acme-challenge(?:\.[a-z0-9-]+)*\.e2e\.test\.$")
+NAME_RE = re.compile(r"^_acme-challenge(?:\.[a-z0-9-]+)*\.e2e\.test\.?$")
 MAX_BODY = 16384
 
 ET.register_namespace("", NS)
@@ -185,6 +185,9 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
                     or not 0 < int(ttl) <= 300
                     or not 1 <= len(values) <= 10):
                 raise ValueError()
+            # Certbot's plugin uses undotted DNS names; normalize after
+            # strict validation for consistent UPSERT and DELETE identity.
+            name = name.removesuffix(".") + "."
             decoded: list[str] = []
             for value in values:
                 quoted = value.text or ""
