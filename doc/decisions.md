@@ -570,7 +570,7 @@ See [ADR-045](adr/ADR-045-native-issue-dependency-synchronization.md).
 ### ADR-046: Isolated Pebble and SeaweedFS Protocol-Level E2E Trust Boundary
 
 Milestone #16 tests the real checksum-verified public certbotbot producer with
-container-confined Pebble ACME, a private DNS-01/Route53 bridge, and SeaweedFS
+container-confined Pebble ACME, a private DNS-01/Route53 bridge (subsequently superseded for local acceptance\nby ADR-047), and SeaweedFS
 S3-compatible storage, without adding arbitrary public CA endpoints or weakening
 ADR-042's production/staging account and TLS validation. A disposable,
 network-isolated harness supplies test-only staging-name mediation, a runner-only
@@ -584,3 +584,18 @@ remote verification; local protocol evidence remains separate from milestone
 credential, archive, release and issue-sync boundaries remain unchanged.
 
 See [ADR-046](adr/ADR-046-isolated-pebble-seaweedfs-protocol-e2e.md).
+
+### ADR-047: Mock Route53 and DNS-01 Authorization for Local Lifecycle E2E
+
+Milestone #16 now tests certbotbot's real public-artifact certificate lifecycle
+with real Certbot, isolated Pebble and SeaweedFS, while **mocking external
+Route53 behavior** through a bounded synthetic API stub. Pebble's explicit
+`PEBBLE_VA_ALWAYS_VALID=1` bypasses DNS-01 authorization without bypassing
+real ACME registration, orders, finalization or certificates; local success
+must never be described as tested Route53/DNS-01 propagation. This decision
+supersedes only ADR-046's DNS-provider acceptance requirements, retaining
+its strict CA staging identity, runner-only TLS trust, no-egress boundaries,
+real object-store operations, independent restore, true second renewal,
+and separate milestone #4 live-provider acceptance.
+
+See [ADR-047](adr/ADR-047-mocked-route53-local-lifecycle-e2e.md).
