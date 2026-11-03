@@ -132,6 +132,20 @@ class Route53StubTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertNotIn(DOMAIN, self.server.records)
 
+    def test_certbot_name_without_final_dot_uses_same_scoped_record(self) -> None:
+        """Accept Certbot's undotted DNS01 name and normalize both forms."""
+        path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset"
+        status, _ = self.request(
+            "POST", path, change_xml(name=DOMAIN[:-1])
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(self.server.records, {DOMAIN: (TXT,)})
+        status, _ = self.request(
+            "POST", path, change_xml(action="DELETE", name=DOMAIN)
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(self.server.records)
+
     def test_multiple_values_do_not_require_real_dns(self) -> None:
         path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset"
         values = (TXT, OTHER_TXT)
@@ -149,6 +163,7 @@ class Route53StubTests(unittest.TestCase):
         attempts = [
             ("/2013-04-01/hostedzone/ZOTHER/rrset", change_xml()),
             (valid_path, change_xml(name="_acme-challenge.example.org.")),
+            (valid_path, change_xml(name="_acme-challenge.www.e2e.test..")),
             (valid_path, change_xml(name="www.e2e.test.")),
             (valid_path, change_xml(record_type="A")),
             (valid_path, change_xml(values=("wrong",))),
