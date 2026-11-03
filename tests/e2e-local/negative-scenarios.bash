@@ -12,14 +12,18 @@
 ## @fn negative_issue_foreign_name()
 ## @brief Requests a new selected certificate so no-op cannot bypass faults.
 ## @param mode One literal approved negative provider fault.
+## @param domain Exact selected synthetic name; blocked domain is test-only.
 negative_issue_foreign_name() {
-  local mode="$1"
+  local mode="$1" domain="${2:-fault.e2e.test}"
+  case "$domain" in fault.e2e.test|blocked.e2e.test) ;;
+    *) error 'unapproved fault-domain selection'; return 64 ;;
+  esac
   LOCAL_E2E_FAULT_MODE="$mode" provider ordinary \
     --config "$CONFIG" \
     --acme-environment staging \
-    --domain fault.e2e.test \
+    --domain "$domain" \
     --include-subdomains false \
-    --cert-name fault.e2e.test \
+    --cert-name "$domain" \
     --s3-bucket "$BUCKET" \
     --s3-key "$KEY" \
     --archive-encryption none \
@@ -125,6 +129,16 @@ negative_scenario() {
     route53-unavailable|s3-put-reject)
       if negative_issue_foreign_name "$scenario" >"$workspace/provider.log" 2>&1; then
         error 'new certificate unexpectedly succeeded through failed provider'
+        return 65
+      fi
+      ;;
+    acme-order-rejected)
+      # Pebble rejects the identifier at the *newOrder* API, after genuine
+      # account restoration and HTTPS ACME directory verification. This is
+      # a real ACME policy refusal, not the gateway-down preflight case.
+      if negative_issue_foreign_name "$scenario" blocked.e2e.test \
+        >"$workspace/provider.log" 2>&1; then
+        error 'Pebble accepted forbidden new-order identifier'
         return 65
       fi
       ;;
