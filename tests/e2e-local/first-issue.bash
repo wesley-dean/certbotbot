@@ -121,6 +121,22 @@ verify_certificate() {
     { error 'invalid issued PEM certificate'; return 65; }
   [[ -s "$workspace/leaf.der" ]] ||
     { error 'issued certificate DER missing'; return 65; }
+  # Independently prove that the matching archived private-key generation
+  # corresponds to this leaf, without ever printing or exporting the key.
+  local generation key
+  generation="${leaf##*/cert}"
+  generation="${generation%.pem}"
+  [[ "$generation" =~ ^[0-9]+$ ]] ||
+    { error 'noncanonical certificate generation'; return 65; }
+  key="./archive/$NAME/privkey${generation}.pem"
+  tar -xOzf "$archive" "$key" >"$workspace/leaf-key.pem" 2>/dev/null ||
+    { error 'selected private-key generation absent'; return 65; }
+  openssl x509 -in "$workspace/leaf.pem" -pubkey -noout >"$workspace/leaf.pub" 2>/dev/null ||
+    { error 'leaf public-key extraction failed'; return 65; }
+  openssl pkey -in "$workspace/leaf-key.pem" -pubout >"$workspace/key.pub" 2>/dev/null ||
+    { error 'archive private key unusable'; return 65; }
+  cmp -s "$workspace/leaf.pub" "$workspace/key.pub" ||
+    { error 'private key and certificate mismatch'; return 65; }
 }
 
 ## @fn bootstrap()
