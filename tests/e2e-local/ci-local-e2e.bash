@@ -157,7 +157,9 @@ probe_no_egress() {
       provider-admission-failed runner-default-route missing-route-table \
       external-tcp-succeeded forbidden-dns-resolved \
       runner-timeout docker-startup-rejected runner-executable-unavailable \
-      runner-inner-exit runner-exit-other; do
+      runner-inner-exit runner-exit-other runner-stage-reserved-dns \
+      runner-stage-reserved-tcp runner-stage-route runner-stage-provider \
+      runner-before-isolation-entrypoint; do
       if grep -Fqx -- \
         "local-first-issue-host: sealed runner isolation probe failed: $classification" \
         "$logfile"; then
