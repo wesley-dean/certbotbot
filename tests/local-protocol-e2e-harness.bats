@@ -9,6 +9,9 @@ setup() {
   GATEWAY="$REPO_ROOT/tests/e2e-local/gateway.Caddyfile"
   PEBBLE_CA="$REPO_ROOT/tests/e2e-local/pebble-upstream.pem"
   ROUTE53_STUB_TEST="$REPO_ROOT/tests/e2e-local/route53_bridge_test.py"
+  FIRST_ISSUE="$REPO_ROOT/tests/e2e-local/first-issue.bash"
+  FIRST_HOST="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
+  RUNNER_DOCKERFILE="$REPO_ROOT/tests/e2e-local/runner.Dockerfile"
 }
 
 @test "local harness Bash syntax is valid without Docker" {
@@ -136,5 +139,56 @@ setup() {
   run grep -F 'CHALLENGE_HOST' "$REPO_ROOT/tests/e2e-local/route53_bridge.py"
   [ "$status" -ne 0 ]
   run grep -F 'route53-bridge' "$TOPOLOGY"
+  [ "$status" -eq 0 ]
+}
+
+@test "first issuance runner has valid Bash and rejects unknown scenario before providers" {
+  run bash -n "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run bash -n "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+
+  run bash "$FIRST_ISSUE" unexpected-mode
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'usage: first-issue.bash'* ]]
+
+  run bash "$FIRST_HOST" unexpected-mode
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'usage: first-issue-host.bash'* ]]
+}
+
+@test "first issuance uses real public producer and bounded real providers" {
+  run grep -F 'provider register' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'if issuer' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'if ! issuer' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'fetch_archive "$workspace/verified.tar.gz"' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'openssl x509 -in "$workspace/leaf.pem" -outform DER' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'AWS_ENDPOINT_URL_S3=http://172.31.248.4:8333' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+}
+
+@test "local executable runner installs real Certbot and verifies supplied artifact" {
+  run grep -E '^FROM alpine:[^ ]+@sha256:[a-f0-9]{64}$' "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+  run grep -F "'certbot-dns-route53=~5'" "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+  run grep -F 'sha256sum -c certbotbot.bash.sha256' "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+  run grep -F 'USER 65532:65532' "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+}
+
+@test "first issuance is restricted to a disposable internal runner context" {
+  for feature in '--network "$NETWORK"' '--dns 127.0.0.1' '--read-only' '--cap-drop ALL' \
+    '--security-opt no-new-privileges:true' '--mount "type=bind,source=$ca_file'; do
+    run grep -F -- "$feature" "$FIRST_HOST"
+    [ "$status" -eq 0 ]
+  done
+  run grep -F 'timeout --signal=TERM --kill-after=15s 420s' "$FIRST_HOST"
   [ "$status" -eq 0 ]
 }
