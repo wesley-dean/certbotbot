@@ -213,6 +213,14 @@ run_lifecycle() (
         'local-first-issue: failed ordinary issuance unexpectedly published an object') reason=failed-issue-published ;;
         'local-first-issue: current S3 object state became ambiguous after failed issuance') reason=s3-state-changed ;;
         'local-first-issue: real Pebble account registration or conditional S3 publish failed') reason=registration-or-publish ;;
+        'local-first-issue: registration_stage=acme-registration') reason=register-acme ;;
+        'local-first-issue: registration_stage=s3-conditional-publish') reason=register-s3-publish ;;
+        'local-first-issue: registration_stage=account-packaging') reason=register-account-packaging ;;
+        'local-first-issue: registration_stage=account-final-preflight') reason=register-account-final-preflight ;;
+        'local-first-issue: registration_stage=account-initial-preflight') reason=register-account-initial-preflight ;;
+        'local-first-issue: registration_stage=s3-object-preflight') reason=register-s3-preflight ;;
+        'local-first-issue: registration_stage=certbot-unavailable') reason=register-certbot-unavailable ;;
+        'local-first-issue: registration_stage=unclassified') reason=register-unclassified ;;
         'local-first-issue: registration did not confirm publication') reason=registration-receipt ;;
         'local-first-issue: account archive is unreadable') reason=account-archive-unreadable ;;
         'local-first-issue: native staging account data missing') reason=account-native-state-missing ;;
