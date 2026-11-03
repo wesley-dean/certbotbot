@@ -12,6 +12,7 @@ setup() {
   FIRST_ISSUE="$REPO_ROOT/tests/e2e-local/first-issue.bash"
   FIRST_HOST="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
   RUNNER_DOCKERFILE="$REPO_ROOT/tests/e2e-local/runner.Dockerfile"
+  PEBBLE_CONFIG="$REPO_ROOT/tests/e2e-local/pebble-config.json"
 }
 
 @test "local harness Bash syntax is valid without Docker" {
@@ -158,7 +159,7 @@ setup() {
 }
 
 @test "first issuance uses real public producer and bounded real providers" {
-  run grep -F 'provider register' "$FIRST_ISSUE"
+  run grep -F 'provider ordinary register' "$FIRST_ISSUE"
   [ "$status" -eq 0 ]
   run grep -F 'if issuer' "$FIRST_ISSUE"
   [ "$status" -eq 0 ]
@@ -177,7 +178,7 @@ setup() {
   [ "$status" -eq 0 ]
   run grep -F "'certbot-dns-route53=~5'" "$RUNNER_DOCKERFILE"
   [ "$status" -eq 0 ]
-  run grep -F 'sha256sum -c certbotbot.bash.sha256' "$RUNNER_DOCKERFILE"
+  run grep -F 'sha256sum -c "$flavor.sha256"' "$RUNNER_DOCKERFILE"
   [ "$status" -eq 0 ]
   run grep -F 'USER 65532:65532' "$RUNNER_DOCKERFILE"
   [ "$status" -eq 0 ]
@@ -190,5 +191,50 @@ setup() {
     [ "$status" -eq 0 ]
   done
   run grep -F 'timeout --signal=TERM --kill-after=15s 420s' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+}
+
+@test "Pebble has one deterministic non-due certificate profile" {
+  run jq -e '
+    (.pebble.profiles | keys == ["default"])
+    and (.pebble.profiles.default.validityPeriod == 7776000)
+  ' "$PEBBLE_CONFIG"
+  [ "$status" -eq 0 ]
+  run grep -F './pebble-config.json:/opt/local-e2e-pebble.json:ro' "$TOPOLOGY"
+  [ "$status" -eq 0 ]
+}
+
+@test "all three public producer flavors are checksum-verified by the runner" {
+  for name in certbotbot.dev.bash certbotbot.bash certbotbot.min.bash; do
+    run grep -F "$name.sha256" "$RUNNER_DOCKERFILE"
+    [ "$status" -eq 0 ]
+  done
+  run grep -F 'for flavor in certbotbot.dev.bash certbotbot.bash certbotbot.min.bash' "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+}
+
+@test "fresh-runner no-op rejects unsupported flavors and invalid digests" {
+  run bash "$FIRST_ISSUE" noop stranger "$(printf '%064d' 0)"
+  [ "$status" -eq 64 ]
+  run bash "$FIRST_ISSUE" noop ordinary malformed-digest
+  [ "$status" -eq 64 ]
+  run bash "$FIRST_ISSUE" noop ordinary
+  [ "$status" -eq 64 ]
+}
+
+@test "fresh-runner normal no-op enforces S3 and ACME unchanged evidence" {
+  run grep -F 'grep -Fq '\''; published=false'\''' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'cmp -s "$workspace/before.meta" "$workspace/after.meta"' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'fetch_archive "$workspace/after.tar.gz"' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'pebble_order_count' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'There are now ([0-9]+) orders in the db' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F '[[ "$count_after" == "$count_before" ]]' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'for flavor in development ordinary minified; do' "$FIRST_HOST"
   [ "$status" -eq 0 ]
 }
