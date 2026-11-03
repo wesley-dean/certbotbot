@@ -412,7 +412,26 @@ run_isolation_probe() (
   openssl x509 -in "$ca_file" -noout >/dev/null 2>&1 ||
     { problem 'isolation gateway public root invalid'; return 65; }
   if ! run_phase "$image" "$ca_file" isolation >"$tmp/isolation.log" 2>&1; then
-    problem 'sealed runner failed actual route and private staging TLS probe'
+    # Only recognize exact static messages from our own probe/provider guards.
+    # Never echo the private raw log (which may also contain Docker output).
+    local reason='unclassified' line
+    while IFS= read -r line; do
+      case "$line" in
+        'local-provider: default network route forbidden') reason=provider-default-route ;;
+        'local-provider: ephemeral test trust root unavailable') reason=missing-test-root ;;
+        'local-provider: endpoint verifier unavailable') reason=missing-verifier ;;
+        'local-provider: canonical staging name resolution failed') reason=staging-dns-failed ;;
+        'local-provider: staging name is not bound to test gateway') reason=staging-dns-mismatch ;;
+        'local-provider: production CA name must not resolve') reason=production-dns-resolved ;;
+        'local-provider: authenticated staging directory unavailable') reason=staging-tls-or-http-failed ;;
+        'local-provider: foreign or malformed ACME directory') reason=staging-directory-mismatch ;;
+        'local-first-issue: isolated runner has a default network route') reason=runner-default-route ;;
+        'local-first-issue: isolation route table missing') reason=missing-route-table ;;
+        'local-first-issue: outside-documentation-network connection unexpectedly succeeded') reason=external-tcp-succeeded ;;
+        'local-first-issue: private runner resolved forbidden external DNS name') reason=forbidden-dns-resolved ;;
+      esac
+    done <"$tmp/isolation.log"
+    problem "sealed runner isolation probe failed: $reason"
     return 65
   fi
   grep -Fqx 'local-first-issue: isolation_passed=true; challenge_validation=bypassed' \
