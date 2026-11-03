@@ -114,15 +114,11 @@ class Route53Bridge(http.server.BaseHTTPRequestHandler):
 
     def handle_get(self, parsed: urllib.parse.SplitResult) -> None:
         path = parsed.path
-        if path == f"/{VERSION}/hostedzonesbyname":
+        if path == f"/{VERSION}/hostedzone":
             qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-            if set(qs) - {"dnsname", "maxitems", "hostedzoneid"}:
+            if set(qs) - {"maxitems"}:
                 raise ApiError("InvalidInput")
-            requested = qs.get("dnsname", [ZONE])[0].lower()
-            if requested not in (ZONE, ZONE[:-1]):
-                raise ApiError("AccessDenied", 403)
-            root = element("ListHostedZonesByNameResponse")
-            child(root, "DNSName", ZONE)
+            root = element("ListHostedZonesResponse")
             zones = child(root, "HostedZones")
             zone = child(zones, "HostedZone")
             child(zone, "Id", f"/hostedzone/{ZONE_ID}")
@@ -151,7 +147,7 @@ class Route53Bridge(http.server.BaseHTTPRequestHandler):
         child(root, "SubmittedAt", "2026-11-02T00:00:00Z")
 
     @staticmethod
-    def extract_change(raw: bytes) -> tuple[str, str, str]:
+    def extract_change(raw: bytes) -> tuple[str, str, tuple[str, ...]]:
         try:
             root = ET.fromstring(raw)
             batch = root.find(tag("ChangeBatch"))
@@ -170,36 +166,44 @@ class Route53Bridge(http.server.BaseHTTPRequestHandler):
             ttl = record.findtext(tag("TTL"))
             values = record.findall(f"{tag('ResourceRecords')}/{tag('ResourceRecord')}/{tag('Value')}")
             if (not NAME_RE.fullmatch(name)
-                    or rrtype != "TXT" or len(values) != 1
+                    or rrtype != "TXT" or not 1 <= len(values) <= 10
                     or not ttl or not ttl.isdecimal() or int(ttl) > 300):
                 raise ValueError()
-            quoted = values[0].text or ""
-            if not (quoted.startswith('"') and quoted.endswith('"')):
-                raise ValueError()
-            value = quoted[1:-1]
-            if not VALUE_RE.fullmatch(value):
-                raise ValueError()
-            return action, name, value
+            decoded = []
+            for item in values:
+                quoted = item.text or ""
+                if not (quoted.startswith('"') and quoted.endswith('"')):
+                    raise ValueError()
+                value = quoted[1:-1]
+                if not VALUE_RE.fullmatch(value) or value in decoded:
+                    raise ValueError()
+                decoded.append(value)
+            return action, name, tuple(decoded)
         except (ET.ParseError, ValueError, TypeError) as exc:
             raise ApiError("InvalidChangeBatch") from exc
 
     @staticmethod
-    def update_challenge(action: str, name: str, value: str) -> None:
-        data = json.dumps({"host": name, "value": value}).encode("ascii")
-        if action == "DELETE":
-            data = json.dumps({"host": name}).encode("ascii")
-        conn = http.client.HTTPConnection(CHALLENGE_HOST, CHALLENGE_PORT, timeout=3)
-        try:
-            conn.request("POST", "/set-txt" if action == "UPSERT" else "/clear-txt",
-                         body=data, headers={"Content-Type": "application/json"})
-            response = conn.getresponse()
-            response.read(4096)
-            if response.status != 200:
-                raise ApiError("ServiceUnavailable", 503)
-        except (OSError, TimeoutError, http.client.HTTPException) as exc:
-            raise ApiError("ServiceUnavailable", 503) from exc
-        finally:
-            conn.close()
+    def update_challenge(action: str, name: str, values: tuple[str, ...]) -> None:
+        # Recreate the exact challenge record set in Pebble. Shared wildcard
+        # and apex challenge names may have multiple simultaneous TXT values.
+        requests = [("/clear-txt", {"host": name})]
+        if action == "UPSERT":
+            requests.extend(("/set-txt", {"host": name, "value": value})
+                            for value in values)
+        for endpoint, payload in requests:
+            conn = http.client.HTTPConnection(CHALLENGE_HOST, CHALLENGE_PORT, timeout=3)
+            try:
+                conn.request("POST", endpoint,
+                             body=json.dumps(payload).encode("ascii"),
+                             headers={"Content-Type": "application/json"})
+                response = conn.getresponse()
+                response.read(4096)
+                if response.status != 200:
+                    raise ApiError("ServiceUnavailable", 503)
+            except (OSError, TimeoutError, http.client.HTTPException) as exc:
+                raise ApiError("ServiceUnavailable", 503) from exc
+            finally:
+                conn.close()
 
     def handle_post(self, parsed: urllib.parse.SplitResult) -> None:
         if parsed.path != f"/{VERSION}/hostedzone/{ZONE_ID}/rrset" or parsed.query:
@@ -207,16 +211,14 @@ class Route53Bridge(http.server.BaseHTTPRequestHandler):
         size = self.headers.get("Content-Length", "")
         if not size.isdecimal() or not 0 < int(size) <= MAX_BODY:
             raise ApiError("InvalidInput")
-        action, name, value = self.extract_change(self.rfile.read(int(size)))
+        action, name, values = self.extract_change(self.rfile.read(int(size)))
         with self.server.lock:
             before = self.server.records.get(name)
-            if action == "UPSERT" and before not in (None, value):
-                raise ApiError("ConflictingChangeBatch")
-            if action == "DELETE" and before != value:
+            if action == "DELETE" and before != values:
                 raise ApiError("InvalidChangeBatch")
-            self.update_challenge(action, name, value)
+            self.update_challenge(action, name, values)
             if action == "UPSERT":
-                self.server.records[name] = value
+                self.server.records[name] = values
             else:
                 del self.server.records[name]
             change_id = f"CLOCAL{len(self.server.changes) + 1:06d}"
@@ -230,7 +232,7 @@ class ScopedServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, address: tuple[str, int]):
-        self.records: dict[str, str] = {}
+        self.records: dict[str, tuple[str, ...]] = {}
         self.changes: set[str] = set()
         self.lock = threading.Lock()
         super().__init__(address, Route53Bridge)
