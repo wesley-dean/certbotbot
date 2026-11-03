@@ -147,7 +147,7 @@ run_lifecycle() (
   # Destroy the runner, account keys, client caches and logs even if a step
   # fails. No logs are printed from inside the untrusted provider process.
   if ! run_phase "$image" "$cert_ca" bootstrap >"$log" 2>&1; then
-    problem 'real registration/initial issuance failed; see private runner evidence'
+    problem 'real registration/initial issuance failed; raw provider output discarded'
     return 74
   fi
   digest="$(sed -n 's/^local-first-issue: issued_archive_sha256=\([a-f0-9]\{64\}\)$/\1/p' "$log")"
