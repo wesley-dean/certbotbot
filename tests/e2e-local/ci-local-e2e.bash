@@ -200,7 +200,25 @@ run_positive() {
   local logfile="$WORK/positive.log" flavor
   if ! timeout --signal=TERM --kill-after=15s 2100s \
     bash "$HOST" run >"$logfile" 2>&1; then
-    error 'real Pebble certificate lifecycle or S3 publication failed'
+    # Only literal host-owned bounded failure categories may reach CI output.
+    # Full private runner logs and provider responses stay in scratch.
+    local reason='unclassified' category
+    for category in \
+      s3-bucket-create s3-bucket-head unexpected-existing-object \
+      s3-missing-object-ambiguous missing-account-accepted failed-issue-published \
+      s3-state-changed registration-or-publish registration-receipt \
+      account-archive-unreadable account-native-state-missing \
+      registration-created-lineage issuance-or-publish issuance-receipt \
+      s3-object-read s3-object-empty certificate-archive-unreadable \
+      certificate-lineage-missing certificate-missing certificate-extraction \
+      certificate-san certificate-pem certificate-key-mismatch; do
+      if grep -Fqx -- "local-first-issue-host: bootstrap-failure=$category" \
+        "$logfile"; then
+        reason="$category"
+        break
+      fi
+    done
+    error "real Pebble certificate lifecycle or S3 publication failed: $reason"
     return 74
   fi
   for flavor in development ordinary minified; do
