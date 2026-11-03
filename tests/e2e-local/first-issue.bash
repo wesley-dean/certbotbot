@@ -134,18 +134,29 @@ bootstrap() {
     { error 'local SeaweedFS bucket creation failed'; return 74; }
   aws_local s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1 ||
     { error 'new synthetic bucket unavailable'; return 74; }
-  if aws_local s3api head-object --bucket "$BUCKET" --key "$KEY" >/dev/null 2>&1; then
+  if aws_local s3api head-object --bucket "$BUCKET" --key "$KEY" \
+    >"$workspace/head.out" 2>"$workspace/head.err"; then
     error 'existing current archive forbids a first-issuance test'
     return 65
+  fi
+  # Do not turn S3 permissions, timeouts or service failures into missing-key.
+  if ! grep -Eq '[(]404[)]|[(]NoSuchKey[)]|Not Found' "$workspace/head.err"; then
+    error 'current S3 object state is ambiguous'
+    return 69
   fi
   # Ordinary issuance may not register an account or create an object.
   if issuer >"$workspace/absent.log" 2>&1; then
     error 'ordinary issuance accepted missing account archive'
     return 65
   fi
-  if aws_local s3api head-object --bucket "$BUCKET" --key "$KEY" >/dev/null 2>&1; then
+  if aws_local s3api head-object --bucket "$BUCKET" --key "$KEY" \
+    >"$workspace/head.out" 2>"$workspace/head.err"; then
     error 'failed ordinary issuance unexpectedly published an object'
     return 65
+  fi
+  if ! grep -Eq '[(]404[)]|[(]NoSuchKey[)]|Not Found' "$workspace/head.err"; then
+    error 'current S3 object state became ambiguous after failed issuance'
+    return 69
   fi
 
   if ! provider register \
