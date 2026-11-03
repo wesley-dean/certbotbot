@@ -87,3 +87,86 @@ ID/name selection enhancement in issue #252 is separately tracked.
 Run `python3 -B tests/e2e-local/route53_bridge_test.py` for offline mock
 protocol checks. These are contract/unit tests only, not engine-backed
 integration. The image pull and Docker startup gates remain outstanding.
+
+## First real ACME registration and issuance (task #244)
+
+The new, **test-only** `first-issue-host.bash` prepares a runner image
+containing the real installed Certbot, `certbot-dns-route53`, AWS CLI, and
+the exact `dist/certbotbot.bash` public executable with its SHA-256 companion.
+This is distinct from compiling or installing Pebble or SeaweedFS on the host.
+The runner is built from an immutable Alpine Linux base image and acquires
+package dependencies **before** starting the private network. Installed
+transitive package versions and actual interoperability must be recorded by
+the operator; the pinned base does not pin every package patch.
+
+From the repository root, after dependencies required by `make build`
+have been prepared:
+
+```bash
+make build
+# Image/package acquisition happens here, before test isolation:
+bash tests/e2e-local/first-issue-host.bash build
+bash tests/e2e-local/run.bash fetch
+
+# No image pulls, package installation, or public provider access afterward:
+bash tests/e2e-local/run.bash up
+bash tests/e2e-local/first-issue-host.bash run
+bash tests/e2e-local/run.bash down
+```
+
+Always invoke `down` after the attempt, whether it passes or fails.
+The host-side orchestrator itself is not a cleanup replacement for the
+Compose project's disposable services; it cleans its own temporary public
+gateway root and two runner containers. The runner image can be reused only
+when the verified producer digest is unchanged.
+
+The scenario uses one fixed, nonproduction local identity:
+`test.e2e.test`, bucket `certbotbot-local-e2e` and object
+`latest.tar.gz`. It requires an **empty** SeaweedFS test bucket/object
+state and refuses an existing object. It creates the bucket through the real
+AWS CLI, verifies that ordinary certbotbot issuance refuses the missing
+account archive without creating an object, then explicitly calls the real
+public `certbotbot register` using `--acme-environment staging`,
+`--agree-tos true` and synthetic contact `local-e2e@example.invalid`.
+The registration must publish a genuine native account-only S3 archive.
+The exact same public producer next requests a real Certbot ACME certificate
+from Pebble, using the bounded Route53 stub and **Pebble's explicitly
+bypassed challenge validation**. The test asserts a new published archive,
+native selected account, selected renewal state, exact SAN, and a parseable
+certificate with a DER fingerprint.
+
+The first runner's writable state exists only on container-local tmpfs.
+After that runner exits, an entirely fresh runner independently downloads
+the current SeaweedFS object and verifies the expected archive SHA-256 and
+leaf certificate. The only cross-run input is the nonsecret archive digest;
+no private account files, PEM, or issuer workspace are shared. A full
+fresh-runner certbotbot restore and normal no-op execution are intentionally
+left to task #245. Real due renewal and independent republish belong to #248.
+
+The test runner is nonroot, read-only, and has an isolated Docker
+`internal: true` network, `--dns 127.0.0.1`, a single canonical
+staging `--add-host` mapping, synthetic AWS credentials, explicit local
+S3/Route53 endpoints, no capabilities, and **no** host Certbot/AWS mounts,
+Docker socket, or published ports. Its only inbound file is the ephemeral
+gateway **public** root certificate, mounted read-only; the gateway
+private PKI stays in its own disposable container. The temporary root
+file and runner logs are removed after each attempt. Production CA access
+must fail from inside the runner. Actual on-host no-egress observations
+remain necessary before reporting protocol-level acceptance.
+
+Failures are fail-closed. In particular, SeaweedFS must genuinely support
+`HeadBucket`, missing-object discrimination, `PutObject` with conditional
+`If-None-Match` and `If-Match` as applicable, real ETag identity and
+independent `GetObject`. A response fabricated by the harness cannot
+establish these semantics. The installed Certbot plugin must respect
+`AWS_ENDPOINT_URL_ROUTE53`; an ignored override cannot be replaced by
+live Route53. A failing runtime probe is a compatibility blocker, not
+permission to disable certificate validation or modify the producer.
+
+**Execution evidence:** This feature branch contains the execution
+procedure and offline Bats checks. Its authoring runtime has no Docker
+engine, so no successful real Pebble registration, SeaweedFS publish,
+Docker build, or independent readback is claimed until a qualified Linux
+Docker host executes the above steps successfully and records its exact
+image and artifact identities. Milestone #4's manual live-provider
+acceptance remains separate.
