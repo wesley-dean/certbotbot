@@ -445,6 +445,46 @@ renew() {
   printf '%s\n' 'local-first-issue: real_certbot_force_trigger_consumed=true'
 }
 
+## @fn isolation()
+## @brief Actively verifies the runner has no usable external route or DNS.
+## @details
+## The same nonroot, read-only runner flags are used for real ACME/S3 phases.
+## A test-only staging TLS probe must succeed with the pinned ephemeral root;
+## public destinations and IMDS must remain unreachable through the actual
+## container routing table. TCP probes target RFC 5737 documentation addresses,
+## never public ACME, AWS, metadata or real cloud endpoints. DNS probes use
+## only reserved .invalid names to avoid resolving real services.
+## @retval 0 Staging authority works locally and forbidden paths have no route.
+## @retval 65 Unexpected gateway, resolver, or connectivity boundary.
+isolation() {
+  local destination='' peer=''
+  bash "$PROVIDER" --check >/dev/null 2>&1 ||
+    { error 'private staging TLS and route admission check failed'; return 65; }
+  [[ -r /proc/net/route ]] ||
+    { error 'isolation route table missing'; return 65; }
+  if awk 'NR > 1 && $2 == "00000000" { found = 1 } END { exit !found }' \
+    /proc/net/route; then
+    error 'isolated runner has a default network route'
+    return 65
+  fi
+  for destination in 192.0.2.1 198.51.100.1 203.0.113.1; do
+    # The addresses are reserved for documentation. A successful connection
+    # would prove the absence of the expected deny boundary.
+    if curl --noproxy '*' --silent --output /dev/null \
+      --connect-timeout 1 --max-time 2 "http://$destination/" 2>/dev/null; then
+      error 'outside-documentation-network connection unexpectedly succeeded'
+      return 65
+    fi
+  done
+  for peer in acme.invalid aws.invalid route53.invalid; do
+    if getent hosts "$peer" >/dev/null 2>&1; then
+      error 'private runner resolved forbidden external DNS name'
+      return 65
+    fi
+  done
+  printf '%s\n' 'local-first-issue: isolation_passed=true; challenge_validation=bypassed'
+}
+
 ## @fn main()
 ## @brief Runs one bounded phase and removes private state on every exit.
 main() {
@@ -464,6 +504,9 @@ main() {
       [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
         { error 'invalid renewal archive digest'; return 64; }
       ;;
+    isolation)
+      (( $# == 1 )) || { error 'unexpected isolation arguments'; return 64; }
+      ;;
     baseline)
       (( $# == 1 )) || { error 'unexpected baseline arguments'; return 64; }
       ;;
@@ -476,7 +519,7 @@ main() {
       [[ "$3" =~ ^[a-f0-9]{64}$ ]] ||
         { error 'invalid fault archive digest'; return 64; }
       ;;
-    *) error 'usage: first-issue.bash bootstrap|verify|noop|renew|baseline|fault'; return 64 ;;
+    *) error 'usage: first-issue.bash bootstrap|verify|noop|renew|isolation|baseline|fault'; return 64 ;;
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
@@ -490,6 +533,7 @@ main() {
     verify) verify "$workspace" "$2" ;;
     noop) noop "$workspace" "$2" "$3" ;;
     renew) renew "$workspace" "$2" ;;
+    isolation) isolation ;;
     baseline)
       # Test-only helpers are never sourced in release or positive runs.
       source /usr/local/libexec/certbotbot-e2e/negative-scenarios.bash
