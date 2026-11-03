@@ -334,7 +334,7 @@ Always run the final `down`, including on failure. The fault suite does
 **not** construct a synthetic success or replace real account, certificate
 or SeaweedFS readback behavior. It uses distinct clean runners and one
 verified, checksum-valid public producer with explicit staging selection.
-The test runner's only synthetic identity is `test.e2e.test`; a new
+The normal issued synthetic identity is `test.e2e.test`. A new
 `fault.e2e.test` selected lineage is requested for faults that otherwise
 would be skipped by the already-issued, non-due certificate. No live AWS
 credentials, public Route53, public ACME endpoint, metadata service or
@@ -356,9 +356,10 @@ fail rather than assert rollback or unobserved preservation.
 | `ca-production` | Existing staging-only provider guard rejects explicit production before invoking the producer | Production cannot be selected inside this local run | Public CA connectivity or real CA authorization |
 | `s3-unavailable` | Public producer's S3 endpoint is forced to a closed **loopback** port; independent readbacks still use real SeaweedFS | Inaccessible S3 is never treated as missing, registration is not implicit, and original object is not rewritten | Real IAM denial response |
 | `corrupt-archive` | Real SeaweedFS holds a second key with invalid gzip bytes | The public producer rejects the corrupt archive; the corrupt fixture remains unchanged; current valid object is unaffected | All possible malformed tar/PEM structures |
+| `acme-order-rejected` | Pebble's pinned `domainBlocklist` rejects the exact synthetic `blocked.e2e.test` identifier during `newOrder` | The real producer's new order fails, with no publication to the current object | Live Let's Encrypt issuance policy or rate limits |
 | `route53-unavailable` | Public producer's Route53 endpoint is a closed **loopback** port, while real Pebble and SeaweedFS remain available | A fresh issuance cannot silently publish a candidate when the simulated external DNS API is unavailable | Real AWS Route53 semantics or DNS propagation |
 | `s3-put-reject` | A runner-only AWS CLI adapter lets the real installed CLI handle every other operation but refuses a bounded `s3api put-object` against the one current synthetic key | The unchanged public producer reaches its publish boundary, reports failure, and leaves the previous real SeaweedFS object unchanged | SeaweedFS's actual rejected-PUT response and real AWS authorization semantics |
-| `acme-unavailable` | The host pauses only the internal Pebble container during one runner invocation; an EXIT trap ensures it is unpaused | The canonical staging gateway refuses unavailable ACME service before a misleading successful publish; current S3 object is stable | An ACME **order-level rejection** after successful directory preflight |
+| `acme-unavailable` | The host pauses only the internal Pebble container during one runner invocation; an EXIT trap ensures it is unpaused | The canonical staging gateway refuses unavailable ACME service before a misleading successful publish; current S3 object is stable | A mid-order ACME failure; order-policy rejection is tested separately above |
 
 The private `provider-env.bash` accepts only literal fault modes. The
 only altered endpoint addresses are fixed local test IPs or the closed
