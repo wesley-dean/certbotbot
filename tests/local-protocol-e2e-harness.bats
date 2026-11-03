@@ -549,3 +549,21 @@ setup() {
   run grep -E '^!src/|^!lib/|^!vendor/|^!.*secret|^!.*\.env' "$RUNNER_IGNORE"
   [ "$status" -ne 0 ]
 }
+
+@test "private Caddy public root is read by the container user not Docker copy" {
+  # The root is mode 0600 and owned by Caddy's unprivileged user. Docker's
+  # archive copy API cannot read this tmpfs path on the hosted Docker engine.
+  # docker exec runs cat as the container owner, exporting only root.crt.
+  for file in "$HARNESS" "$FIRST_HOST"; do
+    run grep -F 'docker cp' "$file"
+    [ "$status" -ne 0 ]
+    run grep -F 'docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt' "$file"
+    [ "$status" -eq 0 ]
+  done
+  run grep -F 'cat /data/caddy/pki/authorities/local/root.crt >"$ca_file"' "$HARNESS"
+  [ "$status" -eq 0 ]
+  run grep -F 'cat /data/caddy/pki/authorities/local/root.crt >"$cert_ca"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'openssl x509 -in "$ca_file"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+}
