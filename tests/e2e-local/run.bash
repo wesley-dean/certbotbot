@@ -112,6 +112,7 @@ validate_topology() {
     and ([.services[] | .platform] | all(. == "linux/amd64"))
     and (.services.pebble.environment.PEBBLE_VA_ALWAYS_VALID == "1")
     and (.services.pebble.command == ["-config","/opt/local-e2e-pebble.json","-strict"])
+    and (.services["acme-gateway"].command == ["caddy","run","--config","/etc/caddy/Caddyfile","--adapter","caddyfile"])
     and (.services["route53-bridge"].networks.isolated.ipv4_address == "172.31.248.6")
     and ([.services[] | .image] |
        all(test("^[a-z0-9./:-]+@sha256:[0-9a-f]{64}$")))
