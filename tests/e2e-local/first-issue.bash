@@ -265,8 +265,10 @@ certbotbot: certificate and private key verification failed|certificate-key
 certbotbot: selected publication state is unsuitable|publish-preflight
 certbotbot: S3 archive upload failed; remote state is uncertain|s3-publish
 ISSUE_REASONS
-    error "issuance_stage=$issue_reason"
     error 'real Pebble certificate issuance or S3 publication failed'
+    # Emit the more specific category last so the host's sequential
+    # allowlist classifier cannot overwrite it with this generic marker.
+    error "issuance_stage=$issue_reason"
     return 74
   fi
   grep -Fq 'published=true' "$workspace/issue.log" &&
