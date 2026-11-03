@@ -4,7 +4,6 @@ name: OCI runtime acceptance
 # yamllint disable-line rule:truthy
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
