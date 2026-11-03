@@ -123,7 +123,7 @@ run_phase() {
 ## @fn run_lifecycle()
 ## @brief Starts two isolated runners and independently verifies S3 bytes.
 ## @param image Already built and locally cached checked runner tag.
-run_lifecycle() {
+run_lifecycle() (
   local image="$1" tmp='' cert_ca='' cid='' log='' digest='' result=''
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'runner image missing; use build before starting sealed services'; return 69; }
@@ -131,6 +131,7 @@ run_lifecycle() {
     { problem 'local services are not in verified running state'; return 65; }
   tmp="$(mktemp -d)" ||
     { problem 'temporary public-root staging unavailable'; return 74; }
+  trap 'rm -rf -- "$tmp"' EXIT
   # Only temporary public CA root bytes are exposed on the host.
   cert_ca="$tmp/gateway-root.crt"
   cid="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
@@ -163,7 +164,7 @@ run_lifecycle() {
   printf '%s\n' 'local-first-issue-host: real local ACME and SeaweedFS first issuance verified (DNS-01 validation bypassed)'
   printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
   sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
-}
+)
 
 ## @fn main()
 ## @brief Dispatches explicit dependency-fetch and sealed-test phases only.
