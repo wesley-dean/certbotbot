@@ -17,7 +17,7 @@
 
 set -euo pipefail
 umask 077
-readonly REPO="$(cd -- "$(dirname -- "\${BASH_SOURCE[0]}")/../.." && pwd -P)"
+readonly REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 readonly E2E="$REPO/tests/e2e-local"
 readonly STACK="$E2E/run.bash"
 readonly HOST="$E2E/first-issue-host.bash"
@@ -40,7 +40,7 @@ error() {
 ## @retval 65 Potential real cloud authority was detected.
 reject_credentials() {
   local key
-  [[ -z "\${DOCKER_HOST-}" && -z "\${DOCKER_CONTEXT-}" ]] ||
+  [[ -z "${DOCKER_HOST-}" && -z "${DOCKER_CONTEXT-}" ]] ||
     { error 'remote Docker context forbidden'; return 65; }
   while IFS= read -r key; do
     case "$key" in
@@ -239,7 +239,7 @@ main() {
     { error 'usage: ci-local-e2e.bash (no arguments)'; return 64; }
   reject_credentials || return $?
   require_host || return $?
-  WORK="$(mktemp -d "\${TMPDIR:-/tmp}/certbotbot-local-ci.XXXXXXXX")" ||
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/certbotbot-local-ci.XXXXXXXX")" ||
     { error 'private CI temporary workspace unavailable'; return 74; }
   trap 'cleanup "$?"' EXIT
   trap 'exit 129' HUP
