@@ -494,6 +494,27 @@ isolation() {
   printf '%s\n' 'local-first-issue: isolation_passed=true; challenge_validation=bypassed'
 }
 
+## @fn isolation_cleanup()
+## @brief Cleans private probe scratch and preserves the original process status.
+## @details
+## A successful isolation assertion is not accepted unless its ephemeral
+## scratch was also removed. An exact nonsecret completion receipt identifies
+## failures occurring after the probe's last assertion, without revealing raw
+## container or provider output.
+## @param original Status present when Bash entered the EXIT trap.
+## @param workspace Private test-only scratch directory.
+## @retval 75 Cleanup failed, overriding any earlier success.
+isolation_cleanup() {
+  local original="$1" workspace="$2"
+  trap - EXIT
+  if ! rm -rf -- "$workspace"; then
+    error 'isolation workspace cleanup failed'
+    exit 75
+  fi
+  printf '%s\n' 'local-first-issue: isolation_cleanup_verified=true'
+  exit "$original"
+}
+
 ## @fn main()
 ## @brief Runs one bounded phase and removes private state on every exit.
 main() {
@@ -534,6 +555,8 @@ main() {
     { error 'private test workspace unavailable'; return 74; }
   if [[ "$mode" == renew ]]; then
     trap 'rm -rf -- "$workspace" "$FORCE_STATE"' EXIT
+  elif [[ "$mode" == isolation ]]; then
+    trap 'isolation_cleanup "$?" "$workspace"' EXIT
   else
     trap 'rm -rf -- "$workspace"' EXIT
   fi
