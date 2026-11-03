@@ -59,6 +59,29 @@ services:
       - no-new-privileges:true
     pids_limit: 128
 
+  route53-bridge:
+    # Official Python 3.13.18 amd64 image digest, immutable. Runtime is
+    # stdlib-only and the bridge source is mounted read-only, not built.
+    image: docker.io/library/python:3.13.18-slim-trixie@sha256:aaf08c5490d52cd92bc27142a5215b1e47355a5eaf9adfad2a0fbc022d0b5490
+    platform: linux/amd64
+    user: "65534:65534"
+    command: ["python3", "-I", "-B", "/opt/route53/route53_bridge.py"]
+    depends_on:
+      - challtestsrv
+    volumes:
+      - ./route53_bridge.py:/opt/route53/route53_bridge.py:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16777216,mode=0700,uid=65534,gid=65534
+    cap_drop:
+      - ALL
+    networks:
+      isolated:
+        ipv4_address: 172.31.248.6
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+
   seaweedfs:
     # Official published version; digest obtained from an external
     # Docker Hub RepoDigests inventory, not independently pulled here.
