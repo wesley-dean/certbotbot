@@ -417,6 +417,14 @@ runs for the same branch, and the job has a fixed timeout. No workflow
 artifacts containing certificates, archives, provider responses, or other
 sensitive runtime state are uploaded.
 
+The private runner Dockerfile has its own deny-by-default
+[`runner.Dockerfile.dockerignore`](../tests/e2e-local/runner.Dockerfile.dockerignore).
+It allowlists only the three checksum-verified public producer flavors and
+their checksum files, the pinned Alpine repositories file, and the
+five required local runner helpers. The repository's production
+`.dockerignore` remains unchanged and continues to exclude test code
+from normal published OCI build contexts.
+
 The exact entry point is:
 
 ```bash
