@@ -458,11 +458,15 @@ renew() {
 ## @retval 65 Unexpected gateway, resolver, or connectivity boundary.
 isolation() {
   local destination='' peer=''
+  # Fixed phase markers only identify which boundary was entered. They never
+  # expose response bodies, certificate material, or credentials.
+  printf '%s\n' 'local-first-issue: isolation_stage=provider'
   # The provider emits only fixed, nonsecret classification messages here.
   # Preserve them for the host's allowlisted failure classifier; never print
   # raw Docker, HTTP, ACME, or cloud-provider output.
   bash "$PROVIDER" --check ||
     { error 'private staging TLS and route admission check failed'; return 65; }
+  printf '%s\n' 'local-first-issue: isolation_stage=route'
   [[ -r /proc/net/route ]] ||
     { error 'isolation route table missing'; return 65; }
   if awk 'NR > 1 && $2 == "00000000" { found = 1 } END { exit !found }' \
@@ -470,6 +474,7 @@ isolation() {
     error 'isolated runner has a default network route'
     return 65
   fi
+  printf '%s\n' 'local-first-issue: isolation_stage=reserved-tcp'
   for destination in 192.0.2.1 198.51.100.1 203.0.113.1; do
     # The addresses are reserved for documentation. A successful connection
     # would prove the absence of the expected deny boundary.
@@ -479,6 +484,7 @@ isolation() {
       return 65
     fi
   done
+  printf '%s\n' 'local-first-issue: isolation_stage=reserved-dns'
   for peer in acme.invalid aws.invalid route53.invalid; do
     if getent hosts "$peer" >/dev/null 2>&1; then
       error 'private runner resolved forbidden external DNS name'
