@@ -86,4 +86,6 @@ main() {
   exec "$REAL_CERTBOT" "$@" --force-renewal
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
