@@ -1,0 +1,31 @@
+{
+  # Never modify host trust or contact a public certificate authority.
+  admin off
+  skip_install_trust
+  auto_https disable_redirects
+}
+
+# ADR-046: canonical, immutable staging authority. No arbitrary CA forwarding.
+acme-staging-v02.api.letsencrypt.org {
+  tls internal
+
+  # The public Certbot CLI uses /directory. Pebble calls it /dir.
+  @directory path /directory
+  rewrite @directory /dir
+
+  reverse_proxy https://pebble:14000 {
+    # Pebble's absolute URLs use Host plus X-Forwarded-Proto. Preserve
+    # the canonical external authority so signed ACME JWS URLs stay valid.
+    header_up Host acme-staging-v02.api.letsencrypt.org
+    header_up X-Forwarded-Proto https
+
+    transport http {
+      # Trust only the upstream Pebble fixture from the pinned image commit.
+      # Never disable TLS verification or proxy to arbitrary hosts.
+      tls_trust_pool file /etc/caddy/pebble-upstream.pem
+      tls_server_name pebble
+      dial_timeout 3s
+      response_header_timeout 8s
+    }
+  }
+}
