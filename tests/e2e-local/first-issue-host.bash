@@ -411,10 +411,12 @@ run_isolation_probe() (
   chmod 0644 "$ca_file"
   openssl x509 -in "$ca_file" -noout >/dev/null 2>&1 ||
     { problem 'isolation gateway public root invalid'; return 65; }
-  if ! run_phase "$image" "$ca_file" isolation >"$tmp/isolation.log" 2>&1; then
-    # Only recognize exact static messages from our own probe/provider guards.
-    # Never echo the private raw log (which may also contain Docker output).
-    local reason='unclassified' line
+  # Preserve only an exit code and exact script-owned diagnostics. Nothing
+  # from Docker stderr or the private container log is copied to CI.
+  local phase_status=0 reason='unclassified' line
+  run_phase "$image" "$ca_file" isolation >"$tmp/isolation.log" 2>&1 ||
+    phase_status=$?
+  if (( phase_status != 0 )); then
     while IFS= read -r line; do
       case "$line" in
         'local-provider: default network route forbidden') reason=provider-default-route ;;
@@ -425,12 +427,22 @@ run_isolation_probe() (
         'local-provider: production CA name must not resolve') reason=production-dns-resolved ;;
         'local-provider: authenticated staging directory unavailable') reason=staging-tls-or-http-failed ;;
         'local-provider: foreign or malformed ACME directory') reason=staging-directory-mismatch ;;
+        'local-first-issue: private staging TLS and route admission check failed') reason=provider-admission-failed ;;
         'local-first-issue: isolated runner has a default network route') reason=runner-default-route ;;
         'local-first-issue: isolation route table missing') reason=missing-route-table ;;
         'local-first-issue: outside-documentation-network connection unexpectedly succeeded') reason=external-tcp-succeeded ;;
         'local-first-issue: private runner resolved forbidden external DNS name') reason=forbidden-dns-resolved ;;
       esac
     done <"$tmp/isolation.log"
+    if [[ "$reason" == unclassified ]]; then
+      case "$phase_status" in
+        124|137) reason=runner-timeout ;;
+        125) reason=docker-startup-rejected ;;
+        126|127) reason=runner-executable-unavailable ;;
+        64|65|69|74) reason=runner-inner-exit ;;
+        *) reason=runner-exit-other ;;
+      esac
+    fi
     problem "sealed runner isolation probe failed: $reason"
     return 65
   fi
