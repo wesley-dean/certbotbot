@@ -12,6 +12,7 @@ setup() {
   FIRST_ISSUE="$REPO_ROOT/tests/e2e-local/first-issue.bash"
   FIRST_HOST="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
   RUNNER_DOCKERFILE="$REPO_ROOT/tests/e2e-local/runner.Dockerfile"
+  RUNNER_IGNORE="$REPO_ROOT/tests/e2e-local/runner.Dockerfile.dockerignore"
   PEBBLE_CONFIG="$REPO_ROOT/tests/e2e-local/pebble-config.json"
   CERTBOT_RENEW_ADAPTER="$REPO_ROOT/tests/e2e-local/certbot-force-renewal.bash"
   S3_FAULT="$REPO_ROOT/tests/e2e-local/aws-put-reject.bash"
@@ -519,4 +520,25 @@ setup() {
   [ "$status" -eq 0 ]
   run grep -F 'cleanup "$?"' "$CI_LOCAL_RUNNER"
   [ "$status" -eq 0 ]
+}
+
+@test "private local runner context is explicitly allowlisted without weakening production Docker ignore" {
+  run grep -Fx '**' "$REPO_ROOT/.dockerignore"
+  [ "$status" -eq 0 ]
+  run grep -Fx '**' "$RUNNER_IGNORE"
+  [ "$status" -eq 0 ]
+  for name in \
+    oci/alpine-repositories \
+    dist/certbotbot.dev.bash dist/certbotbot.dev.bash.sha256 \
+    dist/certbotbot.bash dist/certbotbot.bash.sha256 \
+    dist/certbotbot.min.bash dist/certbotbot.min.bash.sha256 \
+    tests/e2e-local/first-issue.bash tests/e2e-local/provider-env.bash \
+    tests/e2e-local/negative-scenarios.bash \
+    tests/e2e-local/certbot-force-renewal.bash \
+    tests/e2e-local/aws-put-reject.bash; do
+    run grep -Fx "!$name" "$RUNNER_IGNORE"
+    [ "$status" -eq 0 ]
+  done
+  run grep -E '^!src/|^!lib/|^!vendor/|^!.*secret|^!.*\.env' "$RUNNER_IGNORE"
+  [ "$status" -ne 0 ]
 }
