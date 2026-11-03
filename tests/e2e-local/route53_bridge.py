@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Isolated, deliberately small Route53 Query API bridge for Pebble DNS-01.
+"""A synthetic, no-DNS Route53 API stub for local certbotbot lifecycle tests.
 
-Only the synthetic e2e.test. hosted zone and its _acme-challenge TXT records
-are supported.  Never use as an Internet-facing Route53 replacement.
+Implements only the Route53 Query API calls the installed Certbot dns-route53
+authenticator needs. No DNS answers are created, no network clients are used,
+and no request is forwarded to AWS or Pebble. Pebble's independently configured
+PEBBLE_VA_ALWAYS_VALID=1 bypasses actual DNS-01 verification.
+
+Governing decision: ADR-047, superseding ADR-046's DNS acceptance requirement.
+This module is test-only, never part of the shipped certbotbot artifact.
 """
 
 from __future__ import annotations
 
-import json
-import http.client
 import http.server
 import re
 import threading
@@ -19,8 +22,6 @@ VERSION = "2013-04-01"
 NS = "https://route53.amazonaws.com/doc/2013-04-01/"
 ZONE = "e2e.test."
 ZONE_ID = "ZLOCALONLY123456"
-CHALLENGE_HOST = "challtestsrv"
-CHALLENGE_PORT = 8055
 ACCESS_KEY = "CBOTBOT_LOCAL_TEST_ACCESS_ONLY"
 VALUE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 NAME_RE = re.compile(r"^_acme-challenge(?:\.[a-z0-9-]+)*\.e2e\.test\.$")
@@ -30,67 +31,73 @@ ET.register_namespace("", NS)
 
 
 def tag(name: str) -> str:
+    """Return a fully-qualified Route53 XML tag."""
     return f"{{{NS}}}{name}"
 
 
-def element(name: str, value: str | None = None) -> ET.Element:
-    node = ET.Element(tag(name))
-    if value is not None:
-        node.text = value
-    return node
+def element(name: str) -> ET.Element:
+    """Create a Route53 Query XML root."""
+    return ET.Element(tag(name))
 
 
 def child(parent: ET.Element, name: str, value: str | None = None) -> ET.Element:
+    """Append a namespace-qualified Route53 XML child."""
     node = ET.SubElement(parent, tag(name))
-    if value is not None:
-        node.text = value
+    node.text = value
     return node
 
 
 def xml_bytes(root: ET.Element) -> bytes:
+    """Encode one protocol response without emitting credentials."""
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
 class ApiError(Exception):
+    """An intentionally bounded API refusal, never an untrusted error string."""
+
     def __init__(self, code: str, status: int = 400):
         self.code = code
         self.status = status
         super().__init__(code)
 
 
-class Route53Bridge(http.server.BaseHTTPRequestHandler):
-    server_version = "LocalRoute53Bridge/1"
+class Route53Stub(http.server.BaseHTTPRequestHandler):
+    """Serve a single synthetic zone via three narrow Route53 operations."""
+
+    server_version = "LocalRoute53Stub/1"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt: str, *args: object) -> None:
-        # Do not log DNS values, credentials, request paths, or signed headers.
+        """Suppress sensitive headers, DNS values, paths and query strings."""
         pass
 
-    def reply(self, status: int, body: bytes) -> None:
+    def reply(self, status: int, data: bytes) -> None:
+        """Return XML without redirects or client-controlled headers."""
         self.send_response(status)
         self.send_header("Content-Type", "text/xml; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(data)
 
-    def error(self, reason: str, status: int = 400) -> None:
+    def refuse(self, code: str, status: int = 400) -> None:
+        """Give the plugin a well-formed static Route53 API error."""
         root = element("ErrorResponse")
-        error = child(root, "Error")
-        child(error, "Type", "Sender")
-        child(error, "Code", reason)
-        child(error, "Message", "Local Route53 operation refused")
+        item = child(root, "Error")
+        child(item, "Type", "Sender")
+        child(item, "Code", code)
+        child(item, "Message", "Local test provider refused operation")
         child(root, "RequestId", "local-only")
         self.reply(status, xml_bytes(root))
 
     def authenticated(self) -> bool:
-        # The signed key is a synthetic fixture. Signature cryptography is
-        # deliberately not verified: the network boundary is mandatory.
-        auth = self.headers.get("Authorization", "")
-        return (auth.startswith("AWS4-HMAC-SHA256 ")
-                and f"Credential={ACCESS_KEY}/" in auth)
+        """Check the synthetic access key only, not real SigV4 cryptography."""
+        authorization = self.headers.get("Authorization", "")
+        return (authorization.startswith("AWS4-HMAC-SHA256 ")
+                and f"Credential={ACCESS_KEY}/" in authorization)
 
     def dispatch(self, method: str) -> None:
+        """Reject unlisted paths, actions and credentials before mutation."""
         try:
             if not self.authenticated():
                 raise ApiError("AccessDenied", 403)
@@ -98,40 +105,43 @@ class Route53Bridge(http.server.BaseHTTPRequestHandler):
             if parsed.scheme or parsed.netloc or not parsed.path.startswith(f"/{VERSION}/"):
                 raise ApiError("InvalidInput")
             if method == "GET":
-                self.handle_get(parsed)
+                self.get_api(parsed)
             elif method == "POST":
-                self.handle_post(parsed)
+                self.post_api(parsed)
             else:
                 raise ApiError("InvalidAction")
         except ApiError as exc:
-            self.error(exc.code, exc.status)
+            self.refuse(exc.code, exc.status)
 
     def do_GET(self) -> None:
+        """Route permitted zone listing and change-status operations."""
         self.dispatch("GET")
 
     def do_POST(self) -> None:
+        """Route the one permitted synthetic TXT mutation endpoint."""
         self.dispatch("POST")
 
-    def handle_get(self, parsed: urllib.parse.SplitResult) -> None:
-        path = parsed.path
+    def get_api(self, request: urllib.parse.SplitResult) -> None:
+        """Return one local zone or a previously accepted synthetic change."""
+        path = request.path
         if path == f"/{VERSION}/hostedzone":
-            qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-            if set(qs) - {"maxitems"}:
+            arguments = urllib.parse.parse_qs(request.query, keep_blank_values=True)
+            if set(arguments) - {"maxitems"}:
                 raise ApiError("InvalidInput")
             root = element("ListHostedZonesResponse")
             zones = child(root, "HostedZones")
             zone = child(zones, "HostedZone")
             child(zone, "Id", f"/hostedzone/{ZONE_ID}")
             child(zone, "Name", ZONE)
-            child(zone, "CallerReference", "local-e2e")
+            child(zone, "CallerReference", "certbotbot-local-e2e")
             config = child(zone, "Config")
             child(config, "PrivateZone", "false")
             child(root, "IsTruncated", "false")
             child(root, "MaxItems", "1")
             self.reply(200, xml_bytes(root))
             return
-        if path.startswith(f"/{VERSION}/change/"):
-            change_id = path.removeprefix(f"/{VERSION}/change/")
+        if path.startswith(f"/{VERSION}/change/") and not request.query:
+            change_id = path[len(f"/{VERSION}/change/"):]
             if change_id not in self.server.changes:
                 raise ApiError("NoSuchChange", 404)
             root = element("GetChangeResponse")
@@ -141,82 +151,66 @@ class Route53Bridge(http.server.BaseHTTPRequestHandler):
         raise ApiError("InvalidAction")
 
     @staticmethod
-    def change_info(root: ET.Element, change_id: str, status: str) -> None:
+    def change_info(root: ET.Element, change_id: str, state: str) -> None:
+        """Emit deterministic change metadata sufficient for GetChange polling."""
         child(root, "Id", f"/change/{change_id}")
-        child(root, "Status", status)
+        child(root, "Status", state)
         child(root, "SubmittedAt", "2026-11-02T00:00:00Z")
 
     @staticmethod
-    def extract_change(raw: bytes) -> tuple[str, str, tuple[str, ...]]:
+    def parse_changes(raw: bytes) -> tuple[str, str, tuple[str, ...]]:
+        """Validate one TXT operation in one authorized synthetic challenge name."""
         try:
             root = ET.fromstring(raw)
-            batch = root.find(tag("ChangeBatch"))
-            if root.tag != tag("ChangeResourceRecordSetsRequest") or batch is None:
+            if root.tag != tag("ChangeResourceRecordSetsRequest"):
                 raise ValueError()
-            changes = batch.findall(f"{tag('Changes')}/{tag('Change')}")
-            if len(changes) != 1:
+            records = root.findall(
+                f"{tag('ChangeBatch')}/{tag('Changes')}/{tag('Change')}"
+            )
+            if len(records) != 1:
                 raise ValueError()
-            change = changes[0]
+            change = records[0]
             action = change.findtext(tag("Action"))
-            record = change.find(tag("ResourceRecordSet"))
-            if record is None or action not in ("UPSERT", "DELETE"):
+            item = change.find(tag("ResourceRecordSet"))
+            if action not in ("UPSERT", "DELETE") or item is None:
                 raise ValueError()
-            name = record.findtext(tag("Name"), "").lower()
-            rrtype = record.findtext(tag("Type"))
-            ttl = record.findtext(tag("TTL"))
-            values = record.findall(f"{tag('ResourceRecords')}/{tag('ResourceRecord')}/{tag('Value')}")
-            if (not NAME_RE.fullmatch(name)
-                    or rrtype != "TXT" or not 1 <= len(values) <= 10
-                    or not ttl or not ttl.isdecimal() or int(ttl) > 300):
+            name = (item.findtext(tag("Name")) or "").lower()
+            record_type = item.findtext(tag("Type"))
+            ttl = item.findtext(tag("TTL"))
+            values = item.findall(
+                f"{tag('ResourceRecords')}/{tag('ResourceRecord')}/{tag('Value')}"
+            )
+            if (not NAME_RE.fullmatch(name) or record_type != "TXT"
+                    or not ttl or not ttl.isdecimal()
+                    or not 0 < int(ttl) <= 300
+                    or not 1 <= len(values) <= 10):
                 raise ValueError()
-            decoded = []
-            for item in values:
-                quoted = item.text or ""
-                if not (quoted.startswith('"') and quoted.endswith('"')):
+            decoded: list[str] = []
+            for value in values:
+                quoted = value.text or ""
+                if not quoted.startswith('"') or not quoted.endswith('"'):
                     raise ValueError()
-                value = quoted[1:-1]
-                if not VALUE_RE.fullmatch(value) or value in decoded:
+                txt = quoted[1:-1]
+                if not VALUE_RE.fullmatch(txt) or txt in decoded:
                     raise ValueError()
-                decoded.append(value)
+                decoded.append(txt)
             return action, name, tuple(decoded)
         except (ET.ParseError, ValueError, TypeError) as exc:
             raise ApiError("InvalidChangeBatch") from exc
 
-    @staticmethod
-    def update_challenge(action: str, name: str, values: tuple[str, ...]) -> None:
-        # Recreate the exact challenge record set in Pebble. Shared wildcard
-        # and apex challenge names may have multiple simultaneous TXT values.
-        requests = [("/clear-txt", {"host": name})]
-        if action == "UPSERT":
-            requests.extend(("/set-txt", {"host": name, "value": value})
-                            for value in values)
-        for endpoint, payload in requests:
-            conn = http.client.HTTPConnection(CHALLENGE_HOST, CHALLENGE_PORT, timeout=3)
-            try:
-                conn.request("POST", endpoint,
-                             body=json.dumps(payload).encode("ascii"),
-                             headers={"Content-Type": "application/json"})
-                response = conn.getresponse()
-                response.read(4096)
-                if response.status != 200:
-                    raise ApiError("ServiceUnavailable", 503)
-            except (OSError, TimeoutError, http.client.HTTPException) as exc:
-                raise ApiError("ServiceUnavailable", 503) from exc
-            finally:
-                conn.close()
-
-    def handle_post(self, parsed: urllib.parse.SplitResult) -> None:
-        if parsed.path != f"/{VERSION}/hostedzone/{ZONE_ID}/rrset" or parsed.query:
+    def post_api(self, request: urllib.parse.SplitResult) -> None:
+        """Record a synthetic mutation; deliberately never update Pebble DNS."""
+        if (request.path != f"/{VERSION}/hostedzone/{ZONE_ID}/rrset"
+                or request.query):
             raise ApiError("AccessDenied", 403)
-        size = self.headers.get("Content-Length", "")
-        if not size.isdecimal() or not 0 < int(size) <= MAX_BODY:
+        length = self.headers.get("Content-Length", "")
+        if not length.isdecimal() or not 0 < int(length) <= MAX_BODY:
             raise ApiError("InvalidInput")
-        action, name, values = self.extract_change(self.rfile.read(int(size)))
+        action, name, values = self.parse_changes(self.rfile.read(int(length)))
         with self.server.lock:
-            before = self.server.records.get(name)
-            if action == "DELETE" and before != values:
+            previous = self.server.records.get(name)
+            if action == "DELETE" and previous != values:
                 raise ApiError("InvalidChangeBatch")
-            self.update_challenge(action, name, values)
             if action == "UPSERT":
                 self.server.records[name] = values
             else:
@@ -229,15 +223,16 @@ class Route53Bridge(http.server.BaseHTTPRequestHandler):
 
 
 class ScopedServer(http.server.ThreadingHTTPServer):
+    """Keep state isolated to this server instance and serialize mutations."""
+
     daemon_threads = True
 
     def __init__(self, address: tuple[str, int]):
         self.records: dict[str, tuple[str, ...]] = {}
         self.changes: set[str] = set()
         self.lock = threading.Lock()
-        super().__init__(address, Route53Bridge)
+        super().__init__(address, Route53Stub)
 
 
 if __name__ == "__main__":
-    server = ScopedServer(("0.0.0.0", 8056))
-    server.serve_forever(poll_interval=0.25)
+    ScopedServer(("0.0.0.0", 8056)).serve_forever(poll_interval=0.25)
