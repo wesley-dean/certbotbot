@@ -328,7 +328,7 @@ run_faults() (
   [[ "$digest" =~ ^[0-9a-f]{64}$ ]] ||
     { problem 'baseline did not establish exact remote object digest'; return 65; }
 
-  for scenario in ca-production s3-unavailable corrupt-archive route53-unavailable s3-put-reject; do
+  for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected route53-unavailable s3-put-reject; do
     stdout_file="$tmp/fault-$scenario.log"
     if ! run_phase "$image" "$cert_ca" fault "$scenario" "$digest" \
       >"$stdout_file" 2>&1; then
@@ -399,7 +399,7 @@ main() {
   fi
   # No remote image pull, package installation, or source compilation here.
   # Cleanup is deliberately scoped to this project's known ephemeral runner names.
-  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable >/dev/null 2>&1 || true' EXIT
+  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable >/dev/null 2>&1 || true' EXIT
   case "$action" in
     run) run_lifecycle "$image" ;;
     run-faults) run_faults "$image" ;;
