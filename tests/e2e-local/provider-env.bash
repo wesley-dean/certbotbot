@@ -17,6 +17,7 @@ set -euo pipefail
 readonly STAGING='acme-staging-v02.api.letsencrypt.org'
 readonly GATEWAY_IP='172.31.248.5'
 readonly S3_IP='172.31.248.4'
+readonly ROUTE53_IP='172.31.248.6'
 readonly TRUST_FILE='/run/certbotbot-e2e/gateway-root.crt'
 
 ## @fn provider_error()
@@ -121,8 +122,8 @@ main() {
         { provider_error 'public artifact checksum mismatch'; return 65; }
       provider_verify_isolation || return $?
       # No inherited profile/IMDS/proxy/user CA or Certbot configuration.
-      # Local Route53 intentionally points at a closed loopback port until
-      # the separately reviewed real DNS bridge (#243) is installed.
+      # Route53 only reaches the internal project-owned one-zone adapter.
+      # Never use boto3's default public Route53 endpoint in this runner.
       env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/tmp TMPDIR=/tmp \
         AWS_ACCESS_KEY_ID=CBOTBOT_LOCAL_TEST_ACCESS_ONLY \
         AWS_SECRET_ACCESS_KEY=CBOTBOT_LOCAL_TEST_SECRET_NOT_A_CLOUD_KEY \
@@ -130,7 +131,7 @@ main() {
         AWS_EC2_METADATA_DISABLED=true AWS_CONFIG_FILE=/dev/null \
         AWS_SHARED_CREDENTIALS_FILE=/dev/null \
         AWS_ENDPOINT_URL_S3="http://$S3_IP:8333" \
-        AWS_ENDPOINT_URL_ROUTE53=http://127.0.0.1:9 \
+        AWS_ENDPOINT_URL_ROUTE53="http://$ROUTE53_IP:8056" \
         REQUESTS_CA_BUNDLE="$TRUST_FILE" SSL_CERT_FILE="$TRUST_FILE" \
         CURL_CA_BUNDLE="$TRUST_FILE" \
         "$@"

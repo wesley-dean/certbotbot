@@ -23,7 +23,7 @@ readonly COMPOSE_FILE="$E2E_DIR/compose.yml"
 readonly PROJECT='certbotbot-local-e2e'
 readonly NETWORK="${PROJECT}_isolated"
 readonly PEBBLE_IP='172.31.248.2'
-readonly CHALL_IP='172.31.248.3'
+readonly ROUTE53_IP='172.31.248.6'
 readonly SEAWEED_IP='172.31.248.4'
 readonly GATEWAY_IP='172.31.248.5'
 readonly STAGING_HOST='acme-staging-v02.api.letsencrypt.org'
@@ -97,8 +97,10 @@ validate_topology() {
   jq -e '
     (.networks.isolated.internal == true)
     and (.networks.isolated.driver == "bridge")
-    and ([.services | keys[]] | sort == ["acme-gateway","challtestsrv","pebble","seaweedfs"])
+    and ([.services | keys[]] | sort == ["acme-gateway","pebble","route53-bridge","seaweedfs"])
     and ([.services[] | .platform] | all(. == "linux/amd64"))
+    and (.services.pebble.environment.PEBBLE_VA_ALWAYS_VALID == "1")
+    and (.services["route53-bridge"].networks.isolated.ipv4_address == "172.31.248.6")
     and ([.services[] | .image] |
        all(test("^[a-z0-9./:-]+@sha256:[0-9a-f]{64}$")))
     and ([.services[] | has("ports")] | all(. == false))
@@ -137,7 +139,7 @@ check_running_isolation() {
     { fail 'actual network is not internal'; return 1; }
   [[ "$(docker network inspect "$NETWORK" --format '{{.Driver}}' 2>/dev/null)" == bridge ]] ||
     { fail 'actual network is not a private bridge'; return 1; }
-  for service in pebble challtestsrv seaweedfs acme-gateway; do
+  for service in pebble seaweedfs acme-gateway route53-bridge; do
     cid="$(compose ps -q "$service")"
     [[ -n "$cid" && "$(docker inspect "$cid" --format '{{.State.Running}}')" == true ]] ||
       { fail 'required service is not running'; return 1; }
@@ -167,16 +169,19 @@ probe_services() {
   done
   (( attempt <= 45 )) || { fail 'Pebble ACME directory readiness timed out'; return 1; }
 
+  # The Route53 stub is not DNS infrastructure. Its synthetic zone listing
+  # proves the local API is reachable; no TXT validation is claimed.
   for ((attempt = 1; attempt <= 45; attempt++)); do
     if response="$(curl --noproxy '*' -4 -fsS --connect-timeout 1 \
-      --max-time 2 -d '{"host":"health.invalid."}' \
-      "http://$CHALL_IP:8055/dns-request-history" 2>/dev/null)" &&
-      jq -e 'type == "array" or . == null' <<<"$response" >/dev/null 2>&1; then
+      --max-time 2 -H 'Authorization: AWS4-HMAC-SHA256 Credential=CBOTBOT_LOCAL_TEST_ACCESS_ONLY/20261102/us-east-1/route53/aws4_request, SignedHeaders=host, Signature=synthetic' \
+      "http://$ROUTE53_IP:8056/2013-04-01/hostedzone" 2>/dev/null)" &&
+      [[ "$response" == *'ListHostedZonesResponse'* ]]; then
       break
     fi
     sleep 1
   done
-  (( attempt <= 45 )) || { fail 'Pebble challenge management readiness timed out'; return 1; }
+  (( attempt <= 45 )) ||
+    { fail 'local Route53 API stub readiness timed out'; return 1; }
 
   for ((attempt = 1; attempt <= 45; attempt++)); do
     code="$(curl --noproxy '*' -4 -s -o /dev/null -w '%{http_code}' \
