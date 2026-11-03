@@ -442,6 +442,22 @@ run_isolation_probe() (
         64|65|69|74) reason=runner-inner-exit ;;
         *) reason=runner-exit-other ;;
       esac
+      # Stage markers are fixed text issued by this test-only executable.
+      # The last marker is useful if a shell or third-party binary exits
+      # without an explicit error classification.
+      if [[ "$reason" == runner-inner-exit || "$reason" == runner-exit-other ]]; then
+        if grep -Fqx 'local-first-issue: isolation_stage=reserved-dns' "$tmp/isolation.log"; then
+          reason=runner-stage-reserved-dns
+        elif grep -Fqx 'local-first-issue: isolation_stage=reserved-tcp' "$tmp/isolation.log"; then
+          reason=runner-stage-reserved-tcp
+        elif grep -Fqx 'local-first-issue: isolation_stage=route' "$tmp/isolation.log"; then
+          reason=runner-stage-route
+        elif grep -Fqx 'local-first-issue: isolation_stage=provider' "$tmp/isolation.log"; then
+          reason=runner-stage-provider
+        else
+          reason=runner-before-isolation-entrypoint
+        fi
+      fi
     fi
     problem "sealed runner isolation probe failed: $reason"
     return 65
