@@ -258,6 +258,32 @@ run_lifecycle() (
         'local-first-issue: private key and certificate mismatch') reason=certificate-key-mismatch ;;
       esac
     done <"$log"
+    # Only fixed, self-authored stage receipts are exported from the bridge.
+    # Python/server logs stay private, even if a protocol request is malformed.
+    local bridge_id='' bridge_log='' route_stage=no-request route_refusal=none
+    bridge_id="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
+      -p certbotbot-local-e2e ps -q route53-bridge 2>/dev/null)" || bridge_id=''
+    if [[ -n "$bridge_id" ]]; then
+      bridge_log="$(docker logs "$bridge_id" 2>/dev/null)" || bridge_log=''
+      if grep -Fqx 'local-route53-stub: hosted-zones=accepted' <<<"$bridge_log"; then
+        route_stage=hosted-zones
+      fi
+      if grep -Fqx 'local-route53-stub: rrset-change=accepted' <<<"$bridge_log"; then
+        route_stage=rrset-change
+      fi
+      if grep -Fqx 'local-route53-stub: change-poll=accepted' <<<"$bridge_log"; then
+        route_stage=change-poll
+      fi
+      local fixed_code
+      for fixed_code in AccessDenied InvalidInput InvalidAction InvalidChangeBatch NoSuchChange; do
+        if grep -Fqx "local-route53-stub: refused=$fixed_code" <<<"$bridge_log"; then
+          route_refusal="$fixed_code"
+          break
+        fi
+      done
+    fi
+    problem "route53-checkpoint=$route_stage"
+    problem "route53-refusal=$route_refusal"
     problem "bootstrap-failure=$reason"
     return 74
   fi

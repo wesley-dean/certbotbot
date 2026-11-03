@@ -228,7 +228,23 @@ run_positive() {
         break
       fi
     done
+    # Translate fixed host-owned stub receipts only. Never print provider or
+    # Docker logs; even an absent receipt must remain a failing result.
+    local checkpoint=not-reported refusal=not-reported value
+    for value in no-request hosted-zones rrset-change change-poll; do
+      if grep -Fqx -- "local-first-issue-host: route53-checkpoint=$value" "$logfile"; then
+        checkpoint="$value"
+        break
+      fi
+    done
+    for value in none AccessDenied InvalidInput InvalidAction InvalidChangeBatch NoSuchChange; do
+      if grep -Fqx -- "local-first-issue-host: route53-refusal=$value" "$logfile"; then
+        refusal="$value"
+        break
+      fi
+    done
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
+    error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
     return 74
   fi
   for flavor in development ordinary minified; do

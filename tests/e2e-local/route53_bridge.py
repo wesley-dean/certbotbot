@@ -71,6 +71,12 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
         """Suppress sensitive headers, DNS values, paths and query strings."""
         pass
 
+    @staticmethod
+    def receipt(stage: str) -> None:
+        """Emit a reviewed nonsecret operation stage to private Docker logs."""
+        # No request path, headers, TXT values, account data, or raw errors.
+        print(f"local-route53-stub: {stage}", flush=True)
+
     def reply(self, status: int, data: bytes) -> None:
         """Return XML without redirects or client-controlled headers."""
         self.send_response(status)
@@ -88,6 +94,10 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
         child(item, "Code", code)
         child(item, "Message", "Local test provider refused operation")
         child(root, "RequestId", "local-only")
+        # Error codes are fixed in this stub. Never log caller-supplied data.
+        if code in ("AccessDenied", "InvalidInput", "InvalidAction",
+                    "InvalidChangeBatch", "NoSuchChange"):
+            self.receipt(f"refused={code}")
         self.reply(status, xml_bytes(root))
 
     def authenticated(self) -> bool:
@@ -138,6 +148,7 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
             child(config, "PrivateZone", "false")
             child(root, "IsTruncated", "false")
             child(root, "MaxItems", "1")
+            self.receipt("hosted-zones=accepted")
             self.reply(200, xml_bytes(root))
             return
         if path.startswith(f"/{VERSION}/change/") and not request.query:
@@ -146,6 +157,7 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
                 raise ApiError("NoSuchChange", 404)
             root = element("GetChangeResponse")
             self.change_info(child(root, "ChangeInfo"), change_id, "INSYNC")
+            self.receipt("change-poll=accepted")
             self.reply(200, xml_bytes(root))
             return
         raise ApiError("InvalidAction")
@@ -222,6 +234,7 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
             self.server.changes.add(change_id)
         root = element("ChangeResourceRecordSetsResponse")
         self.change_info(child(root, "ChangeInfo"), change_id, "PENDING")
+        self.receipt("rrset-change=accepted")
         self.reply(200, xml_bytes(root))
 
 
