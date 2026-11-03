@@ -136,8 +136,10 @@ setup() {
   [ "$status" -eq 0 ]
   run grep -F 'route53_endpoint="http://$ROUTE53_IP:8056"' "$PROVIDER"
   [ "$status" -eq 0 ]
-  run grep -F 'AWS_ENDPOINT_URL_ROUTE53="$route53_endpoint"' "$PROVIDER"
+  run grep -F 'AWS_ENDPOINT_URL_ROUTE_53="$route53_endpoint"' "$PROVIDER"
   [ "$status" -eq 0 ]
+  run grep -F 'AWS_ENDPOINT_URL_ROUTE53=' "$PROVIDER"
+  [ "$status" -ne 0 ]
   run grep -F 'AWS_EC2_METADATA_DISABLED=true' "$PROVIDER"
   [ "$status" -eq 0 ]
   run grep -F 'REQUESTS_CA_BUNDLE="$TRUST_FILE"' "$PROVIDER"
