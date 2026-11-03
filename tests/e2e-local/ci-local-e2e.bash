@@ -146,7 +146,24 @@ probe_no_egress() {
   local phase="$1" logfile="$WORK/isolation-$1.log"
   if ! timeout --signal=TERM --kill-after=15s 240s \
     bash "$HOST" probe >"$logfile" 2>&1; then
-    error 'active no-egress and staging TLS probe failed'
+    # The host emits an allowlisted classification from the sealed runner.
+    # Match only exact owned receipts; never echo the underlying Docker
+    # or provider output from private logs into the Actions console.
+    local reason='unclassified' classification
+    for classification in \
+      provider-default-route missing-test-root missing-verifier \
+      staging-dns-failed staging-dns-mismatch production-dns-resolved \
+      staging-tls-or-http-failed staging-directory-mismatch \
+      runner-default-route missing-route-table external-tcp-succeeded \
+      forbidden-dns-resolved; do
+      if grep -Fqx -- \
+        "local-first-issue-host: sealed runner isolation probe failed: $classification" \
+        "$logfile"; then
+        reason="$classification"
+        break
+      fi
+    done
+    error "active no-egress and staging TLS probe failed: $reason"
     return 65
   fi
   require_receipt "$logfile" \
