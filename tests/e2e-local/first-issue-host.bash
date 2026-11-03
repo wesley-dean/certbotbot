@@ -437,7 +437,15 @@ run_isolation_probe() (
     if [[ "$reason" == unclassified ]] &&
       grep -Fqx 'local-first-issue: isolation_passed=true; challenge_validation=bypassed' \
         "$tmp/isolation.log"; then
-      reason=runner-reported-success-but-exited
+      if grep -Fqx 'local-first-issue: isolation workspace cleanup failed' \
+        "$tmp/isolation.log"; then
+        reason=runner-cleanup-failed
+      elif grep -Fqx 'local-first-issue: isolation_cleanup_verified=true' \
+        "$tmp/isolation.log"; then
+        reason=runner-cleanup-succeeded-but-exited
+      else
+        reason=runner-cleanup-unverified
+      fi
     fi
     if [[ "$reason" == unclassified ]]; then
       case "$phase_status" in
