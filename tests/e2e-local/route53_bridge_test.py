@@ -64,17 +64,17 @@ class BridgeTests(unittest.TestCase):
             conn.close()
 
     def test_list_only_allowed_zone(self):
-        status, root = self.request("GET", "/2013-04-01/hostedzonesbyname?dnsname=e2e.test.")
+        status, root = self.request("GET", "/2013-04-01/hostedzone")
         self.assertEqual(status, 200)
         self.assertEqual(root.findtext(f".//{bridge.tag('Id')}"), "/hostedzone/" + bridge.ZONE_ID)
-        status, _ = self.request("GET", "/2013-04-01/hostedzonesbyname?dnsname=example.com.")
-        self.assertEqual(status, 403)
+        status, _ = self.request("GET", "/2013-04-01/hostedzone?marker=other")
+        self.assertEqual(status, 400)
 
     def test_authentication_and_unknown_actions_fail_closed(self):
         for method, path, auth in [
-            ("GET", "/2013-04-01/hostedzonesbyname", ""),
-            ("GET", "/2013-04-01/hostedzonesbyname", "AWS4-HMAC-SHA256 Credential=REAL/"),
-            ("GET", "/2013-04-01/hostedzone", GOOD_AUTH),
+            ("GET", "/2013-04-01/hostedzone", ""),
+            ("GET", "/2013-04-01/hostedzone", "AWS4-HMAC-SHA256 Credential=REAL/"),
+            ("GET", "/2013-04-01/hostedzonesbyname", GOOD_AUTH),
             ("GET", "/2013-04-01/hostedzone/ZREAL/rrset", GOOD_AUTH),
         ]:
             with self.subTest(method=method, path=path, auth=bool(auth)):
@@ -88,7 +88,7 @@ class BridgeTests(unittest.TestCase):
             status, root = self.request(
                 "POST", f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset", change_xml())
             self.assertEqual(status, 200)
-            self.assertEqual(self.server.records[DOMAIN], TXT)
+            self.assertEqual(self.server.records[DOMAIN], (TXT,))
             change_id = root.findtext(f".//{bridge.tag('Id')}")
             self.assertTrue(change_id.startswith("/change/CLOCAL"))
             status, result = self.request("GET", "/2013-04-01" + change_id)
@@ -99,7 +99,7 @@ class BridgeTests(unittest.TestCase):
                 change_xml("DELETE"))
             self.assertEqual(status, 200)
             self.assertNotIn(DOMAIN, self.server.records)
-        self.assertEqual(operations, [("UPSERT", DOMAIN, TXT), ("DELETE", DOMAIN, TXT)])
+        self.assertEqual(operations, [("UPSERT", DOMAIN, (TXT,)), ("DELETE", DOMAIN, (TXT,))])
 
     def test_rejects_conflicts_and_out_of_zone_mutation(self):
         with patch.object(bridge.Route53Bridge, "update_challenge"):
@@ -107,7 +107,7 @@ class BridgeTests(unittest.TestCase):
                 "POST", f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset", change_xml())
             self.assertEqual(status, 200)
             for action, name, value in [
-                ("UPSERT", DOMAIN, "B" * 43),
+                ("UPSERT", "other.e2e.test.", "B" * 43),
                 ("DELETE", DOMAIN, "B" * 43),
                 ("UPSERT", "_acme-challenge.example.org.", TXT),
                 ("UPSERT", "www.e2e.test.", TXT),
@@ -117,7 +117,21 @@ class BridgeTests(unittest.TestCase):
                         "POST", f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset",
                         change_xml(action, name, value))
                     self.assertNotEqual(status, 200)
-            self.assertEqual(self.server.records[DOMAIN], TXT)
+            self.assertEqual(self.server.records[DOMAIN], (TXT,))
+
+    def test_multiple_challenges_share_one_dns_record_name(self):
+        first = change_xml()
+        root = ET.fromstring(first)
+        values = root.find(f".//{bridge.tag('ResourceRecords')}")
+        extra = bridge.child(values, "ResourceRecord")
+        bridge.child(extra, "Value", '"' + "B" * 43 + '"')
+        with patch.object(bridge.Route53Bridge, "update_challenge") as update:
+            status, _ = self.request(
+                "POST", f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset",
+                bridge.xml_bytes(root))
+            self.assertEqual(status, 200)
+            self.assertEqual(self.server.records[DOMAIN], (TXT, "B" * 43))
+            update.assert_called_once_with("UPSERT", DOMAIN, (TXT, "B" * 43))
 
     def test_challenge_server_failure_cannot_change_local_state(self):
         with patch.object(bridge.Route53Bridge, "update_challenge",
