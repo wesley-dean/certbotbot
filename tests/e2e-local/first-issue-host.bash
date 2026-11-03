@@ -17,6 +17,7 @@
 ## bash tests/e2e-local/first-issue-host.bash build
 ## bash tests/e2e-local/run.bash fetch
 ## bash tests/e2e-local/run.bash up
+## bash tests/e2e-local/first-issue-host.bash probe
 ## bash tests/e2e-local/first-issue-host.bash run
 ## bash tests/e2e-local/first-issue-host.bash run-faults
 ## bash tests/e2e-local/run.bash down
@@ -380,6 +381,46 @@ run_faults() (
   printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
 )
 
+## @fn run_isolation_probe()
+## @brief Exercises the same nonroot, no-egress runner flags used by lifecycle.
+## @details
+## The only host-to-container data is a disposable public-only gateway root,
+## extracted from this project's own running Caddy container. The dedicated
+## probe phase verifies actual private HTTPS and attempts TCP connections
+## only to documentation-reserved IPs, never real public provider services.
+## Its temporary logs and root copy are removed on all normal exit paths.
+## @param image Locally cached, source-bound runner image name.
+## @retval 0 A nonsecret explicit private-route attestation was observed.
+## @retval 65 Isolation, gateway or run receipt does not match contract.
+run_isolation_probe() (
+  local image="$1" tmp='' cid='' ca_file=''
+  docker image inspect "$image" >/dev/null 2>&1 ||
+    { problem 'checked isolation runner image missing'; return 69; }
+  bash "$HARNESS" status >/dev/null ||
+    { problem 'isolated Compose project is not in a verified running state'; return 65; }
+  tmp="$(mktemp -d)" ||
+    { problem 'private probe scratch unavailable'; return 74; }
+  trap 'rm -rf -- "$tmp"' EXIT
+  ca_file="$tmp/gateway-root.crt"
+  cid="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
+    -p certbotbot-local-e2e ps -q acme-gateway)" || return 74
+  [[ -n "$cid" ]] ||
+    { problem 'isolation gateway container missing'; return 65; }
+  docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$ca_file" >/dev/null 2>&1 ||
+    { problem 'public-only gateway root unavailable for isolation probe'; return 74; }
+  chmod 0644 "$ca_file"
+  openssl x509 -in "$ca_file" -noout >/dev/null 2>&1 ||
+    { problem 'isolation gateway public root invalid'; return 65; }
+  if ! run_phase "$image" "$ca_file" isolation >"$tmp/isolation.log" 2>&1; then
+    problem 'sealed runner failed actual route and private staging TLS probe'
+    return 65
+  fi
+  grep -Fqx 'local-first-issue: isolation_passed=true; challenge_validation=bypassed' \
+    "$tmp/isolation.log" ||
+    { problem 'bounded isolation test receipt missing'; return 65; }
+  printf '%s\n' 'local-first-issue-host: active_no_egress_probe=true; challenge_validation=bypassed'
+)
+
 ## @fn main()
 ## @brief Dispatches explicit dependency-fetch and sealed-test phases only.
 main() {
@@ -387,8 +428,8 @@ main() {
   (( $# == 1 )) ||
     { problem 'usage: first-issue-host.bash build|run'; return 64; }
   case "$action" in
-    build|run|run-faults) ;;
-    *) problem 'usage: first-issue-host.bash build|run|run-faults'; return 64 ;;
+    build|probe|run|run-faults) ;;
+    *) problem 'usage: first-issue-host.bash build|probe|run|run-faults'; return 64 ;;
   esac
   reject_cloud_env || return $?
   require_engine || return $?
@@ -399,8 +440,9 @@ main() {
   fi
   # No remote image pull, package installation, or source compilation here.
   # Cleanup is deliberately scoped to this project's known ephemeral runner names.
-  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable >/dev/null 2>&1 || true' EXIT
+  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable certbotbot-local-e2e-isolation >/dev/null 2>&1 || true' EXIT
   case "$action" in
+    probe) run_isolation_probe "$image" ;;
     run) run_lifecycle "$image" ;;
     run-faults) run_faults "$image" ;;
   esac
