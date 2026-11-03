@@ -13,6 +13,7 @@ setup() {
   FIRST_HOST="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
   RUNNER_DOCKERFILE="$REPO_ROOT/tests/e2e-local/runner.Dockerfile"
   PEBBLE_CONFIG="$REPO_ROOT/tests/e2e-local/pebble-config.json"
+  CERTBOT_RENEW_ADAPTER="$REPO_ROOT/tests/e2e-local/certbot-force-renewal.bash"
 }
 
 @test "local harness Bash syntax is valid without Docker" {
@@ -236,5 +237,61 @@ setup() {
   run grep -F '[[ "$count_after" == "$count_before" ]]' "$FIRST_HOST"
   [ "$status" -eq 0 ]
   run grep -F 'for flavor in development ordinary minified; do' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+}
+
+@test "test-only Certbot adapter is syntax valid and confined to runner image" {
+  run bash -n "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+  run grep -F 'COPY tests/e2e-local/certbot-force-renewal.bash /usr/local/bin/certbot' "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+  run grep -F 'test -x /usr/bin/certbot' "$RUNNER_DOCKERFILE"
+  [ "$status" -eq 0 ]
+  run grep -F '"$E2E/certbot-force-renewal.bash"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'exec "$REAL_CERTBOT" "$@" --force-renewal' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+}
+
+@test "single-use real renewal adapter selects one account and private staging lineage" {
+  run grep -F '(( $# == 15 ))' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+  run grep -F 'readonly SELECTED=test.e2e.test' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+  run grep -F 'readonly STAGING=https://acme-staging-v02.api.letsencrypt.org/directory' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+  run grep -F '[[ ! -e "$RECEIPT"' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+  run grep -F 'rm -f -- "$INTENT"' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+  run grep -F 'real-certbot-selected-renewal-forced' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+}
+
+@test "renew mode rejects unsupported inputs before any provider access" {
+  run bash "$FIRST_ISSUE" renew
+  [ "$status" -eq 64 ]
+  run bash "$FIRST_ISSUE" renew incorrect-digest
+  [ "$status" -eq 64 ]
+  run bash "$FIRST_ISSUE" renew "$(printf '%064d' 0)" unexpected
+  [ "$status" -eq 64 ]
+}
+
+@test "genuine renewal requires changed object, DER, stable account and independent verification" {
+  run grep -F '[[ "$new_account" == "$original_account" ]]' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F '[[ "$new_etag" != "$old_etag" ]]' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F '[[ "$newcert" =~ ^[0-9a-f]{64}$ && "$newcert" != "$oldcert" ]]' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'verify_no_force_persistence "$workspace/after.tar.gz"' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'run_phase "$image" "$cert_ca" renew "$digest"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F '"$count_after" -eq $((count_before + 1))' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'run_phase "$image" "$cert_ca" verify "$renewed_digest"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'run_phase "$image" "$cert_ca" noop ordinary "$renewed_digest"' "$FIRST_HOST"
   [ "$status" -eq 0 ]
 }
