@@ -295,3 +295,38 @@ setup() {
   run grep -F 'run_phase "$image" "$cert_ca" noop ordinary "$renewed_digest"' "$FIRST_HOST"
   [ "$status" -eq 0 ]
 }
+
+@test "one-shot adapter argv validator accepts exact staged selected renewal and rejects drift" {
+  local workspace="$BATS_TEST_TMPDIR/force-contract"
+  mkdir -m 700 -- "$workspace"
+  mkdir -m 700 -- "$workspace/config"
+  run bash -c '
+    source "$1"
+    authorized_selected_renew renew --cert-name test.e2e.test \
+      --account LOCALACCOUNT --config-dir "$2/config" \
+      --work-dir "$2/work" --logs-dir "$2/logs" \
+      --server https://acme-staging-v02.api.letsencrypt.org/directory \
+      --non-interactive --no-directory-hooks
+  ' -- "$CERTBOT_RENEW_ADAPTER" "$workspace"
+  [ "$status" -eq 0 ]
+
+  run bash -c '
+    source "$1"
+    authorized_selected_renew renew --cert-name wrong.e2e.test \
+      --account LOCALACCOUNT --config-dir "$2/config" \
+      --work-dir "$2/work" --logs-dir "$2/logs" \
+      --server https://acme-staging-v02.api.letsencrypt.org/directory \
+      --non-interactive --no-directory-hooks
+  ' -- "$CERTBOT_RENEW_ADAPTER" "$workspace"
+  [ "$status" -eq 65 ]
+
+  run bash -c '
+    source "$1"
+    authorized_selected_renew renew --cert-name test.e2e.test \
+      --account LOCALACCOUNT --config-dir "$2/config" \
+      --work-dir "$2/work" --logs-dir "$2/logs" \
+      --server https://acme-v02.api.letsencrypt.org/directory \
+      --non-interactive --no-directory-hooks
+  ' -- "$CERTBOT_RENEW_ADAPTER" "$workspace"
+  [ "$status" -eq 65 ]
+}
