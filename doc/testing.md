@@ -172,6 +172,27 @@ These source and shipped-client tests do not replace the existing
 three producer flavors, Bash 4.3 tests, eight-file provenance checks
 or attestation gates.
 
+## Isolated negative local E2E coverage (milestone #16)
+
+The approved local failure-isolation suite is
+`bash tests/e2e-local/first-issue-host.bash run-faults`. It runs only
+**after** an independent successful positive `run` has stored a genuine
+Pebble-issued certificate in the disposable private SeaweedFS bucket.
+Six literal fail-closed cases exercise the unchanged checksum-verified public
+producer at external-provider and archive boundaries, with an independent
+current-object SHA-256 readback after every scenario. The suite requires no
+real AWS credentials or public ACME provider. Mocked Route53 failure and
+Pebble's challenge-validation bypass must **not** be represented as genuine
+DNS-01 or AWS interoperability. See
+[the local E2E harness guide](local-protocol-e2e-harness.md) for scenario
+semantics, preconditions and their specific limitations.
+
+Static Bats tests verify the fault-mode allowlist, hard-coded private
+endpoints, real-CLI delegation except for explicit rejected PutObject, host
+cleanup, and refusal cases. They are **not** a substitute for an engine-backed
+negative run. A separate CI runtime gate remains task #247; the manually
+authorized real-provider staging gate remains milestone #4.
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful
