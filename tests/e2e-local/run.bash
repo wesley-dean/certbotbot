@@ -223,6 +223,19 @@ probe_services() {
     fi
     sleep 1
   done
+  # This is still pre-registration: no ACME account, certificate archive,
+  # provider session, or real cloud credentials exist. Report a final bounded
+  # TLS/HTTP error so a gateway failure cannot be mistaken for an ACME failure.
+  if [[ -s "$ca_file" ]]; then
+    report_error 'canonical staging TLS/HTTP probe diagnostic follows'
+    curl --noproxy '*' -4 -fsS --cacert "$ca_file" \
+      --connect-timeout 1 --max-time 3 \
+      --resolve "$STAGING_HOST:443:$GATEWAY_IP" \
+      "https://$STAGING_HOST/directory" \
+      --output /dev/null >/dev/null || true
+  else
+    report_error 'canonical gateway public root did not materialize'
+  fi
   rm -f -- "$ca_file"
   fail 'verified canonical staging gateway readiness timed out'
   return 1
@@ -272,6 +285,15 @@ main() {
     return 74
   fi
   if ! check_running_isolation || ! probe_services; then
+    # Only owned service startup logs, bounded to pre-ACME-registration time.
+    # Do not use this diagnostic in positive or negative credentialed phases.
+    local service service_id
+    for service in acme-gateway pebble; do
+      service_id="$(compose ps -a -q "$service" 2>/dev/null || true)"
+      [[ -n "$service_id" ]] || continue
+      report_error "pre-registration $service startup diagnostic"
+      docker logs --tail 14 "$service_id" 2>&1 || true
+    done
     teardown >/dev/null 2>&1 || true
     report_error 'readiness/isolation failed; private resources removed'
     return 74
