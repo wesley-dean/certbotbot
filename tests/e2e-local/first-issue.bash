@@ -200,7 +200,28 @@ bootstrap() {
     --email "$EMAIL" --agree-tos true --eff-email-signup false \
     --s3-bucket "$BUCKET" --s3-key "$KEY" \
     --archive-encryption none >"$workspace/register.log" 2>&1; then
+    # certbotbot emits only fixed errors; recognize exact, reviewed
+    # messages without exposing provider logs, account data or cloud output.
+    local register_reason='unclassified'
+    if grep -Fqx 'certbotbot: ACME registration failed' "$workspace/register.log"; then
+      register_reason=acme-registration
+    elif grep -Fqx 'certbotbot: conditional S3 publication failed; remote state uncertain' \
+      "$workspace/register.log"; then
+      register_reason=s3-conditional-publish
+    elif grep -Fqx 'certbotbot: account archive packaging failed' "$workspace/register.log"; then
+      register_reason=account-packaging
+    elif grep -Fqx 'certbotbot: account state failed final preflight' "$workspace/register.log"; then
+      register_reason=account-final-preflight
+    elif grep -Fqx 'certbotbot: unsupported existing account or certificate state' \
+      "$workspace/register.log"; then
+      register_reason=account-initial-preflight
+    elif grep -Fqx 'certbotbot: S3 object state unavailable' "$workspace/register.log"; then
+      register_reason=s3-object-preflight
+    elif grep -Fqx 'certbotbot: Certbot unavailable' "$workspace/register.log"; then
+      register_reason=certbot-unavailable
+    fi
     error 'real Pebble account registration or conditional S3 publish failed'
+    error "registration_stage=$register_reason"
     return 74
   fi
   grep -Fq 'published=true' "$workspace/register.log" ||
