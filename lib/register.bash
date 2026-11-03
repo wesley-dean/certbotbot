@@ -80,7 +80,7 @@ certbotbot_register_fetch() {
 certbotbot_register_account_check() {
   local config="$1" host="$1/accounts/$CERTBOTBOT_REG_HOST"
   local directory="$host/directory" account='' entry file count=0
-  local account_details=''
+  local account_details='' contact_lines=''
   [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] ||
     return 65
   for entry in "$config/accounts/"*; do
@@ -131,8 +131,11 @@ certbotbot_register_account_check() {
     --server "$CERTBOTBOT_REG_SERVER" --non-interactive \
     --no-directory-hooks show_account --account "${account##*/}" 2>/dev/null)" ||
     return 65
-  printf '%s\n' "$account_details" |
-    grep -Fqx -- "  Email contact: $CERTBOTBOT_EMAIL" || return 65
+  # Reject multiple contact lines even if one line exactly matches.
+  # A plural/missing contact is never equivalent to one verified address.
+  contact_lines="$(printf '%s\n' "$account_details" |
+    grep -E '^  Email contacts?: ' || true)"
+  [[ "$contact_lines" == "  Email contact: $CERTBOTBOT_EMAIL" ]] || return 65
 }
 
 ## @fn certbotbot_register_preflight()
