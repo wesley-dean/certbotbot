@@ -23,7 +23,7 @@ main() {
   local mode="${LOCAL_E2E_FAULT_MODE-}"
   local -a argv=("$@")
   case "$mode" in
-    ''|s3-unavailable|route53-unavailable|acme-unavailable|corrupt-archive|ca-production)
+    ''|s3-unavailable|route53-unavailable|acme-unavailable|acme-order-rejected|corrupt-archive|ca-production)
       exec "$AWS_REAL" "$@"
       ;;
     s3-put-reject)
