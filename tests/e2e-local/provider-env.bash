@@ -4,9 +4,10 @@
 ## @brief Confines an unchanged public producer to the private staging gateway.
 ## @details
 ## Test-only code outside shipped source. Requires an internal container runner
-## provisioned in a later task with ephemeral public gateway CA trust at
-## /run/certbotbot-e2e/gateway-root.crt. Route53 deliberately fails closed
-## until the separately approved task #243 supplies a verified local adapter.
+## provisioned with ephemeral public gateway CA trust at
+## /run/certbotbot-e2e/gateway-root.crt. Normal Route53 calls target the
+## project-owned bounded test double; explicit fault modes may substitute
+## only a fixed closed loopback endpoint, never a public cloud URL.
 ## @par Usage
 ## @code{.sh}
 ## provider-env.bash --check
