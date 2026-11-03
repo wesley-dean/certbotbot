@@ -72,14 +72,22 @@ require_engine() {
 ## @brief Calculates the exact checked public producer's immutable image tag.
 ## @returns Docker image name with twelve-character artifact SHA suffix.
 verified_artifact() {
-  local sum
-  [[ -f "$REPO/dist/certbotbot.bash" &&
-    -f "$REPO/dist/certbotbot.bash.sha256" &&
-    ! -L "$REPO/dist/certbotbot.bash" ]] ||
-    { problem 'first build exact public producer and checksum'; return 65; }
-  (cd "$REPO/dist" && sha256sum -c certbotbot.bash.sha256) >/dev/null 2>&1 ||
-    { problem 'public producer checksum verification failed'; return 65; }
-  sum="$(sha256sum "$REPO/dist/certbotbot.bash" | awk '{print $1}')" || return 74
+  local flavor sum name
+  for name in certbotbot.dev.bash certbotbot.bash certbotbot.min.bash; do
+    [[ -f "$REPO/dist/$name" && -f "$REPO/dist/$name.sha256" &&
+      ! -L "$REPO/dist/$name" && ! -L "$REPO/dist/$name.sha256" ]] ||
+      { problem 'build all three exact public producers and checksums'; return 65; }
+    (cd "$REPO/dist" && sha256sum -c "$name.sha256") >/dev/null 2>&1 ||
+      { problem 'public producer flavor checksum verification failed'; return 65; }
+  done
+  # Key the local runner image to all three artifact flavors AND its test
+  # source, not merely the ordinary producer. Reusing a stale local image
+  # after a changed test runner must never yield false pass evidence.
+  sum="$(sha256sum \
+    "$REPO/dist/certbotbot.dev.bash" "$REPO/dist/certbotbot.bash" \
+    "$REPO/dist/certbotbot.min.bash" \
+    "$E2E/runner.Dockerfile" "$E2E/first-issue.bash" \
+    "$E2E/provider-env.bash" | sha256sum | awk '{print $1}')" || return 74
   [[ "$sum" =~ ^[a-f0-9]{64}$ ]] || return 65
   printf '%s:sha-%s\n' "$IMAGE_PREFIX" "${sum:0:12}"
 }
@@ -105,6 +113,12 @@ run_phase() {
   local image="$1" ca_file="$2" phase="$3"
   shift 3
   local name="certbotbot-local-e2e-${phase}"
+  if [[ "$phase" == noop ]]; then
+    case "${1-}" in development|ordinary|minified) ;;
+      *) problem 'invalid no-op container flavor'; return 64 ;;
+    esac
+    name="${name}-${1}"
+  fi
   # No --privileged, published ports, host network, root credentials, Docker
   # socket or shared file state. Private hosts binding plus loopback-only DNS
   # enforce the canonical staging host with no public resolver fallback.
@@ -120,11 +134,35 @@ run_phase() {
       "$image" "$phase" "$@"
 }
 
+## @fn pebble_order_count()
+## @brief Reads only the last nonsecret order count emitted by pinned Pebble.
+## @details
+## The upstream pinned Pebble WFE emits "There are now N orders in the db"
+## whenever a new order is successfully added. No raw logs, account IDs,
+## or request contents are exported. A missing count means no proof, not zero.
+## @retval 0 Count was established from pinned Pebble's container logs.
+## @retval 65 Count not observable; no-op must not be reported as verified.
+pebble_order_count() {
+  local cid count
+  cid="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
+    -p certbotbot-local-e2e ps -q pebble)" ||
+    { problem 'Pebble container unavailable for order observation'; return 65; }
+  [[ -n "$cid" ]] ||
+    { problem 'Pebble container missing for order observation'; return 65; }
+  count="$(docker logs "$cid" 2>&1 |
+    sed -nE 's/.*There are now ([0-9]+) orders in the db.*/\1/p' | tail -n 1)" ||
+    { problem 'Pebble order log inspection failed'; return 65; }
+  [[ "$count" =~ ^[0-9]+$ && "$count" != 0 ]] ||
+    { problem 'Pebble order counter not evidenced'; return 65; }
+  printf '%s\n' "$count"
+}
+
 ## @fn run_lifecycle()
-## @brief Starts two isolated runners and independently verifies S3 bytes.
+## @brief Issues once, verifies, then proves three isolated non-due no-ops.
 ## @param image Already built and locally cached checked runner tag.
 run_lifecycle() (
   local image="$1" tmp='' cert_ca='' cid='' log='' digest='' result=''
+  local flavor count_before count_after
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'runner image missing; use build before starting sealed services'; return 69; }
   bash "$HARNESS" status >/dev/null ||
@@ -164,6 +202,25 @@ run_lifecycle() (
   printf '%s\n' 'local-first-issue-host: real local ACME and SeaweedFS first issuance verified (DNS-01 validation bypassed)'
   printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
   sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
+
+  # The pinned Pebble server records a nonsecret counter for every new order.
+  # A no-op succeeds only when this count remains unchanged for each exact
+  # producer flavor, proving no new order was added to Pebble's DB.
+  count_before="$(pebble_order_count)" || return $?
+  for flavor in development ordinary minified; do
+    if ! run_phase "$image" "$cert_ca" noop "$flavor" "$digest" \
+      >"$tmp/noop-$flavor.log" 2>&1; then
+      problem 'fresh-runner selected renewal/no-op failed'
+      return 74
+    fi
+    grep -Fqx "local-first-issue: fresh_runner_noop=$flavor; archive_sha256=$digest" \
+      "$tmp/noop-$flavor.log" ||
+      { problem 'fresh-runner no-op attestation missing'; return 65; }
+    count_after="$(pebble_order_count)" || return $?
+    [[ "$count_after" == "$count_before" ]] ||
+      { problem 'new Pebble ACME order appeared during supposed no-op'; return 65; }
+    printf 'local-first-issue-host: restored_noop=%s; no_new_order=true; no_republish=true\n' "$flavor"
+  done
 )
 
 ## @fn main()
@@ -185,7 +242,7 @@ main() {
   fi
   # No remote image pull, package installation, or source compilation here.
   # Cleanup is deliberately scoped to this run's two fixed container names.
-  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify >/dev/null 2>&1 || true' EXIT
+  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified >/dev/null 2>&1 || true' EXIT
   run_lifecycle "$image"
 }
 
