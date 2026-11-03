@@ -408,6 +408,26 @@ trust policy, release pin and schedule. Examples do not
 provision accounts or buckets, run live cloud operations on
 PRs, or deploy certificates to consumer servers.
 
+## Credential-free local protocol E2E CI
+
+The dedicated [local protocol E2E workflow](.github/workflows/local-protocol-e2e.yml)
+runs automatically on repository pushes and by manual dispatch. It builds
+the actual public producer artifacts, uses real Certbot and containerized
+Pebble/SeaweedFS, verifies independent S3 archive restoration and a
+second authentic ACME renewal order, and executes seven isolated negative
+scenarios. Real no-egress and private staging TLS checks are mandatory;
+the job has no real cloud credentials or host-published service ports.
+
+**This local mode intentionally bypasses DNS-01 challenge validation**
+(`PEBBLE_VA_ALWAYS_VALID=1`) and mocks only the Route53 API. Its success
+does not establish Amazon S3, Route53 DNS propagation, or Let's Encrypt
+staging interoperability. The separately authorized live milestone 4
+acceptance remains required. See the
+[isolated E2E operations and evidence guide](doc/local-protocol-e2e-harness.md)
+and [ADR-047](doc/adr/ADR-047-mocked-route53-local-lifecycle-e2e.md).
+The CI workflow fails closed if a real Docker-backed lifecycle stage cannot
+be proved; it does not silently skip a missing container engine.
+
 ## Manual staging E2E acceptance
 
 Milestone 4's real Let's Encrypt staging acceptance is operator-controlled,
