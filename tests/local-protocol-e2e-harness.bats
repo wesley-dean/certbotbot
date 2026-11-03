@@ -93,6 +93,12 @@ setup() {
   [ "$status" -eq 64 ]
   run bash "$PROVIDER" -- /bin/sh
   [ "$status" -eq 64 ]
+
+  # Valid staging cannot bypass the artifact check; a missing producer
+  # is still rejected with data/status 65 before network verification.
+  run bash "$PROVIDER" -- "$BATS_TEST_TMPDIR/nonexistent-producer" --acme-environment staging
+  [ "$status" -eq 65 ]
+  [[ "$output" == *'invalid public artifact'* ]]
 }
 
 @test "provider gate never treats host environment as a runnable E2E network" {
