@@ -316,70 +316,8 @@ account_identity() {
   local archive="$1" entries='' item='' digest=''
   entries="$(tar -tzf "$archive" 2>/dev/null)" ||
     { error 'account archive listing failed'; return 65; }
-  item="$(grep -E '^\./accounts/acme-staging-v02\.api\.letsencrypt\.org/directory/[^/]+/private_key\.json
-main() {
-  local mode="${1-}" workspace=''
-  case "$mode" in
-    bootstrap) (( $# == 1 )) || { error 'unexpected bootstrap arguments'; return 64; } ;;
-    verify) (( $# == 2 )) || { error 'expected one digest'; return 64; } ;;
-    noop)
-      (( $# == 3 )) || { error 'expected flavor and archive digest'; return 64; }
-      case "$2" in development|ordinary|minified) ;; *)
-        error 'invalid no-op producer flavor'; return 64 ;;
-      esac
-      [[ "$3" =~ ^[a-f0-9]{64}$ ]] || { error 'invalid no-op digest'; return 64; }
-      ;;
-    renew)
-      (( $# == 2 )) || { error 'expected one renewal archive digest'; return 64; }
-      [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
-        { error 'invalid renewal archive digest'; return 64; }
-      ;;
-    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256 | renew ARCHIVE_SHA256'; return 64 ;;
-  esac
-  workspace="$(mktemp -d)" ||
-    { error 'private test workspace unavailable'; return 74; }
-  if [[ "$mode" == renew ]]; then
-    trap 'rm -rf -- "$workspace" "$FORCE_STATE"' EXIT
-  else
-    trap 'rm -rf -- "$workspace"' EXIT
-  fi
-  case "$mode" in
-    bootstrap) bootstrap "$workspace" ;;
-    verify) verify "$workspace" "$2" ;;
-    noop) noop "$workspace" "$2" "$3" ;;
-    renew) renew "$workspace" "$2" ;;
-  esac
-}
-
-main "$@"
- <<<"$entries" || true)"
-  [[ -n "$item" && "$item" != *
-main() {
-  local mode="${1-}" workspace=''
-  case "$mode" in
-    bootstrap) (( $# == 1 )) || { error 'unexpected bootstrap arguments'; return 64; } ;;
-    verify) (( $# == 2 )) || { error 'expected one digest'; return 64; } ;;
-    noop)
-      (( $# == 3 )) || { error 'expected flavor and archive digest'; return 64; }
-      case "$2" in development|ordinary|minified) ;; *)
-        error 'invalid no-op producer flavor'; return 64 ;;
-      esac
-      [[ "$3" =~ ^[a-f0-9]{64}$ ]] || { error 'invalid no-op digest'; return 64; }
-      ;;
-    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256'; return 64 ;;
-  esac
-  workspace="$(mktemp -d)" ||
-    { error 'private test workspace unavailable'; return 74; }
-  trap 'rm -rf -- "$workspace"' EXIT
-  case "$mode" in
-    bootstrap) bootstrap "$workspace" ;;
-    verify) verify "$workspace" "$2" ;;
-    noop) noop "$workspace" "$2" "$3" ;;
-  esac
-}
-
-main "$@"
-\n'* ]] ||
+  item="$(grep -E '^\./accounts/acme-staging-v02\.api\.letsencrypt\.org/directory/[^/]+/private_key\.json$' <<<"$entries" || true)"
+  [[ -n "$item" && "$item" != *$'\n'* ]] ||
     { error 'account identity missing or ambiguous'; return 65; }
   digest="$({ printf '%s\n' "$item"; tar -xOzf "$archive" "$item"; } |
     sha256sum | awk '{print $1}')" ||
@@ -396,33 +334,7 @@ verify_selected_only() {
   local entries='' archive="$1" names=''
   entries="$(tar -tzf "$archive" 2>/dev/null)" ||
     { error 'lineage listing unavailable'; return 65; }
-  names="$(grep -E '^\./renewal/[^/]+\.conf
-main() {
-  local mode="${1-}" workspace=''
-  case "$mode" in
-    bootstrap) (( $# == 1 )) || { error 'unexpected bootstrap arguments'; return 64; } ;;
-    verify) (( $# == 2 )) || { error 'expected one digest'; return 64; } ;;
-    noop)
-      (( $# == 3 )) || { error 'expected flavor and archive digest'; return 64; }
-      case "$2" in development|ordinary|minified) ;; *)
-        error 'invalid no-op producer flavor'; return 64 ;;
-      esac
-      [[ "$3" =~ ^[a-f0-9]{64}$ ]] || { error 'invalid no-op digest'; return 64; }
-      ;;
-    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256'; return 64 ;;
-  esac
-  workspace="$(mktemp -d)" ||
-    { error 'private test workspace unavailable'; return 74; }
-  trap 'rm -rf -- "$workspace"' EXIT
-  case "$mode" in
-    bootstrap) bootstrap "$workspace" ;;
-    verify) verify "$workspace" "$2" ;;
-    noop) noop "$workspace" "$2" "$3" ;;
-  esac
-}
-
-main "$@"
- <<<"$entries" || true)"
+  names="$(grep -E '^\./renewal/[^/]+\.conf$' <<<"$entries" || true)"
   [[ "$names" == "./renewal/$NAME.conf" ]] ||
     { error 'unexpected selected renewal configuration'; return 65; }
   if grep -E '^\./(archive|live)/[^/]+/' <<<"$entries" |
@@ -540,15 +452,25 @@ main() {
       esac
       [[ "$3" =~ ^[a-f0-9]{64}$ ]] || { error 'invalid no-op digest'; return 64; }
       ;;
-    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256'; return 64 ;;
+    renew)
+      (( $# == 2 )) || { error 'expected one renewal archive digest'; return 64; }
+      [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
+        { error 'invalid renewal archive digest'; return 64; }
+      ;;
+    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256 | renew ARCHIVE_SHA256'; return 64 ;;
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
-  trap 'rm -rf -- "$workspace"' EXIT
+  if [[ "$mode" == renew ]]; then
+    trap 'rm -rf -- "$workspace" "$FORCE_STATE"' EXIT
+  else
+    trap 'rm -rf -- "$workspace"' EXIT
+  fi
   case "$mode" in
     bootstrap) bootstrap "$workspace" ;;
     verify) verify "$workspace" "$2" ;;
     noop) noop "$workspace" "$2" "$3" ;;
+    renew) renew "$workspace" "$2" ;;
   esac
 }
 
