@@ -117,6 +117,9 @@ case "$action" in
       printf '  Email contacts: %s\n' "$contact"
     elif [[ -n "$contact" ]]; then
       printf '  Email contact: %s\n' "$contact"
+      if [[ "$MOCK_MODE" == contact-extra-lines ]]; then
+        printf '%s\n' '  Email contacts: person@example.org,other@example.org'
+      fi
     else
       printf '%s\n' '  Email contact: none'
     fi
@@ -188,7 +191,7 @@ register() {
 }
 
 @test "mismatched or missing authoritative ACME contact prevents registration publication" {
-  for mode in contact-mismatch contact-missing contact-extra account-query-failure; do
+  for mode in contact-mismatch contact-missing contact-extra contact-extra-lines account-query-failure; do
     export MOCK_MODE="$mode"
     register --agree-tos true
     [ "$status" -eq 65 ]
