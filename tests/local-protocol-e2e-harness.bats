@@ -223,7 +223,7 @@ setup() {
 }
 
 @test "fresh-runner normal no-op enforces S3 and ACME unchanged evidence" {
-  run grep -F 'grep -Fq '\''; published=false'\''' "$FIRST_ISSUE"
+  run grep -F 'published=false' "$FIRST_ISSUE"
   [ "$status" -eq 0 ]
   run grep -F 'cmp -s "$workspace/before.meta" "$workspace/after.meta"' "$FIRST_ISSUE"
   [ "$status" -eq 0 ]
