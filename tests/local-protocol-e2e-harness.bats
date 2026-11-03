@@ -16,6 +16,8 @@ setup() {
   CERTBOT_RENEW_ADAPTER="$REPO_ROOT/tests/e2e-local/certbot-force-renewal.bash"
   S3_FAULT="$REPO_ROOT/tests/e2e-local/aws-put-reject.bash"
   NEGATIVE_SCENARIOS="$REPO_ROOT/tests/e2e-local/negative-scenarios.bash"
+  CI_LOCAL_RUNNER="$REPO_ROOT/tests/e2e-local/ci-local-e2e.bash"
+  LOCAL_E2E_WORKFLOW="$REPO_ROOT/.github/workflows/local-protocol-e2e.yml"
 }
 
 @test "local harness Bash syntax is valid without Docker" {
@@ -426,5 +428,95 @@ setup() {
   run grep -F 'negative_issue_foreign_name "$scenario" blocked.e2e.test' "$NEGATIVE_SCENARIOS"
   [ "$status" -eq 0 ]
   run grep -F 'for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+}
+
+@test "dedicated local E2E CI runner validates syntax and rejects arguments without Docker" {
+  run bash -n "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run bash "$CI_LOCAL_RUNNER" unexpected
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'usage: ci-local-e2e.bash (no arguments)'* ]]
+}
+
+@test "local protocol acceptance runs only on push or manual dispatch without credentials" {
+  run grep -F 'name: Local protocol E2E (challenge validation bypassed)' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+  run grep -E '^  (push|workflow_dispatch):$' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'push:'* && "$output" == *'workflow_dispatch:'* ]]
+  run grep -E '^  pull_request:|^  pull_request_target:|^  schedule:' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -ne 0 ]
+  run grep -E 'secrets\.|id-token:[[:space:]]*write' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -ne 0 ]
+  run grep -F 'permissions:' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+  run grep -F 'contents: read' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+}
+
+@test "local E2E CI has fixed bounded runtimes, concurrency and defensive cleanup" {
+  for evidence in 'runs-on: ubuntu-24.04' 'timeout-minutes: 90' \
+    'cancel-in-progress: true' 'if: always()' '--remove-orphans' '--volumes' \
+    'persist-credentials: false'; do
+    run grep -F -- "$evidence" "$LOCAL_E2E_WORKFLOW"
+    [ "$status" -eq 0 ]
+  done
+  run grep -F 'bash tests/e2e-local/ci-local-e2e.bash' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+}
+
+@test "local E2E CI fetches before starting sealed project and executes all positive and negative gates" {
+  for stage in prepare start_private_project probe_no_egress run_positive run_negative cleanup; do
+    run grep -F "$stage" "$CI_LOCAL_RUNNER"
+    [ "$status" -eq 0 ]
+  done
+  run grep -F 'make deps && make deps-check' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'make build VERSION=0.0.0-dev' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'bash "$HOST" build' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'bash "$STACK" fetch' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'bash "$STACK" up' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'bash "$HOST" run-faults' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'second_real_pebble_order=true;' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'all-negative-scenarios=passed; dns-validation=bypassed' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+}
+
+@test "local E2E probes actual no-route and local HTTPS without contacting real providers" {
+  run bash -n "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run bash -n "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run bash "$FIRST_ISSUE" isolation extra
+  [ "$status" -eq 64 ]
+  run grep -F 'bash "$PROVIDER" --check' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F '192.0.2.1 198.51.100.1 203.0.113.1' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'for peer in acme.invalid aws.invalid route53.invalid' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'docker network inspect "$NETWORK"' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'run_phase "$image" "$ca_file" isolation' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+}
+
+@test "local E2E evidence stays bounded and its real-provider nonclaim is explicit" {
+  run grep -F 'no_egress_probe=%s; challenge_validation=bypassed' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'aws_route53_dns01_live_ca=not_tested' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'WORK="$(mktemp -d' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'rm -rf -- "$WORK"' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'trap '\\''cleanup "$?"'\\'' EXIT' "$CI_LOCAL_RUNNER"
   [ "$status" -eq 0 ]
 }
