@@ -214,7 +214,14 @@ run_positive() {
       certificate-san certificate-pem certificate-key-mismatch \
       register-acme register-s3-publish register-account-packaging \
       register-account-final-preflight register-account-initial-preflight \
-      register-s3-preflight register-certbot-unavailable register-unclassified; do
+      register-s3-preflight register-certbot-unavailable register-unclassified \
+      issue-s3-archive-missing issue-s3-object-preflight issue-s3-fetch \
+      issue-archive-restore issue-restored-state issue-shared-state \
+      issue-account-unavailable issue-issuance-preflight issue-account-identity \
+      issue-authenticator-probe issue-route53-plugin issue-account-probe \
+      issue-certonly issue-lineage-incomplete issue-post-issue-state \
+      issue-certificate-verification issue-certificate-key \
+      issue-publish-preflight issue-s3-publish issue-unclassified; do
       if grep -Fqx -- "local-first-issue-host: bootstrap-failure=$category" \
         "$logfile"; then
         reason="$category"
