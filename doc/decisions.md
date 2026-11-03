@@ -599,3 +599,17 @@ real object-store operations, independent restore, true second renewal,
 and separate milestone #4 live-provider acceptance.
 
 See [ADR-047](adr/ADR-047-mocked-route53-local-lifecycle-e2e.md).
+
+### ADR-048: Single-Event CI Workflow Triggers for Push Tests and PR Lint
+
+The broad Test and OCI runtime acceptance workflows run on repository pushes
+and explicit manual dispatch, but not directly on pull-request events, to
+avoid duplicate runs of the same same-repository branch commit. MegaLinter
+remains PR-triggered plus manual dispatch; it already had no push event and
+requires no workflow edit. CodeQL, release workflows, specialized tests, and
+the privileged manual staging gate preserve their existing events, and the
+CI jobs and permissions are unchanged. Fork-only PR coverage and required
+branch-protection contexts must be checked separately rather than assumed
+satisfied by branch-push test results.
+
+See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
