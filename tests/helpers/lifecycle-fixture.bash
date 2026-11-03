@@ -269,6 +269,9 @@ case "$verb" in
       esac
       [[ -f "$config/accounts/$host/directory/account-id/regr.json" ]] ||
         exit 91
+      # Real Certbot queries the CA for contact; native regr.json may have
+      # an empty body and must not be treated as an email cache.
+      printf '%s\n' '  Email contact: operator@example.org'
     fi
     ;;
   register)
@@ -289,7 +292,7 @@ case "$verb" in
       "$config/accounts/$host/directory" "$location" || exit 92
     printf '%s\n' '{"key":"synthetic-private-DO-NOT-LOG"}' \
       >"$location/private_key.json" || exit 92
-    printf '%s\n' '{"body":{"contact":["mailto:operator@example.org"]}}' \
+    printf '%s\n' '{"body":{},"uri":"https://example.invalid/acme/acct/1"}' \
       >"$location/regr.json" || exit 92
     printf '%s\n' '{"creation":"synthetic"}' \
       >"$location/meta.json" || exit 92
