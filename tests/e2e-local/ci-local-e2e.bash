@@ -159,7 +159,9 @@ probe_no_egress() {
       runner-timeout docker-startup-rejected runner-executable-unavailable \
       runner-inner-exit runner-exit-other runner-stage-reserved-dns \
       runner-stage-reserved-tcp runner-stage-route runner-stage-provider \
-      runner-before-isolation-entrypoint runner-reported-success-but-exited; do
+      runner-before-isolation-entrypoint runner-reported-success-but-exited \
+      runner-cleanup-failed runner-cleanup-succeeded-but-exited \
+      runner-cleanup-unverified; do
       if grep -Eq -- \
         "^local-first-issue-host: sealed runner isolation probe failed: $classification; exit_status=([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$" \
         "$logfile"; then
