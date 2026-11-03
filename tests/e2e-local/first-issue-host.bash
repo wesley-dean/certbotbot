@@ -200,7 +200,37 @@ run_lifecycle() (
   # Destroy the runner, account keys, client caches and logs even if a step
   # fails. No logs are printed from inside the untrusted provider process.
   if ! run_phase "$image" "$cert_ca" bootstrap >"$log" 2>&1; then
-    problem 'real registration/initial issuance failed; raw provider output discarded'
+    # Only script-owned literal failure messages may escape this private log.
+    # Raw Certbot, AWS, ACME and container output remains discarded.
+    local reason='unclassified' line
+    while IFS= read -r line; do
+      case "$line" in
+        'local-first-issue: local SeaweedFS bucket creation failed') reason=s3-bucket-create ;;
+        'local-first-issue: new synthetic bucket unavailable') reason=s3-bucket-head ;;
+        'local-first-issue: existing current archive forbids a first-issuance test') reason=unexpected-existing-object ;;
+        'local-first-issue: current S3 object state is ambiguous') reason=s3-missing-object-ambiguous ;;
+        'local-first-issue: ordinary issuance accepted missing account archive') reason=missing-account-accepted ;;
+        'local-first-issue: failed ordinary issuance unexpectedly published an object') reason=failed-issue-published ;;
+        'local-first-issue: current S3 object state became ambiguous after failed issuance') reason=s3-state-changed ;;
+        'local-first-issue: real Pebble account registration or conditional S3 publish failed') reason=registration-or-publish ;;
+        'local-first-issue: registration did not confirm publication') reason=registration-receipt ;;
+        'local-first-issue: account archive is unreadable') reason=account-archive-unreadable ;;
+        'local-first-issue: native staging account data missing') reason=account-native-state-missing ;;
+        'local-first-issue: registration unexpectedly created a certificate lineage') reason=registration-created-lineage ;;
+        'local-first-issue: real Pebble certificate issuance or S3 publication failed') reason=issuance-or-publish ;;
+        'local-first-issue: first issuance did not report issuance and publication') reason=issuance-receipt ;;
+        'local-first-issue: independent S3 object download failed') reason=s3-object-read ;;
+        'local-first-issue: downloaded S3 object is empty') reason=s3-object-empty ;;
+        'local-first-issue: certificate archive unreadable') reason=certificate-archive-unreadable ;;
+        'local-first-issue: selected renewal lineage missing') reason=certificate-lineage-missing ;;
+        'local-first-issue: selected certificate bytes absent') reason=certificate-missing ;;
+        'local-first-issue: certificate extraction failed') reason=certificate-extraction ;;
+        'local-first-issue: leaf SAN does not match requested identity') reason=certificate-san ;;
+        'local-first-issue: invalid issued PEM certificate') reason=certificate-pem ;;
+        'local-first-issue: private key and certificate mismatch') reason=certificate-key-mismatch ;;
+      esac
+    done <"$log"
+    problem "bootstrap-failure=$reason"
     return 74
   fi
   digest="$(sed -n 's/^local-first-issue: issued_archive_sha256=\([a-f0-9]\{64\}\)$/\1/p' "$log")"
