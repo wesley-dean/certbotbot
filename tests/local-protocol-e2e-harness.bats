@@ -49,6 +49,13 @@ setup() {
   [ "$output" = 4 ]
 }
 
+@test "local Caddy ACME gateway invokes the binary and requires canonical private command shape" {
+  run grep -F 'command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]' "$TOPOLOGY"
+  [ "$status" -eq 0 ]
+  run grep -F '.services["acme-gateway"].command == ["caddy","run","--config","/etc/caddy/Caddyfile","--adapter","caddyfile"]' "$HARNESS"
+  [ "$status" -eq 0 ]
+}
+
 @test "no published ports, host networking, Docker socket or privileged services" {
   run grep -En '^[[:space:]]*(ports:|network_mode:|privileged:|build:|network_mode: host)' "$TOPOLOGY"
   [ "$status" -ne 0 ]
