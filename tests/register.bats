@@ -12,6 +12,7 @@ setup() {
   ROOT="$(mktemp -d)"
   mkdir -m 700 "$ROOT/bin" "$ROOT/temp"
   export MOCK_REMOTE="$ROOT/remote.tar.gz"
+  export MOCK_CONTACT_FILE="$ROOT/contact"
   export MOCK_CALLS="$ROOT/calls"
   export MOCK_MODE=normal
   export PATH="$ROOT/bin:$PATH"
@@ -95,14 +96,30 @@ case "$action" in
       "$config/accounts/$host/directory" "$account"
     printf '%s\n' '{"kty":"RSA","private":"mock-only"}' \
       >"$account/private_key.json"
-    printf '{"body":{"contact":["mailto:%s"],"status":"valid"}}\n' "$email" \
+    # Certbot v5.8 persists native account URI without a contact body.
+    printf '%s\n' '{"body":{},"uri":"https://example.invalid/acme/acct/1"}' \
       >"$account/regr.json"
+    printf '%s\n' "$email" >"$MOCK_CONTACT_FILE"
     printf '%s\n' '{"creation_dt":"mock-only"}' >"$account/meta.json"
     chmod 600 "$account/"*.json
     ;;
   show_account)
-    [[ -d "$config/accounts/$host/directory/account-id" ]] && exit 0
-    exit 1
+    [[ -d "$config/accounts/$host/directory/account-id" ]] || exit 1
+    [[ "$MOCK_MODE" != account-query-failure ]] || exit 3
+    contact="$(cat "$MOCK_CONTACT_FILE")" || exit 4
+    case "$MOCK_MODE" in
+      contact-mismatch) contact=other@example.org ;;
+      contact-missing) contact='' ;;
+      contact-extra) contact="$contact,other@example.org" ;;
+    esac
+    printf '%s\n' 'Account details for server https://example.invalid/directory:'
+    if [[ "$contact" == *,* ]]; then
+      printf '  Email contacts: %s\n' "$contact"
+    elif [[ -n "$contact" ]]; then
+      printf '  Email contact: %s\n' "$contact"
+    else
+      printf '%s\n' '  Email contact: none'
+    fi
     ;;
   *) exit 99 ;;
 esac
@@ -158,6 +175,39 @@ register() {
     'accounts/acme-staging-v02.api.letsencrypt.org/directory/account-id/'
   ! tar -tzf "$MOCK_REMOTE" | grep -Fq \
     'accounts/acme-v02.api.letsencrypt.org/directory/account-id/'
+}
+
+@test "real Certbot native registration stores no contact in regr JSON" {
+  register --agree-tos true
+  [ "$status" -eq 0 ]
+  [ -s "$MOCK_REMOTE" ]
+  tar -xOzf "$MOCK_REMOTE" ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/regr.json |
+    grep -Fq '"body":{}'
+  ! tar -xOzf "$MOCK_REMOTE" ./accounts/acme-v02.api.letsencrypt.org/directory/account-id/regr.json |
+    grep -Fq 'mailto:'
+}
+
+@test "mismatched or missing authoritative ACME contact prevents registration publication" {
+  for mode in contact-mismatch contact-missing contact-extra account-query-failure; do
+    export MOCK_MODE="$mode"
+    register --agree-tos true
+    [ "$status" -eq 65 ]
+    [ ! -e "$MOCK_REMOTE" ]
+    ! grep -Fq 'aws:put-object' "$MOCK_CALLS"
+    : >"$MOCK_CALLS"
+  done
+}
+
+@test "existing account contact mismatch is rejected without S3 rewrite" {
+  register --agree-tos true
+  [ "$status" -eq 0 ]
+  cp "$MOCK_REMOTE" "$ROOT/verified-before"
+  : >"$MOCK_CALLS"
+  export MOCK_MODE=contact-mismatch
+  register --agree-tos true
+  [ "$status" -eq 65 ]
+  cmp -s "$MOCK_REMOTE" "$ROOT/verified-before"
+  ! grep -Fq 'aws:put-object' "$MOCK_CALLS"
 }
 
 @test "existing matching account is reused without Certbot register or S3 PUT" {
