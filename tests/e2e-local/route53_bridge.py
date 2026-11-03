@@ -215,7 +215,10 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
 
     def post_api(self, request: urllib.parse.SplitResult) -> None:
         """Record a synthetic mutation; deliberately never update Pebble DNS."""
-        if (request.path != f"/{VERSION}/hostedzone/{ZONE_ID}/rrset"
+        # Botocore's ChangeResourceRecordSets RequestUri terminates with
+        # "/rrset/". Requiring the exact modeled route avoids accidentally
+        # accepting unrelated synthetic API paths.
+        if (request.path != f"/{VERSION}/hostedzone/{ZONE_ID}/rrset/"
                 or request.query):
             raise ApiError("AccessDenied", 403)
         length = self.headers.get("Content-Length", "")
