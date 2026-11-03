@@ -102,7 +102,7 @@ main() {
   local fault="${LOCAL_E2E_FAULT_MODE-}" s3_endpoint='' route53_endpoint=''
   # Approved test-only service faults are literal, never caller-supplied URLs.
   case "$fault" in
-    ''|s3-unavailable|s3-put-reject|route53-unavailable|acme-unavailable|corrupt-archive|ca-production) ;;
+    ''|s3-unavailable|s3-put-reject|route53-unavailable|acme-unavailable|acme-order-rejected|corrupt-archive|ca-production) ;;
     *) provider_error 'unknown isolated fault mode'; return 64 ;;
   esac
   [[ $# -ge 1 ]] ||
