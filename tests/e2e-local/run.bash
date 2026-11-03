@@ -94,12 +94,23 @@ validate_topology() {
   local definition
   definition="$(compose config --format json)" ||
     { fail 'Compose configuration is invalid'; return 1; }
+  # A short-lived Pebble profile makes a newly issued certificate appear
+  # immediately due. The local contract needs exactly one 90-day profile.
+  jq -e '
+    (.pebble.profiles | keys == ["default"])
+    and (.pebble.profiles.default.validityPeriod == 7776000)
+    and (.pebble.listenAddress == "0.0.0.0:14000")
+    and (.pebble.managementListenAddress == "0.0.0.0:15000")
+    and (.pebble.externalAccountBindingRequired == false)
+  ' "$E2E_DIR/pebble-config.json" >/dev/null ||
+    { fail 'unexpected local Pebble certificate profile'; return 1; }
   jq -e '
     (.networks.isolated.internal == true)
     and (.networks.isolated.driver == "bridge")
     and ([.services | keys[]] | sort == ["acme-gateway","pebble","route53-bridge","seaweedfs"])
     and ([.services[] | .platform] | all(. == "linux/amd64"))
     and (.services.pebble.environment.PEBBLE_VA_ALWAYS_VALID == "1")
+    and (.services.pebble.command == ["-config","/opt/local-e2e-pebble.json","-strict"])
     and (.services["route53-bridge"].networks.isolated.ipv4_address == "172.31.248.6")
     and ([.services[] | .image] |
        all(test("^[a-z0-9./:-]+@sha256:[0-9a-f]{64}$")))
