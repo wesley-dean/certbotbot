@@ -193,6 +193,38 @@ cleanup, and refusal cases. They are **not** a substitute for an engine-backed
 negative run. A separate CI runtime gate remains task #247; the manually
 authorized real-provider staging gate remains milestone #4.
 
+## Mandatory local protocol E2E CI gate (milestone #16)
+
+The separate workflow
+[`Local protocol E2E (challenge validation bypassed)`](../.github/workflows/local-protocol-e2e.yml)
+runs on push and manual dispatch, without cloud secrets or credentials.
+Unlike the static Bats suite, it builds all checksum-verified producer
+flavors, starts pinned Pebble and SeaweedFS images on a private Docker
+network, and drives actual ACME registration, first issuance, independent
+SeaweedFS readback, three fresh-runner no-ops, an intentional second real
+ACME order/renewal, and independent replacement verification.
+
+The workflow also requires **all seven** negative scenarios to preserve
+the authoritative current object, and active non-egress and trusted
+local-staging TLS probes both before and after lifecycle execution. The
+single shell entry point is
+`bash tests/e2e-local/ci-local-e2e.bash`. Dependencies and immutable
+OCI images are fetched **before** private network startup; every failed
+runtime scenario, skipped proof receipt, or incomplete project cleanup is
+a failed gate. The script has bounded timeouts and prints only nonsecret
+phase receipts; no private provider logs, certificates, account keys, or
+S3 archives are uploaded.
+
+This is challenge-validation-bypassed **Pebble** plus a bounded Route53
+stub and **real SeaweedFS** protocol acceptance. It does not establish
+actual Route53 DNS-01 challenge propagation, real Amazon S3 IAM, or
+Let's Encrypt staging compatibility. The separately governed live
+milestone #4 workflow remains necessary. See the
+[local E2E harness and CI guide](local-protocol-e2e-harness.md) and
+ADRs 046, 047, 048 and 049. A merged test workflow without at least one
+successful engine-backed run must **not** be reported as validated E2E
+behavior.
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful
