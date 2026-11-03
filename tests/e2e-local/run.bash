@@ -206,12 +206,12 @@ probe_services() {
   done
   (( attempt <= 45 )) || { fail 'SeaweedFS S3 HTTP readiness timed out'; return 1; }
 
-  # Copy only the gateway's ephemeral public root cert, never its private key.
+  # Read only the gateway's ephemeral public root cert, never its private key.
   cid="$(compose ps -q acme-gateway)"
   ca_file="$(umask 077; mktemp)" ||
     { fail 'temporary test-only CA trust unavailable'; return 1; }
   for ((attempt = 1; attempt <= 45; attempt++)); do
-    if docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$ca_file" >/dev/null 2>&1 &&
+    if docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt "$ca_file" >/dev/null 2>&1 &&
       directory="$(curl --noproxy '*' -4 -fsS --cacert "$ca_file"         --connect-timeout 1 --max-time 3         --resolve "$STAGING_HOST:443:$GATEWAY_IP"         "https://$STAGING_HOST/directory" 2>/dev/null)" &&
       jq -e --arg prefix "https://$STAGING_HOST/" '
         (.newNonce | type == "string" and startswith($prefix))
@@ -236,9 +236,9 @@ probe_services() {
   else
     report_error 'canonical gateway public root did not materialize'
     # Public root only, before ACME account registration.  Show the actual
-    # Docker copy error and public-root path metadata, never key material.
-    report_error 'retrying one public-root Docker copy with stderr visible'
-    docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$ca_file" \
+    # Exact public-only read error and file metadata, never key material.
+    report_error 'retrying public-only root read with stderr visible'
+    docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$ca_file" \
       >/dev/null || true
     report_error 'listing public-root file location inside isolated Caddy'
     docker exec "$cid" sh -c \
