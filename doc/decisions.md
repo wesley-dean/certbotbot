@@ -613,3 +613,19 @@ branch-protection contexts must be checked separately rather than assumed
 satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
+
+### ADR-049: One-Shot Test-Only Forced Certbot Renewal for Local E2E
+
+Milestone #16's genuine second-order test may use a single-use argument adapter
+inside its sealed, disposable runner to append `--force-renewal` to exactly
+one real installed Certbot renewal of the already-selected staging lineage.
+The public certbotbot producer remains unchanged and still enforces ordinary
+non-due no-op semantics under ADR-025; the adapter has no release or host
+installation path. Acceptance requires an actual additional Pebble order,
+different issued certificate DER, stable native account and selected lineage,
+changed SeaweedFS object, and independent clean-runner verification, with a
+post-renewal ordinary no-op. This proves real ACME replacement and publication
+under challenge-validation-bypassed Pebble, not expiry-window timing, DNS-01,
+or live provider interoperability.
+
+See [ADR-049](adr/ADR-049-isolated-real-acme-renewal-test-trigger.md).

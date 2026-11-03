@@ -27,6 +27,7 @@ readonly BUCKET=certbotbot-local-e2e
 readonly KEY=latest.tar.gz
 readonly NAME=test.e2e.test
 readonly EMAIL=local-e2e@example.invalid
+readonly FORCE_STATE=/tmp/.certbotbot-e2e-renewal
 
 ## @fn error()
 ## @brief Emits a static, nonsecret diagnostic.
@@ -303,6 +304,145 @@ noop() {
   printf 'local-first-issue: fresh_runner_noop=%s; archive_sha256=%s\n' "$flavor" "$expected"
 }
 
+## @fn account_identity()
+## @brief Hashes the unique canonical account key and identity from an archive.
+## @details
+## A private key is neither printed nor copied outside this runner. The
+## caller compares this opaque hash across separately retrieved objects.
+## @param archive Private downloaded account/certificate archive.
+## @returns SHA-256 of unique account key path and its exact file bytes.
+## @retval 65 Ambiguous, missing or unreadable native account identity.
+account_identity() {
+  local archive="$1" entries='' item='' digest=''
+  entries="$(tar -tzf "$archive" 2>/dev/null)" ||
+    { error 'account archive listing failed'; return 65; }
+  item="$(grep -E '^\./accounts/acme-staging-v02\.api\.letsencrypt\.org/directory/[^/]+/private_key\.json$' <<<"$entries" || true)"
+  [[ -n "$item" && "$item" != *$'\n'* ]] ||
+    { error 'account identity missing or ambiguous'; return 65; }
+  digest="$({ printf '%s\n' "$item"; tar -xOzf "$archive" "$item"; } |
+    sha256sum | awk '{print $1}')" ||
+    { error 'account identity bytes unavailable'; return 65; }
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 65
+  printf '%s\n' "$digest"
+}
+
+## @fn verify_selected_only()
+## @brief Refuses foreign lineages in this one-certificate synthetic scenario.
+## @param archive Private archive to verify.
+## @retval 65 Unexpected additional or missing lineage.
+verify_selected_only() {
+  local entries='' archive="$1" names=''
+  entries="$(tar -tzf "$archive" 2>/dev/null)" ||
+    { error 'lineage listing unavailable'; return 65; }
+  names="$(grep -E '^\./renewal/[^/]+\.conf$' <<<"$entries" || true)"
+  [[ "$names" == "./renewal/$NAME.conf" ]] ||
+    { error 'unexpected selected renewal configuration'; return 65; }
+  local item
+  while IFS= read -r item; do
+    case "$item" in
+      "./archive/$NAME/"*|"./live/$NAME/"*) ;;
+      ./archive/*/*|./live/*/*)
+        error 'unexpected additional lineage'
+        return 65
+        ;;
+    esac
+  done <<<"$entries"
+}
+
+## @fn verify_no_force_persistence()
+## @brief Refuses any test-only force-renewal setting in durable archive.
+## @param archive Reissued certificate-bearing object.
+## @param workspace Owned private scratch directory.
+verify_no_force_persistence() {
+  local archive="$1" workspace="$2"
+  tar -xOzf "$archive" "./renewal/$NAME.conf" \
+    >"$workspace/renewal.conf" 2>/dev/null ||
+    { error 'renewal config extraction failed'; return 65; }
+  if grep -Ei '^[[:space:]]*(force_renewal|renew_by_default)[[:space:]]*=[[:space:]]*(true|yes|1)([[:space:]]|$)|--force-renewal' \
+    "$workspace/renewal.conf" >/dev/null; then
+    error 'test-only force flag persisted in renewal state'
+    return 65
+  fi
+}
+
+## @fn renew()
+## @brief Invokes one genuine real-Certbot renewal through one-shot test trigger.
+## @details
+## An unchanged public producer fetches its own S3 archive into fresh state.
+## Only the private single-use marker authorizes the test-only Certbot argv
+## adapter to add --force-renewal to one selected renewal. All renewed material,
+## S3 metadata and account continuity are verified by independent readbacks.
+## @param workspace Private ephemeral tmpfs scratch directory.
+## @param expected Previously observed remote archive SHA-256.
+## @returns Nonsecret renewed object and DER SHA-256 identities.
+## @retval 0 New real selected certificate was published and independently read.
+## @retval 65 Missing or inconsistent proof.
+## @retval 74 Real provider or S3 operation failed.
+renew() {
+  local workspace="$1" expected="$2" original='' oldcert='' newcert=''
+  local original_account='' new_account='' updated='' old_etag='' new_etag=''
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] ||
+    { error 'invalid pre-renewal archive identity'; return 64; }
+  [[ ! -e "$FORCE_STATE" && ! -L "$FORCE_STATE" ]] ||
+    { error 'renewal activation state already occupied'; return 65; }
+
+  fetch_archive "$workspace/before.tar.gz" || return $?
+  original="$(sha256sum "$workspace/before.tar.gz" | awk '{print $1}')" || return 74
+  [[ "$original" == "$expected" ]] ||
+    { error 'pre-renewal remote archive identity changed'; return 65; }
+  verify_account "$workspace/before.tar.gz" || return $?
+  verify_selected_only "$workspace/before.tar.gz" || return $?
+  verify_certificate "$workspace/before.tar.gz" "$workspace" || return $?
+  oldcert="$(sha256sum "$workspace/leaf.der" | awk '{print $1}')" || return 74
+  original_account="$(account_identity "$workspace/before.tar.gz")" || return $?
+  object_metadata "$workspace/before.meta" || return $?
+  old_etag="$(jq -r '.[0]' "$workspace/before.meta")" || return 65
+
+  mkdir -m 700 -- "$FORCE_STATE" ||
+    { error 'private renewal authorization state unavailable'; return 74; }
+  printf '%s\n' 'certbotbot-e2e-task-248' >"$FORCE_STATE/intent" ||
+    { error 'renewal authorization write failed'; return 74; }
+  chmod 600 -- "$FORCE_STATE/intent" || return 74
+
+  # Real Certbot's plugins and show_account probes are forwarded normally.
+  # The shim permits the force flag only on the selected renewal, then
+  # consumes the private marker before execing /usr/bin/certbot.
+  if ! issuer ordinary >"$workspace/renew.log" 2>&1; then
+    error 'selected real-Certbot renewal or publication failed'
+    return 74
+  fi
+  [[ ! -e "$FORCE_STATE/intent" &&
+    -f "$FORCE_STATE/receipt" && ! -L "$FORCE_STATE/receipt" &&
+    "$(cat "$FORCE_STATE/receipt" 2>/dev/null)" == real-certbot-selected-renewal-forced ]] ||
+    { error 'single-use real-Certbot adapter was not consumed'; return 65; }
+  grep -Fq 'certbotbot: checked ' "$workspace/renew.log" &&
+    grep -Fq '; published=true' "$workspace/renew.log" ||
+    { error 'renewal was not durably published by producer'; return 65; }
+
+  object_metadata "$workspace/after.meta" || return $?
+  new_etag="$(jq -r '.[0]' "$workspace/after.meta")" || return 65
+  [[ "$new_etag" != "$old_etag" ]] ||
+    { error 'S3 object ETag unchanged after real renewal'; return 65; }
+  fetch_archive "$workspace/after.tar.gz" || return $?
+  updated="$(sha256sum "$workspace/after.tar.gz" | awk '{print $1}')" || return 74
+  [[ "$updated" =~ ^[0-9a-f]{64}$ && "$updated" != "$original" ]] ||
+    { error 'renewed object bytes are unchanged'; return 65; }
+  verify_account "$workspace/after.tar.gz" || return $?
+  verify_selected_only "$workspace/after.tar.gz" || return $?
+  verify_certificate "$workspace/after.tar.gz" "$workspace" || return $?
+  verify_no_force_persistence "$workspace/after.tar.gz" "$workspace" || return $?
+  new_account="$(account_identity "$workspace/after.tar.gz")" || return $?
+  [[ "$new_account" == "$original_account" ]] ||
+    { error 'ACME account key or identity changed during renewal'; return 65; }
+  newcert="$(sha256sum "$workspace/leaf.der" | awk '{print $1}')" || return 74
+  [[ "$newcert" =~ ^[0-9a-f]{64}$ && "$newcert" != "$oldcert" ]] ||
+    { error 'no new signed certificate bytes after real renewal'; return 65; }
+
+  printf 'local-first-issue: renewed_archive_sha256=%s\n' "$updated"
+  printf 'local-first-issue: renewed_cert_der_sha256=%s\n' "$newcert"
+  printf '%s\n' 'local-first-issue: real_certbot_force_trigger_consumed=true'
+}
+
 ## @fn main()
 ## @brief Runs one bounded phase and removes private state on every exit.
 main() {
@@ -317,15 +457,25 @@ main() {
       esac
       [[ "$3" =~ ^[a-f0-9]{64}$ ]] || { error 'invalid no-op digest'; return 64; }
       ;;
-    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256'; return 64 ;;
+    renew)
+      (( $# == 2 )) || { error 'expected one renewal archive digest'; return 64; }
+      [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
+        { error 'invalid renewal archive digest'; return 64; }
+      ;;
+    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256 | renew ARCHIVE_SHA256'; return 64 ;;
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
-  trap 'rm -rf -- "$workspace"' EXIT
+  if [[ "$mode" == renew ]]; then
+    trap 'rm -rf -- "$workspace" "$FORCE_STATE"' EXIT
+  else
+    trap 'rm -rf -- "$workspace"' EXIT
+  fi
   case "$mode" in
     bootstrap) bootstrap "$workspace" ;;
     verify) verify "$workspace" "$2" ;;
     noop) noop "$workspace" "$2" "$3" ;;
+    renew) renew "$workspace" "$2" ;;
   esac
 }
 

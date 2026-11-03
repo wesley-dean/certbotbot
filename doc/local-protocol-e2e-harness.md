@@ -231,3 +231,81 @@ running the actual pinned Docker service stack. Static Bats assertions,
 source-level reasoning and passing ordinary PR CI do **not** substitute
 for a real container-backed run. No successful engine-backed run is claimed
 from this development environment.
+
+## Exactly one second real ACME order (task #248; ADR-049)
+
+After the initial real Pebble issuance, independent verification, and three
+distinct, non-due `development`/`ordinary`/`minified` no-op runners, the
+existing `first-issue-host.bash run` scenario performs one additional
+**real Certbot renewal** through the unchanged, verified ordinary public
+producer. The same documented `build`, `fetch`, `up`, `run`, `down`
+commands exercise this phase automatically. No new public CLI flags or
+production service identities are introduced.
+
+The existing Pebble config intentionally issues a 90-day certificate to
+ensure the normal no-op phase is meaningful. Such a certificate is not
+naturally due just minutes later. Instead, the task #248 runner image contains
+a **test-only, single-use Certbot argv adapter**
+[`certbot-force-renewal.bash`](../tests/e2e-local/certbot-force-renewal.bash).
+All normal commands delegate to the real installed `/usr/bin/certbot`
+unchanged. Only the separate `renew` runner creates a private mode-0700
+authorization directory and mode-0600 marker in its **own** disposable tmpfs.
+The adapter validates the exact selected `renew --cert-name test.e2e.test`,
+canonical staging `--server`, real account, private configuration directory
+and noninteractive no-hooks flags, then deletes the marker and executes
+the installed real Certbot **once** with `--force-renewal`. It leaves a
+nonsecret private receipt. The marker and receipt are destroyed with the
+container; the adapter is absent from the shipped producer, release OCI image
+and client.
+
+This does **not** prove the scheduling window of naturally due certificates.
+It proves that the unchanged producer correctly recognizes and validates a
+genuine replacement certificate, serializes the selected state, and makes
+its normal conditional SeaweedFS publication decision **after** real
+Certbot completes a second ACME transaction. The normal non-due behavior
+is verified independently before and after the forced event.
+
+The runtime gates require **all** of the following before the second order
+can be reported as successfully tested:
+
+1. The initial archive is independently downloaded into the renew runner,
+   has the correct native staging account, sole selected lineage and
+   leaf/private-key match, and its SHA-256 equals the verified pre-renewal
+   object digest.
+2. The real public producer itself restores the S3 state and calls real
+   Certbot. The private one-shot adapter receipt proves the intended
+   argument modification happened and was consumed.
+3. The producer reports `checked; published=true` and the remote S3
+   ETag and independently downloaded object SHA-256 both change.
+4. The **new certificate DER fingerprint differs** from the old; the
+   requested SAN, native Certbot account identity/private key and selected
+   renewal lineage remain stable. No other lineage is introduced.
+5. The serialized renewal configuration contains no persistent test-only
+   force setting, and the new archive passes the independent account,
+   certificate, private-key and lineage checks.
+6. Pebble's own nonsecret order counter advances by **exactly one**, then
+   stops. An unreadable counter is failure rather than assumed success.
+7. Yet another new runner independently downloads the new S3 object and
+   verifies its exact digest and certificate fingerprint. A final normal
+   unchanged-producer no-op in another fresh runner leaves the order count
+   and object unchanged.
+
+The runner never prints ACME account IDs, certificate private keys, raw
+provider output, or archived secrets. If the real Certbot plugin, Pebble
+gateway, conditional S3 write or forced-renewal option is incompatible,
+the scenario **fails closed**. No local source inspection or GitHub unit
+test run is evidence that these real protocols have already succeeded.
+
+This test relies on the two-namespaced E2E boundaries in ADR-047:
+`PEBBLE_VA_ALWAYS_VALID=1` and the simulated Route53 API, with no public
+provider access. It is not a test of DNS-01 propagation or AWS/Let's
+Encrypt interoperability. Broader negative fault injections are #246, and
+a dedicated runtime CI gate is #247. The real-provider staging workflow
+in milestone #4 remains separate and operator authorized.
+
+**Evidence still required:** The authoring runtime has no Docker/Podman
+engine. A native isolated Docker host must execute the documented flow
+and retain bounded results (second Pebble order count, old/new DER and
+archive digests, private adapter receipt validation, selected lineage and
+account equality, changed SeaweedFS ETag, no further no-op order). Static
+Bats and CI checks alone do not justify claiming successful real renewal.
