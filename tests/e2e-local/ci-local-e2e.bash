@@ -44,7 +44,7 @@ reject_credentials() {
     { error 'remote Docker context forbidden'; return 65; }
   while IFS= read -r key; do
     case "$key" in
-      AWS_*|GPG_SYMMETRIC_KEY|AZURE_*|GOOGLE_APPLICATION_CREDENTIALS)
+      AWS_*|GPG_SYMMETRIC_KEY|AZURE_CLIENT_ID|AZURE_CLIENT_SECRET|AZURE_TENANT_ID|AZURE_FEDERATED_TOKEN_FILE|GOOGLE_APPLICATION_CREDENTIALS)
         error 'ambient cloud credentials/settings forbidden'
         return 65
         ;;
