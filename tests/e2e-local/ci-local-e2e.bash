@@ -125,6 +125,11 @@ start_private_project() {
   PROJECT_STARTED=true
   if ! bash "$STACK" up >"$WORK/startup.log" 2>&1; then
     error 'isolated ACME/SeaweedFS services unavailable'
+    # Startup occurs before ACME account registration or S3 certificate
+    # publication. The topology/readiness errors contain only owned service
+    # names and public gateway diagnostics, not provider credentials.
+    # Never expose the later real Certbot/AWS execution logs.
+    tail -n 45 "$WORK/startup.log" >&2 || true
     return 74
   fi
   [[ "$(docker network inspect "$NETWORK" --format '{{.Internal}}' 2>/dev/null)" == true &&
