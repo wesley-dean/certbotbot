@@ -358,7 +358,7 @@ verify_no_force_persistence() {
   tar -xOzf "$archive" "./renewal/$NAME.conf" \
     >"$workspace/renewal.conf" 2>/dev/null ||
     { error 'renewal config extraction failed'; return 65; }
-  if grep -Ei '(^|[[:space:]])(force_renewal|renew_by_default|force-renewal)' \
+  if grep -Ei '^[[:space:]]*(force_renewal|renew_by_default)[[:space:]]*=[[:space:]]*(true|yes|1)([[:space:]]|$)|--force-renewal' \
     "$workspace/renewal.conf" >/dev/null; then
     error 'test-only force flag persisted in renewal state'
     return 65
