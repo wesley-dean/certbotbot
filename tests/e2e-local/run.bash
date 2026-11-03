@@ -211,7 +211,7 @@ probe_services() {
   ca_file="$(umask 077; mktemp)" ||
     { fail 'temporary test-only CA trust unavailable'; return 1; }
   for ((attempt = 1; attempt <= 45; attempt++)); do
-    if docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt "$ca_file" >/dev/null 2>&1 &&
+    if docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$ca_file" 2>/dev/null &&
       directory="$(curl --noproxy '*' -4 -fsS --cacert "$ca_file"         --connect-timeout 1 --max-time 3         --resolve "$STAGING_HOST:443:$GATEWAY_IP"         "https://$STAGING_HOST/directory" 2>/dev/null)" &&
       jq -e --arg prefix "https://$STAGING_HOST/" '
         (.newNonce | type == "string" and startswith($prefix))
