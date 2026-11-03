@@ -105,6 +105,10 @@ prepare() {
   done
   if ! bash "$HOST" build >"$WORK/runner-build.log" 2>&1; then
     error 'real Certbot runner image build failed'
+    # This stage runs BEFORE any cloud/provider credential or ACME account
+    # material exists. Only its public package/image build diagnostics are
+    # safe to expose; later provider/runtime logs must remain private.
+    tail -n 45 "$WORK/runner-build.log" >&2 || true
     return 74
   fi
   if ! bash "$STACK" fetch >"$WORK/service-fetch.log" 2>&1; then
