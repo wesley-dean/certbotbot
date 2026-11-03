@@ -198,7 +198,12 @@ run_lifecycle() (
     problem 'independent fresh runner could not verify stored certificate'
     return 74
   fi
-  grep -Eq '^local-first-issue: independently_verified_cert_der_sha256=[a-f0-9]{64}
+  grep -Eq '^local-first-issue: independently_verified_cert_der_sha256=[a-f0-9]{64}$' "$result" ||
+    { problem 'independent certificate proof missing'; return 65; }
+  old_cert="$(sed -nE 's/^local-first-issue: independently_verified_cert_der_sha256=([0-9a-f]{64})$/\1/p' "$result")"
+  [[ "$old_cert" =~ ^[0-9a-f]{64}$ ]] ||
+    { problem 'initial independently verified DER fingerprint missing'; return 65; }
+  printf '%s\n' 'local-first-issue-host: real local ACME and SeaweedFS first issuance verified (DNS-01 validation bypassed)'
   printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
   sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
 
@@ -291,59 +296,6 @@ main() {
   # No remote image pull, package installation, or source compilation here.
   # Cleanup is deliberately scoped to this run's two fixed container names.
   trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew >/dev/null 2>&1 || true' EXIT
-  run_lifecycle "$image"
-}
-
-main "$@"
- "$result" ||
-    { problem 'independent certificate proof missing'; return 65; }
-  old_cert="$(sed -nE 's/^local-first-issue: independently_verified_cert_der_sha256=([0-9a-f]{64})$/\1/p' "$result")"
-  [[ "$old_cert" =~ ^[0-9a-f]{64}$ ]] ||
-    { problem 'initial independently verified DER fingerprint missing'; return 65; }
-  printf '%s\n' 'local-first-issue-host: real local ACME and SeaweedFS first issuance verified (DNS-01 validation bypassed)'
-  printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
-  sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
-
-  # The pinned Pebble server records a nonsecret counter for every new order.
-  # A no-op succeeds only when this count remains unchanged for each exact
-  # producer flavor, proving no new order was added to Pebble's DB.
-  count_before="$(pebble_order_count)" || return $?
-  for flavor in development ordinary minified; do
-    if ! run_phase "$image" "$cert_ca" noop "$flavor" "$digest" \
-      >"$tmp/noop-$flavor.log" 2>&1; then
-      problem 'fresh-runner selected renewal/no-op failed'
-      return 74
-    fi
-    grep -Fqx "local-first-issue: fresh_runner_noop=$flavor; archive_sha256=$digest" \
-      "$tmp/noop-$flavor.log" ||
-      { problem 'fresh-runner no-op attestation missing'; return 65; }
-    count_after="$(pebble_order_count)" || return $?
-    [[ "$count_after" == "$count_before" ]] ||
-      { problem 'new Pebble ACME order appeared during supposed no-op'; return 65; }
-    printf 'local-first-issue-host: restored_noop=%s; no_new_order=true; no_republish=true\n' "$flavor"
-  done
-)
-
-## @fn main()
-## @brief Dispatches explicit dependency-fetch and sealed-test phases only.
-main() {
-  local action="${1-}" image=''
-  (( $# == 1 )) ||
-    { problem 'usage: first-issue-host.bash build|run'; return 64; }
-  case "$action" in
-    build|run) ;;
-    *) problem 'usage: first-issue-host.bash build|run'; return 64 ;;
-  esac
-  reject_cloud_env || return $?
-  require_engine || return $?
-  image="$(verified_artifact)" || return $?
-  if [[ "$action" == build ]]; then
-    build_runner "$image"
-    return $?
-  fi
-  # No remote image pull, package installation, or source compilation here.
-  # Cleanup is deliberately scoped to this run's two fixed container names.
-  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified >/dev/null 2>&1 || true' EXIT
   run_lifecycle "$image"
 }
 
