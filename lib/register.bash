@@ -80,6 +80,7 @@ certbotbot_register_fetch() {
 certbotbot_register_account_check() {
   local config="$1" host="$1/accounts/$CERTBOTBOT_REG_HOST"
   local directory="$host/directory" account='' entry file count=0
+  local account_details=''
   [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] ||
     return 65
   for entry in "$config/accounts/"*; do
@@ -119,12 +120,19 @@ certbotbot_register_account_check() {
       *) return 65 ;;
     esac
   done
-  grep -Fq -- "\"mailto:$CERTBOTBOT_EMAIL\"" "$account/regr.json" ||
+  # Current Certbot persists a native regr.json with an empty body and
+  # the ACME account URI; the contact is not necessarily present on disk.
+  # Require Certbot to recognize the exact local account and query the
+  # selected ACME authority for its current contact. A missing, changed,
+  # extra, or ambiguous contact fails closed before any publication.
+  # Never print the returned account URI, contact, or provider diagnostics.
+  account_details="$(certbot --config-dir "$config" \
+    --work-dir "$CERTBOTBOT_REG_WORK" --logs-dir "$CERTBOTBOT_REG_LOGS" \
+    --server "$CERTBOTBOT_REG_SERVER" --non-interactive \
+    --no-directory-hooks show_account --account "${account##*/}" 2>/dev/null)" ||
     return 65
-  certbot --config-dir "$config" --work-dir "$CERTBOTBOT_REG_WORK" \
-    --logs-dir "$CERTBOTBOT_REG_LOGS" --server "$CERTBOTBOT_REG_SERVER" \
-    --non-interactive --no-directory-hooks show_account \
-    --account "${account##*/}" >/dev/null 2>&1 || return 65
+  printf '%s\n' "$account_details" |
+    grep -Fqx -- "  Email contact: $CERTBOTBOT_EMAIL" || return 65
 }
 
 ## @fn certbotbot_register_preflight()
