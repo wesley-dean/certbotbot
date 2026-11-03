@@ -614,6 +614,12 @@ satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
 
+### ADR-050: Verify Registration Contact Through Certbot's Authoritative Account Query
+
+Certbot 5.8 stores native ACME account identity with an empty `regr.json` body rather than a durable cached contact. Registration and account reuse therefore retain exact account path, identity, file-permission and native-state checks, but require the installed Certbot's authenticated `show_account` query to return exactly the requested singular contact email from the selected ACME authority. Missing, mismatched, multiple, or unavailable contacts fail before any S3 publication, and raw account/provider output remains private. This narrowly refines ADR-041's contact verification method while preserving explicit consent, CA selection, fail-closed behavior and milestone #16 isolation.
+
+See [ADR-050](adr/ADR-050-verify-registration-contact-through-certbot.md).
+
 ### ADR-049: One-Shot Test-Only Forced Certbot Renewal for Local E2E
 
 Milestone #16's genuine second-order test may use a single-use argument adapter
