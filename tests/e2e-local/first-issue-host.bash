@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file tests/e2e-local/first-issue-host.bash
-## @brief Builds and runs the first genuine local ACME/S3 lifecycle test.
+## @brief Builds and runs credential-free positive and negative local E2E tests.
 ## @details
 ## The explicit 'build' phase is the only phase allowed to fetch runner
 ## dependencies. 'run' requires the already cached runner image, a running
 ## validated private Compose project and the private gateway's public root.
-## The two phases of 'run' use separate unprivileged, read-only containers,
+## Positive run stages use separate unprivileged, read-only containers,
 ## each with its own disposable tmpfs and no Docker socket or default route.
+## The distinct run-faults action requires a successful positive S3 seed and
+## verifies each expected refusal against independent SeaweedFS readback.
 ## The file never accepts user-provided cloud credentials, bucket, CA or URLs.
 ## @par Usage
 ## @code{.sh}
@@ -16,6 +18,7 @@
 ## bash tests/e2e-local/run.bash fetch
 ## bash tests/e2e-local/run.bash up
 ## bash tests/e2e-local/first-issue-host.bash run
+## bash tests/e2e-local/first-issue-host.bash run-faults
 ## bash tests/e2e-local/run.bash down
 ## @endcode
 
@@ -87,7 +90,8 @@ verified_artifact() {
     "$REPO/dist/certbotbot.dev.bash" "$REPO/dist/certbotbot.bash" \
     "$REPO/dist/certbotbot.min.bash" \
     "$E2E/runner.Dockerfile" "$E2E/first-issue.bash" \
-    "$E2E/provider-env.bash" "$E2E/certbot-force-renewal.bash" | \
+    "$E2E/provider-env.bash" "$E2E/certbot-force-renewal.bash" \
+    "$E2E/negative-scenarios.bash" "$E2E/aws-put-reject.bash" | \
     sha256sum | awk '{print $1}')" || return 74
   [[ "$sum" =~ ^[a-f0-9]{64}$ ]] || return 65
   printf '%s:sha-%s\n' "$IMAGE_PREFIX" "${sum:0:12}"
@@ -114,12 +118,21 @@ run_phase() {
   local image="$1" ca_file="$2" phase="$3"
   shift 3
   local name="certbotbot-local-e2e-${phase}"
-  if [[ "$phase" == noop ]]; then
-    case "${1-}" in development|ordinary|minified) ;;
-      *) problem 'invalid no-op container flavor'; return 64 ;;
-    esac
-    name="${name}-${1}"
-  fi
+  case "$phase" in
+    noop)
+      case "${1-}" in development|ordinary|minified) ;;
+        *) problem 'invalid no-op container flavor'; return 64 ;;
+      esac
+      name="${name}-${1}"
+      ;;
+    fault)
+      case "${1-}" in
+        ca-production|s3-unavailable|route53-unavailable|acme-unavailable|acme-order-rejected|s3-put-reject|corrupt-archive) ;;
+        *) problem 'invalid negative scenario container name'; return 64 ;;
+      esac
+      name="${name}-${1}"
+      ;;
+  esac
   # No --privileged, published ports, host network, root credentials, Docker
   # socket or shared file state. Private hosts binding plus loopback-only DNS
   # enforce the canonical staging host with no public resolver fallback.
@@ -276,6 +289,97 @@ run_lifecycle() (
   printf '%s\n' 'local-first-issue-host: renewed_object_independently_verified=true; subsequent_normal_noop=true'
 )
 
+## @fn run_faults()
+## @brief Exercises each expected local provider failure after positive seeding.
+## @details
+## Requires pre-existing genuine SeaweedFS certificate state from a successful
+## positive run. Each fault uses its own fresh runner. Independently fetches the
+## original object after each refusal, and checks the exact hash and certificate.
+## An ACME availability check pauses ONLY this project's Pebble container and
+## resumes it under an EXIT trap; a stalled gateway aborts before issuer entry.
+## No raw Certbot/AWS/ACME logs or private state are reported.
+## @param image Already cached runner from the verified public producer.
+run_faults() (
+  local image="$1" tmp='' cert_ca='' cid='' pebble_id='' scenario=''
+  local digest='' observed='' stdout_file=''
+  docker image inspect "$image" >/dev/null 2>&1 ||
+    { problem 'negative runner image missing; build before entering isolation'; return 69; }
+  bash "$HARNESS" status >/dev/null ||
+    { problem 'local services must be healthy before failure injection'; return 65; }
+  tmp="$(mktemp -d)" ||
+    { problem 'private negative test scratch unavailable'; return 74; }
+  trap 'if [[ -n "$pebble_id" ]]; then docker unpause "$pebble_id" >/dev/null 2>&1 || true; fi; rm -rf -- "$tmp"' EXIT
+  cert_ca="$tmp/gateway-root.crt"
+  cid="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
+    -p certbotbot-local-e2e ps -q acme-gateway)" || return 74
+  [[ -n "$cid" ]] ||
+    { problem 'local canonical staging gateway absent'; return 65; }
+  docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$cert_ca" >/dev/null 2>&1 ||
+    { problem 'temporary gateway public root unavailable'; return 74; }
+  chmod 0644 "$cert_ca"
+  openssl x509 -in "$cert_ca" -noout >/dev/null 2>&1 ||
+    { problem 'gateway public root invalid'; return 65; }
+
+  if ! run_phase "$image" "$cert_ca" baseline >"$tmp/baseline.log" 2>&1; then
+    problem 'negative suite requires independently readable real certificate state'
+    return 65
+  fi
+  digest="$(sed -nE 's/^local-first-issue: baseline_archive_sha256=([0-9a-f]{64})$/\1/p' "$tmp/baseline.log")"
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] ||
+    { problem 'baseline did not establish exact remote object digest'; return 65; }
+
+  for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected route53-unavailable s3-put-reject; do
+    stdout_file="$tmp/fault-$scenario.log"
+    if ! run_phase "$image" "$cert_ca" fault "$scenario" "$digest" \
+      >"$stdout_file" 2>&1; then
+      problem 'expected failure scenario did not establish its preservation proof'
+      return 74
+    fi
+    grep -Fqx \
+      "local-first-issue: negative_scenario=$scenario; remote_unchanged=true; provider_success=false" \
+      "$stdout_file" ||
+      { problem 'required negative scenario receipt missing'; return 65; }
+    if ! run_phase "$image" "$cert_ca" baseline >"$tmp/check-$scenario.log" 2>&1; then
+      problem 'independent object verification failed after negative scenario'
+      return 74
+    fi
+    observed="$(sed -nE 's/^local-first-issue: baseline_archive_sha256=([0-9a-f]{64})$/\1/p' "$tmp/check-$scenario.log")"
+    [[ "$observed" == "$digest" ]] ||
+      { problem 'authoritative object changed after negative scenario'; return 65; }
+    printf 'local-first-issue-host: negative=%s; remote_unchanged=true\n' "$scenario"
+  done
+
+  # ACME availability is a local service outage, not an ACME order refusal.
+  # Do not interfere with the pinned synthetic S3 object or the gateway PKI.
+  pebble_id="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
+    -p certbotbot-local-e2e ps -q pebble)" || return 74
+  [[ -n "$pebble_id" ]] ||
+    { problem 'local Pebble container unavailable for outage test'; return 65; }
+  docker pause "$pebble_id" >/dev/null ||
+    { problem 'could not pause dedicated Pebble test CA'; return 74; }
+  if ! run_phase "$image" "$cert_ca" fault acme-unavailable "$digest" \
+    >"$tmp/fault-acme.log" 2>&1; then
+    problem 'ACME outage did not fail closed before publication'
+    return 74
+  fi
+  grep -Fqx \
+    'local-first-issue: negative_scenario=acme-unavailable; remote_unchanged=true; provider_success=false' \
+    "$tmp/fault-acme.log" ||
+    { problem 'ACME outage negative receipt missing'; return 65; }
+  docker unpause "$pebble_id" >/dev/null ||
+    { problem 'Pebble did not resume after fault'; return 74; }
+  pebble_id=''
+  if ! run_phase "$image" "$cert_ca" baseline >"$tmp/check-acme.log" 2>&1; then
+    problem 'ACME recovery verification failed'
+    return 74
+  fi
+  observed="$(sed -nE 's/^local-first-issue: baseline_archive_sha256=([0-9a-f]{64})$/\1/p' "$tmp/check-acme.log")"
+  [[ "$observed" == "$digest" ]] ||
+    { problem 'remote object changed during ACME outage'; return 65; }
+  printf '%s\n' 'local-first-issue-host: negative=acme-unavailable; remote_unchanged=true'
+  printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
+)
+
 ## @fn main()
 ## @brief Dispatches explicit dependency-fetch and sealed-test phases only.
 main() {
@@ -283,8 +387,8 @@ main() {
   (( $# == 1 )) ||
     { problem 'usage: first-issue-host.bash build|run'; return 64; }
   case "$action" in
-    build|run) ;;
-    *) problem 'usage: first-issue-host.bash build|run'; return 64 ;;
+    build|run|run-faults) ;;
+    *) problem 'usage: first-issue-host.bash build|run|run-faults'; return 64 ;;
   esac
   reject_cloud_env || return $?
   require_engine || return $?
@@ -294,9 +398,12 @@ main() {
     return $?
   fi
   # No remote image pull, package installation, or source compilation here.
-  # Cleanup is deliberately scoped to this run's two fixed container names.
-  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew >/dev/null 2>&1 || true' EXIT
-  run_lifecycle "$image"
+  # Cleanup is deliberately scoped to this project's known ephemeral runner names.
+  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable >/dev/null 2>&1 || true' EXIT
+  case "$action" in
+    run) run_lifecycle "$image" ;;
+    run-faults) run_faults "$image" ;;
+  esac
 }
 
 main "$@"

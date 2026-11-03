@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file tests/e2e-local/first-issue.bash
-## @brief Exercises first local Pebble issuance and independently reads SeaweedFS.
+## @brief Exercises real Pebble certificate lifecycles and local failures.
 ## @details
-## Test-only, inside the ephemeral sealed runner.  The bootstrap and verify
-## modes execute in distinct containers with no shared Certbot workspace.
+## Test-only, inside the ephemeral sealed runner. Each positive or negative
+## mode executes in a distinct container with no shared Certbot workspace.
 ## Every provider response and certificate/key stays in disposable mode-0700
 ## tmpfs.  Only bounded status and nonsecret digests leave this process.
 ## Pebble explicitly skips validation of DNS-01: ADR-047.  The Route53 stub
@@ -13,6 +13,8 @@
 ## @code{.sh}
 ## first-issue.bash bootstrap
 ## first-issue.bash verify ARCHIVE_SHA256
+## first-issue.bash baseline
+## first-issue.bash fault SCENARIO ARCHIVE_SHA256
 ## @endcode
 
 set -euo pipefail
@@ -462,7 +464,19 @@ main() {
       [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
         { error 'invalid renewal archive digest'; return 64; }
       ;;
-    *) error 'usage: first-issue.bash bootstrap | verify ARCHIVE_SHA256 | noop FLAVOR ARCHIVE_SHA256 | renew ARCHIVE_SHA256'; return 64 ;;
+    baseline)
+      (( $# == 1 )) || { error 'unexpected baseline arguments'; return 64; }
+      ;;
+    fault)
+      (( $# == 3 )) || { error 'expected fault name and archive digest'; return 64; }
+      case "$2" in
+        ca-production|s3-unavailable|route53-unavailable|acme-unavailable|acme-order-rejected|s3-put-reject|corrupt-archive) ;;
+        *) error 'unsupported fault scenario'; return 64 ;;
+      esac
+      [[ "$3" =~ ^[a-f0-9]{64}$ ]] ||
+        { error 'invalid fault archive digest'; return 64; }
+      ;;
+    *) error 'usage: first-issue.bash bootstrap|verify|noop|renew|baseline|fault'; return 64 ;;
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
@@ -476,6 +490,15 @@ main() {
     verify) verify "$workspace" "$2" ;;
     noop) noop "$workspace" "$2" "$3" ;;
     renew) renew "$workspace" "$2" ;;
+    baseline)
+      # Test-only helpers are never sourced in release or positive runs.
+      source /usr/local/libexec/certbotbot-e2e/negative-scenarios.bash
+      negative_baseline "$workspace"
+      ;;
+    fault)
+      source /usr/local/libexec/certbotbot-e2e/negative-scenarios.bash
+      negative_scenario "$workspace" "$2" "$3"
+      ;;
   esac
 }
 

@@ -309,3 +309,91 @@ and retain bounded results (second Pebble order count, old/new DER and
 archive digests, private adapter receipt validation, selected lineage and
 account equality, changed SeaweedFS ETag, no further no-op order). Static
 Bats and CI checks alone do not justify claiming successful real renewal.
+
+
+## Bounded local negative lifecycle suite (task #246)
+
+The additional, **test-only** `run-faults` action of
+`tests/e2e-local/first-issue-host.bash` verifies that the real public
+producer fails closed when external dependencies or archived state become
+unusable. It is deliberately **separate from the positive run**, and
+requires the same *already-running*, internally networked Docker Compose
+project **after** its successful `run` has stored a genuine certificate:
+
+```bash
+make build
+bash tests/e2e-local/first-issue-host.bash build
+bash tests/e2e-local/run.bash fetch
+bash tests/e2e-local/run.bash up
+bash tests/e2e-local/first-issue-host.bash run
+bash tests/e2e-local/first-issue-host.bash run-faults
+bash tests/e2e-local/run.bash down
+```
+
+Always run the final `down`, including on failure. The fault suite does
+**not** construct a synthetic success or replace real account, certificate
+or SeaweedFS readback behavior. It uses distinct clean runners and one
+verified, checksum-valid public producer with explicit staging selection.
+The normal issued synthetic identity is `test.e2e.test`. A new
+`fault.e2e.test` selected lineage is requested for faults that otherwise
+would be skipped by the already-issued, non-due certificate. No live AWS
+credentials, public Route53, public ACME endpoint, metadata service or
+external DNS is required or authorized.
+
+Each scenario obtains a verified baseline of the *real* SeaweedFS current
+object (the `latest.tar.gz` key in the synthetic bucket), then requires
+the original object's independently observed SHA-256, S3 ETag,
+LastModified, ContentLength, canonical staging account, selected leaf
+certificate SAN and matching private key to remain unchanged after
+the failed invocation. The host obtains an **additional** independent
+readback in a new runner after each scenario. Neither a nonzero exit
+alone nor the absence of a terminal success line is sufficient proof.
+If an actual S3 write returns an uncertain outcome, this harness must
+fail rather than assert rollback or unobserved preservation.
+
+| Literal scenario | Injected boundary | What passing means | Not demonstrated |
+| --- | --- | --- | --- |
+| `ca-production` | Existing staging-only provider guard rejects explicit production before invoking the producer | Production cannot be selected inside this local run | Public CA connectivity or real CA authorization |
+| `s3-unavailable` | Public producer's S3 endpoint is forced to a closed **loopback** port; independent readbacks still use real SeaweedFS | Inaccessible S3 is never treated as missing, registration is not implicit, and original object is not rewritten | Real IAM denial response |
+| `corrupt-archive` | Real SeaweedFS holds a second key with invalid gzip bytes | The public producer rejects the corrupt archive; the corrupt fixture remains unchanged; current valid object is unaffected | All possible malformed tar/PEM structures |
+| `acme-order-rejected` | Pebble's pinned `domainBlocklist` rejects the exact synthetic `blocked.e2e.test` identifier during `newOrder` | The real producer's new order fails, with no publication to the current object | Live Let's Encrypt issuance policy or rate limits |
+| `route53-unavailable` | Public producer's Route53 endpoint is a closed **loopback** port, while real Pebble and SeaweedFS remain available | A fresh issuance cannot silently publish a candidate when the simulated external DNS API is unavailable | Real AWS Route53 semantics or DNS propagation |
+| `s3-put-reject` | A runner-only AWS CLI adapter lets the real installed CLI handle every other operation but refuses a bounded `s3api put-object` against the one current synthetic key | The unchanged public producer reaches its publish boundary, reports failure, and leaves the previous real SeaweedFS object unchanged | SeaweedFS's actual rejected-PUT response and real AWS authorization semantics |
+| `acme-unavailable` | The host pauses only the internal Pebble container during one runner invocation; an EXIT trap ensures it is unpaused | The canonical staging gateway refuses unavailable ACME service before a misleading successful publish; current S3 object is stable | A mid-order ACME failure; order-policy rejection is tested separately above |
+
+The private `provider-env.bash` accepts only literal fault modes. The
+only altered endpoint addresses are fixed local test IPs or the closed
+`127.0.0.1:9` loopback endpoint, never caller-supplied URLs. The test-only
+`aws-put-reject.bash` adapter lives in the **isolated runner image**, not
+the shipped producer or release image, and delegates every nonfaulted call
+unchanged to the **real** `/usr/bin/aws`. It emits a nonsecret private
+receipt only for the exact synthetic bucket/current-object PutObject
+attempt; it never invents an accepted write. The real installed Certbot,
+private Pebble authority and native Certbot registration/lineage remain
+the positive test dependencies.
+
+The host runs the failure modes sequentially, without concurrent writers,
+stores all raw provider output only in ephemeral mode-0700 workspace files,
+and emits only literal scenario names and bounded success/failure
+identifiers. The corrupt fixture is stored under a separate synthetic key
+and disappears when the disposable project volume is torn down; reusing
+the same running project for another identical corrupt-fixture injection
+will fail safely rather than silently overwrite it. The ACME outage is
+introduced by `docker pause` only for the owned Pebble container and is
+undone by a scoped EXIT trap; other application and host Docker state are
+not touched. The runner's `internal: true` network, exact
+staging-name mapping, synthetic AWS credentials, no default route, and
+production name-resolution refusal remain mandatory. A successful
+preflight establishes these bounds at the tested moment, **not** complete
+packet-capture proof of all possible egress.
+
+**Required runtime evidence:** For each literal scenario, preserve a
+bounded nonsecret status attesting the expected refusal, the unchanged
+S3 object and independent readback. A successful local suite demonstrates
+failure *handling* under these controlled faults; it is not evidence that
+the genuine AWS/Let's Encrypt services behave identically. The authoring
+runtime has no Docker Engine, so this branch adds runnable negative
+protocol tests but **does not claim that a Docker-backed negative
+sequence has passed**. The dedicated, fully gated CI invocation remains
+task #247. Milestone #4's manually authorized real-provider staging
+acceptance remains separately necessary.

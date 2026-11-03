@@ -4,9 +4,10 @@
 ## @brief Confines an unchanged public producer to the private staging gateway.
 ## @details
 ## Test-only code outside shipped source. Requires an internal container runner
-## provisioned in a later task with ephemeral public gateway CA trust at
-## /run/certbotbot-e2e/gateway-root.crt. Route53 deliberately fails closed
-## until the separately approved task #243 supplies a verified local adapter.
+## provisioned with ephemeral public gateway CA trust at
+## /run/certbotbot-e2e/gateway-root.crt. Normal Route53 calls target the
+## project-owned bounded test double; explicit fault modes may substitute
+## only a fixed closed loopback endpoint, never a public cloud URL.
 ## @par Usage
 ## @code{.sh}
 ## provider-env.bash --check
@@ -98,6 +99,12 @@ provider_verify_isolation() {
 ## @brief Runs a checksum-verified public producer with synthetic environment.
 main() {
   local file sum
+  local fault="${LOCAL_E2E_FAULT_MODE-}" s3_endpoint='' route53_endpoint=''
+  # Approved test-only service faults are literal, never caller-supplied URLs.
+  case "$fault" in
+    ''|s3-unavailable|s3-put-reject|route53-unavailable|acme-unavailable|acme-order-rejected|corrupt-archive|ca-production) ;;
+    *) provider_error 'unknown isolated fault mode'; return 64 ;;
+  esac
   [[ $# -ge 1 ]] ||
     { provider_error 'usage: --check | -- ABSOLUTE_ARTIFACT ARGS'; return 64; }
   case "$1" in
@@ -125,17 +132,26 @@ main() {
       [[ "$(cat "$file.sha256")" == "$sum  ${file##*/}" ]] ||
         { provider_error 'public artifact checksum mismatch'; return 65; }
       provider_verify_isolation || return $?
+      # A single explicit fault may make one synthetic provider unavailable.
+      # Ordinary and unrelated providers remain real; outside this test
+      # profile both addresses are the original isolated services.
+      s3_endpoint="http://$S3_IP:8333"
+      route53_endpoint="http://$ROUTE53_IP:8056"
+      case "$fault" in
+        s3-unavailable) s3_endpoint='http://127.0.0.1:9' ;;
+        route53-unavailable) route53_endpoint='http://127.0.0.1:9' ;;
+      esac
       # No inherited profile/IMDS/proxy/user CA or Certbot configuration.
-      # Route53 only reaches the internal project-owned one-zone adapter.
-      # Never use boto3's default public Route53 endpoint in this runner.
+      # Never allow a production endpoint or real cloud credentials.
       env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/tmp TMPDIR=/tmp \
         AWS_ACCESS_KEY_ID=CBOTBOT_LOCAL_TEST_ACCESS_ONLY \
         AWS_SECRET_ACCESS_KEY=CBOTBOT_LOCAL_TEST_SECRET_NOT_A_CLOUD_KEY \
         AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1 \
         AWS_EC2_METADATA_DISABLED=true AWS_CONFIG_FILE=/dev/null \
         AWS_SHARED_CREDENTIALS_FILE=/dev/null \
-        AWS_ENDPOINT_URL_S3="http://$S3_IP:8333" \
-        AWS_ENDPOINT_URL_ROUTE53="http://$ROUTE53_IP:8056" \
+        AWS_ENDPOINT_URL_S3="$s3_endpoint" \
+        AWS_ENDPOINT_URL_ROUTE53="$route53_endpoint" \
+        LOCAL_E2E_FAULT_MODE="$fault" \
         REQUESTS_CA_BUNDLE="$TRUST_FILE" SSL_CERT_FILE="$TRUST_FILE" \
         CURL_CA_BUNDLE="$TRUST_FILE" \
         "$@"

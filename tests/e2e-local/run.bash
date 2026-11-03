@@ -99,6 +99,7 @@ validate_topology() {
   jq -e '
     (.pebble.profiles | keys == ["default"])
     and (.pebble.profiles.default.validityPeriod == 7776000)
+    and (.pebble.domainBlocklist == ["blocked-domain.example","blocked.e2e.test"])
     and (.pebble.listenAddress == "0.0.0.0:14000")
     and (.pebble.managementListenAddress == "0.0.0.0:15000")
     and (.pebble.externalAccountBindingRequired == false)

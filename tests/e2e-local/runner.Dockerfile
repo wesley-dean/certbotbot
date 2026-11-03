@@ -21,9 +21,11 @@ RUN set -eu; \
 
 # The exact public output of 'make build'; Docker builds fail if absent.
 COPY dist/certbotbot.dev.bash dist/certbotbot.dev.bash.sha256 dist/certbotbot.bash dist/certbotbot.bash.sha256 dist/certbotbot.min.bash dist/certbotbot.min.bash.sha256 /usr/local/bin/
-COPY tests/e2e-local/provider-env.bash tests/e2e-local/first-issue.bash /usr/local/libexec/certbotbot-e2e/
+COPY tests/e2e-local/provider-env.bash tests/e2e-local/first-issue.bash tests/e2e-local/negative-scenarios.bash /usr/local/libexec/certbotbot-e2e/
 # The test-only argv adapter is never part of release image or public artifact.
 COPY tests/e2e-local/certbot-force-renewal.bash /usr/local/bin/certbot
+# Test-only, fail-closed AWS publication fault: all other calls use real CLI.
+COPY tests/e2e-local/aws-put-reject.bash /usr/local/bin/aws
 
 RUN set -eu; \
     cd /usr/local/bin; \
@@ -37,7 +39,10 @@ RUN set -eu; \
     bash -n /usr/local/libexec/certbotbot-e2e/first-issue.bash; \
     test -x /usr/bin/certbot; \
     bash -n /usr/local/bin/certbot; \
-    chmod 0555 /usr/local/bin/certbot; \
+    test -x /usr/bin/aws; \
+    bash -n /usr/local/bin/aws; \
+    bash -n /usr/local/libexec/certbotbot-e2e/negative-scenarios.bash; \
+    chmod 0555 /usr/local/bin/certbot /usr/local/bin/aws; \
     chmod 0555 /usr/local/libexec/certbotbot-e2e/*.bash
 
 ENV HOME=/tmp TMPDIR=/tmp XDG_CACHE_HOME=/tmp/cache
