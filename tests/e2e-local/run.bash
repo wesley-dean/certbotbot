@@ -25,6 +25,8 @@ readonly NETWORK="${PROJECT}_isolated"
 readonly PEBBLE_IP='172.31.248.2'
 readonly CHALL_IP='172.31.248.3'
 readonly SEAWEED_IP='172.31.248.4'
+readonly GATEWAY_IP='172.31.248.5'
+readonly STAGING_HOST='acme-staging-v02.api.letsencrypt.org'
 
 ## @fn report_error()
 ## @brief Emits a bounded nonsecret error without selecting the exit status.
@@ -95,7 +97,7 @@ validate_topology() {
   jq -e '
     (.networks.isolated.internal == true)
     and (.networks.isolated.driver == "bridge")
-    and ([.services | keys[]] | sort == ["challtestsrv","pebble","seaweedfs"])
+    and ([.services | keys[]] | sort == ["acme-gateway","challtestsrv","pebble","seaweedfs"])
     and ([.services[] | .platform] | all(. == "linux/amd64"))
     and ([.services[] | .image] |
        all(test("^[a-z0-9./:-]+@sha256:[0-9a-f]{64}$")))
@@ -103,7 +105,10 @@ validate_topology() {
     and ([.services[] | (.network_mode // "")] |
        all(. != "host" and . != "none"))
     and ([.services[] | (.privileged // false)] | all(. == false))
-    and ([.services[] | (.cap_add // [])] | all(length == 0))
+    and (.services["acme-gateway"].cap_add == ["NET_BIND_SERVICE"])
+    and (.services["acme-gateway"].cap_drop == ["ALL"])
+    and (.services["acme-gateway"].read_only == true)
+    and ([.services | to_entries[] | select(.key != "acme-gateway") | (.value.cap_add // [])] | all(length == 0))
     and ([.services[] | (.devices // [])] | all(length == 0))
     and ([.services[] | (.network_mode // "")] | all(. == ""))
     and ([.services[] | .networks | keys[]] | all(. == "isolated"))
@@ -112,7 +117,7 @@ validate_topology() {
 }
 
 ## @fn validate_cached_images()
-## @brief Requires all three immutable image references to be locally cached.
+## @brief Requires all four immutable image references to be locally cached.
 ## @details
 ## No implicit pull is permitted when starting the offline test network.
 validate_cached_images() {
@@ -132,7 +137,7 @@ check_running_isolation() {
     { fail 'actual network is not internal'; return 1; }
   [[ "$(docker network inspect "$NETWORK" --format '{{.Driver}}' 2>/dev/null)" == bridge ]] ||
     { fail 'actual network is not a private bridge'; return 1; }
-  for service in pebble challtestsrv seaweedfs; do
+  for service in pebble challtestsrv seaweedfs acme-gateway; do
     cid="$(compose ps -q "$service")"
     [[ -n "$cid" && "$(docker inspect "$cid" --format '{{.State.Running}}')" == true ]] ||
       { fail 'required service is not running'; return 1; }
@@ -152,7 +157,7 @@ check_running_isolation() {
 ## Real ACME trust, credentials, and S3 conditional semantics are not
 ## established by these probes.  Docker rootless parity is not claimed.
 probe_services() {
-  local attempt code response
+  local attempt code response cid ca_file directory
   for ((attempt = 1; attempt <= 45; attempt++)); do
     if curl --noproxy '*' -4 -skf --connect-timeout 1 --max-time 2 \
       "https://$PEBBLE_IP:14000/dir" >/dev/null 2>&1; then
@@ -182,6 +187,27 @@ probe_services() {
     sleep 1
   done
   (( attempt <= 45 )) || { fail 'SeaweedFS S3 HTTP readiness timed out'; return 1; }
+
+  # Copy only the gateway's ephemeral public root cert, never its private key.
+  cid="$(compose ps -q acme-gateway)"
+  ca_file="$(umask 077; mktemp)" ||
+    { fail 'temporary test-only CA trust unavailable'; return 1; }
+  for ((attempt = 1; attempt <= 45; attempt++)); do
+    if docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$ca_file" >/dev/null 2>&1 &&
+      directory="$(curl --noproxy '*' -4 -fsS --cacert "$ca_file"         --connect-timeout 1 --max-time 3         --resolve "$STAGING_HOST:443:$GATEWAY_IP"         "https://$STAGING_HOST/directory" 2>/dev/null)" &&
+      jq -e --arg prefix "https://$STAGING_HOST/" '
+        (.newNonce | type == "string" and startswith($prefix))
+        and (.newAccount | type == "string" and startswith($prefix))
+        and (.newOrder | type == "string" and startswith($prefix))
+      ' <<<"$directory" >/dev/null 2>&1; then
+      rm -f -- "$ca_file"
+      return 0
+    fi
+    sleep 1
+  done
+  rm -f -- "$ca_file"
+  fail 'verified canonical staging gateway readiness timed out'
+  return 1
 }
 
 ## @fn teardown()
