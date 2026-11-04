@@ -258,6 +258,26 @@ configuration *without* exporting raw Certbot or archive contents and
 still require every positive, negative, isolation, and cleanup acceptance
 condition before merging the parent E2E PR.
 
+## Critical DNS SAN Extension Compatibility
+
+The real local Certbot/Pebble run reached genuine issuance, then failed
+the SAN-reader predicate. A bounded diagnostic on attempt 2 of
+[run 41775450237](https://github.com/wesley-dean/certbotbot/actions/runs/41775450237)
+identified `san_header=critical`, without exposing actual SAN identities,
+PEM data or OpenSSL output. ADR-053 permits only the exact OpenSSL
+`X509v3 Subject Alternative Name: critical` header in addition to the
+previously accepted noncritical spellings. Unsupported SAN types,
+duplicate names, multiple lines, incorrect DNS identities and malformed
+header attributes must continue to fail closed. This change does not
+relax expiry, chain, key correspondence or archive publication checks.
+
+Bats tests verify exact critical-header acceptance, and refusal of non-DNS
+and repeated entries, identity drift and alternate header attributes,
+across the three shipped producer flavors. Mocked tests do not establish
+real protocol success. The full Pebble/SeaweedFS lifecycle, second genuine
+ACME order, seven negative cases, isolation, and cleanup must pass on the
+PR #260 integration branch after merge.
+
 ## Bounded Selected-Certificate Verification Diagnostics
 
 When selected certificate material fails the prepublication verifier, a fixed
@@ -305,6 +325,7 @@ milestone #4 workflow remains necessary. See the
 ADRs 046, 047, 048 and 049. A merged test workflow without at least one
 successful engine-backed run must **not** be reported as validated E2E
 behavior.
+
 
 
 

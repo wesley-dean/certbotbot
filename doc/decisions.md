@@ -614,6 +614,12 @@ satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
 
+### ADR-053: Admit Exact OpenSSL Critical DNS SAN Extension Header
+
+A native isolated Certbot/Pebble run proved that the issued leaf's SAN extension is marked `critical` in OpenSSL output, a format rejected before the existing DNS-name checks. The selected certificate reader now permits the precise `X509v3 Subject Alternative Name: critical` header alongside its two existing noncritical spellings, retaining one-line DNS-only parsing, distinctness, and exact requested SAN matching. Expiration, chain parsing, fullchain/leaf identity, and private-key checks remain unchanged; acceptance remains contingent on full local E2E verification.
+
+See [ADR-053](adr/ADR-053-exact-critical-san-extension-header.md).
+
 ### ADR-052: Retain Certbot's Exact Single DNS-01 Challenge Tuple
 
 Certbot may serialize the single requested DNS-01 challenge as `pref_challs = dns-01,` in renewal metadata.  The verified renewal adapter accepts exactly `dns-01` or `dns-01,` for that field, preserving bytes during the five-path mapping; it does not infer permission for multiple challenges, HTTP-01, alternative serialization or arbitrary comma-delimited settings.  The separate `preferred_challenges` field remains restricted to `dns-01`, and all ADR-022/ADR-051 path and hook security requirements remain in force.  The milestone-16 challenge-validation-bypassed Pebble/SeaweedFS test must independently prove compatibility before this behavior is considered integration-verified.
