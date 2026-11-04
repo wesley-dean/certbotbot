@@ -411,9 +411,9 @@ Focused negative debugging emits a single case's timing under the existing
 Successful [run 41875100822](https://github.com/wesley-dean/certbotbot/actions/runs/41875100822)
 observed 128 seconds for the full seven-negative stage, 171 seconds for
 initial positive lifecycle, and 24 seconds for private project startup.
-A hypothetical seven-way isolated fan-out that re-created each complete
-seed state would add more setup latency than the entire existing negative
-stage. This is a cost model, **not** evidence of an implemented parallel run
+A hypothetical fan-out requiring serial preparation of new full
+fixtures **after** the positive lifecycle would add more setup time
+than the entire existing negative stage. This is a cost model, **not** evidence of an implemented parallel run
 or a measured speedup. See ADR-057 and the
 [negative E2E benchmark](e2e-negative-parallelism-benchmark.md) for
 observations, limitations and conditions for reconsideration.
