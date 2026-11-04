@@ -251,6 +251,82 @@ certbotbot_state_lineage() {
   return 0
 }
 
+## @var CERTBOTBOT_ARCHIVED_NAMES
+## @brief Sorted exact identities from the validated restored archive.
+## @details
+## This transient array is only used by explicit ADR-058 bulk maintenance.
+## Names come from complete renewal/live/archive triplets; the ordinary
+## selected-only lifecycle does not use it.
+declare -a CERTBOTBOT_ARCHIVED_NAMES=()
+
+## @fn certbotbot_state_inventory()
+## @brief Inventories and canonically validates every archived lineage.
+## @details
+## Derives case-sensitive names from regular renewal configuration members,
+## then requires the existing full account, hook, triplet and canonical
+## renewal-metadata preflight to accept the whole workspace.  The selected
+## identity is an optional already-validated target; when omitted, the first
+## archived identity is used only as a read-only preflight reference.
+## No synthetic certificate identity is created.  An account-only archive
+## is supported only with an explicit selected identity for issuance.
+## Runs in C locale to produce a deterministic lexical order independent
+## of runner configuration; no raw archive material is emitted.
+##
+## @param config Private restored mode-0700 Certbot configuration root.
+## @param selected Exact ordinary selected name or empty for domainless bulk.
+##
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## Nothing is written to STDOUT.
+## @par STDERR
+## Fixed nonsecret diagnostics on invalid restored state.
+##
+## @returns Validated names in CERTBOTBOT_ARCHIVED_NAMES.
+## @retval 0 All archived identities and account metadata are valid.
+## @retval 64 Invalid selected identity or configuration root.
+## @retval 65 Malformed state or zero lineages in domainless bulk mode.
+## @note Preflight or canonical checks may propagate their own nonzero status.
+## @par Examples
+## @code
+## certbotbot_state_inventory "$workspace/config" "" || return $?
+## for name in "${CERTBOTBOT_ARCHIVED_NAMES[@]}"; do
+##   : "Do not infer renewal authority from name enumeration alone"
+## done
+## @endcode
+certbotbot_state_inventory() {
+  local config="$1" selected="$2" probe file name
+  local LC_ALL=C
+  CERTBOTBOT_ARCHIVED_NAMES=()
+  if [[ -d "$config/renewal" && ! -L "$config/renewal" ]]; then
+    for file in "$config/renewal/"*.conf; do
+      [[ -e "$file" || -L "$file" ]] || continue
+      [[ -f "$file" && ! -L "$file" ]] || {
+        printf '%s\n' 'certbotbot: unsafe archived renewal inventory' >&2
+        return 65
+      }
+      name="${file##*/}"
+      name="${name%.conf}"
+      if [[ "$name" == *'*'* ]] || ! certbotbot_dns_valid "$name"; then
+        printf '%s\n' 'certbotbot: unsupported archived lineage identity' >&2
+        return 65
+      fi
+      CERTBOTBOT_ARCHIVED_NAMES+=("$name")
+    done
+  fi
+  probe="$selected"
+  if [[ -z "$probe" ]]; then
+    if (( ${#CERTBOTBOT_ARCHIVED_NAMES[@]} == 0 )); then
+      printf '%s\n' 'certbotbot: bulk renewal requires archived certificates' >&2
+      return 65
+    fi
+    probe="${CERTBOTBOT_ARCHIVED_NAMES[0]}"
+  fi
+  certbotbot_state_preflight "$config" "$probe" || return $?
+  certbotbot_state_canonical_all "$config" "$probe" || return $?
+  return 0
+}
+
 ## @fn certbotbot_state_canonical_all()
 ## @brief Verifies canonical renewal metadata for every stored certificate.
 ## @details
