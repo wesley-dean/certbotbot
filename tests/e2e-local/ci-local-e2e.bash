@@ -198,7 +198,10 @@ probe_no_egress() {
 ## @retval 74 Real ACME and SeaweedFS acceptance could not be demonstrated.
 run_positive() {
   local logfile="$WORK/positive.log" flavor action=run
-  [[ "${E2E_MODE-full}" == debug-second-order ]] && action=run-debug-second-order
+  case "${E2E_MODE-full}" in
+    debug-second-order) action=run-debug-second-order ;;
+    debug-negative) action=run-debug-seed ;;
+  esac
   if ! timeout --signal=TERM --kill-after=15s 2100s \
     bash "$HOST" "$action" >"$logfile" 2>&1; then
     # Only literal host-owned bounded failure categories may reach CI output.
@@ -353,6 +356,12 @@ run_positive() {
     printf '%s\n' 'local-e2e-ci: partial-development=true; target=second-order; full_acceptance=false'
     return 0
   fi
+  if [[ "${E2E_MODE-full}" == debug-negative ]]; then
+    require_receipt "$logfile" \
+      'local-first-issue-host: focused_seed=passed; full_acceptance=false' || return $?
+    printf '%s\n' 'local-e2e-ci: partial-development=true; target=negative-fixture; full_acceptance=false'
+    return 0
+  fi
   for flavor in development ordinary minified; do
     require_receipt "$logfile" \
       "local-first-issue-host: restored_noop=$flavor; no_new_order=true; no_republish=true" ||
@@ -389,6 +398,24 @@ run_negative() {
     'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed' ||
     return $?
   printf '%s\n' 'local-e2e-ci: negative_seven=passed; original_seaweedfs_archive=unchanged'
+}
+
+## @fn run_focused_negative()
+## @brief Tests only the explicitly allowlisted negative scenario in partial mode.
+## @details Genuine issuance and stabilization were seeded by run_positive.
+## @retval 0 A real refusal and independent unchanged SeaweedFS readback passed.
+run_focused_negative() {
+  local logfile="$WORK/focused-negative.log" scenario="$E2E_NEGATIVE"
+  if ! timeout --signal=TERM --kill-after=15s 2100s \
+    bash "$HOST" run-debug-fault "$scenario" >"$logfile" 2>&1; then
+    error "focused negative=$scenario failed (partial-development only)"
+    return 74
+  fi
+  require_receipt "$logfile" \
+    "local-first-issue-host: negative=$scenario; remote_unchanged=true" || return $?
+  require_receipt "$logfile" \
+    "local-first-issue-host: focused_negative=$scenario; full_acceptance=false" || return $?
+  printf 'local-e2e-ci: focused_negative=%s; full_acceptance=false\n' "$scenario"
 }
 
 ## @fn cleanup()
@@ -446,10 +473,21 @@ timed_stage() {
 ## @retval 74 Real protocol or fixture operations could not be verified.
 main() {
   E2E_MODE=full
-  if (($# == 1)) && [[ "$1" == --debug-second-order ]]; then
-    E2E_MODE=debug-second-order
+  E2E_NEGATIVE=''
+  if (($# == 1)); then
+    case "$1" in
+      --debug-second-order) E2E_MODE=debug-second-order ;;
+      --debug-negative=*)
+        E2E_NEGATIVE="${1#--debug-negative=}"
+        case "$E2E_NEGATIVE" in
+          ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable)
+            E2E_MODE=debug-negative ;;
+          *) error 'unsupported focused negative scenario'; return 64 ;;
+        esac ;;
+      *) error 'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'; return 64 ;;
+    esac
   elif (($# != 0)); then
-    error 'usage: ci-local-e2e.bash [--debug-second-order]'
+    error 'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'
     return 64
   fi
   reject_credentials || return $?
@@ -466,9 +504,11 @@ main() {
   timed_stage positive-lifecycle run_positive || return $?
   if [[ "$E2E_MODE" == full ]]; then
     timed_stage seven-negatives run_negative || return $?
+  elif [[ "$E2E_MODE" == debug-negative ]]; then
+    timed_stage focused-negative run_focused_negative || return $?
   fi
   timed_stage post-isolation probe_no_egress after || return $?
-  if [[ "$E2E_MODE" == debug-second-order ]]; then
+  if [[ "$E2E_MODE" != full ]]; then
     printf '%s\n' 'local-e2e-ci: partial-development=passed; full_protocol_gate=not-run'
     return 0
   fi
