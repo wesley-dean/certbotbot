@@ -1,0 +1,55 @@
+---
+name: Local protocol E2E focused debug (partial only)
+
+# Deliberately manual; not a required acceptance check or PR/push trigger.
+# yamllint disable-line rule:truthy
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-protocol-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-second-order:
+    name: Partial second-order diagnostic (not acceptance)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify fixed local tool syntax and no ambient credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          bash -n tests/e2e-local/ci-local-e2e.bash
+          bash -n tests/e2e-local/first-issue-host.bash
+          bash -n tests/e2e-local/first-issue.bash
+      - name: Run genuine focused second-order with explicit partial result
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/e2e-local/ci-local-e2e.bash --debug-second-order
+      - name: Verify private project removal even on failure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          project=certbotbot-local-e2e
+          compose=tests/e2e-local/compose.yml
+          cid="$(docker compose --env-file /dev/null -f "$compose" -p "$project" ps -q pebble 2>/dev/null || true)"
+          if [[ -n "$cid" ]] &&
+            [[ "$(docker inspect "$cid" --format '{{.State.Paused}}' 2>/dev/null)" == true ]]; then
+            docker unpause "$cid" >/dev/null
+          fi
+          docker compose --env-file /dev/null -f "$compose" -p "$project" down --volumes --remove-orphans --timeout 10 >/dev/null
+          ! docker network inspect "${project}_isolated" >/dev/null 2>&1
+          printf '%s\n' 'local-e2e-debug: disposable project cleanup verified; full acceptance not run'

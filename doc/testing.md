@@ -294,6 +294,42 @@ fails for its native Certbot certificate. Mocked Bats cases exercise the
 three literal categories and ensure that private fixture content is not
 emitted. A green mocked check does not constitute real-protocol acceptance.
 
+## Mandatory local protocol E2E CI gate (milestone #16)
+
+The separate workflow
+[`Local protocol E2E (challenge validation bypassed)`](../.github/workflows/local-protocol-e2e.yml)
+runs on push and manual dispatch, without cloud secrets or credentials.
+Unlike the static Bats suite, it builds all checksum-verified producer
+flavors, starts pinned Pebble and SeaweedFS images on a private Docker
+network, and drives actual ACME registration, first issuance, independent
+SeaweedFS readback, one independently verified native metadata-only stabilization,
+three strictly nonpublishing fresh-runner no-ops, an intentional second real
+ACME order/renewal, and independent replacement verification.
+
+The workflow also requires **all seven** negative scenarios to preserve
+the authoritative current object, and active non-egress and trusted
+local-staging TLS probes both before and after lifecycle execution. The
+single shell entry point is
+`bash tests/e2e-local/ci-local-e2e.bash`. Dependencies and immutable
+OCI images are fetched **before** private network startup; every failed
+runtime scenario, skipped proof receipt, or incomplete project cleanup is
+a failed gate. The script has bounded timeouts and prints only nonsecret
+phase receipts; no private provider logs, certificates, account keys, or
+S3 archives are uploaded.
+
+This is challenge-validation-bypassed **Pebble** plus a bounded Route53
+stub and **real SeaweedFS** protocol acceptance. It does not establish
+actual Route53 DNS-01 challenge propagation, real Amazon S3 IAM, or
+Let's Encrypt staging compatibility. The separately governed live
+milestone #4 workflow remains necessary. See the
+[local E2E harness and CI guide](local-protocol-e2e-harness.md) and
+ADRs 046, 047, 048 and 049. A merged test workflow without at least one
+successful engine-backed run must **not** be reported as validated E2E
+behavior.
+
+
+
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful
@@ -324,3 +360,33 @@ navigation and rendered reference output rather than relying on ignore rules as
 an undocumented convention.
 
 See ADR-010 and ADR-017 for the generated-documentation ownership model.
+
+
+### Focused local protocol debugging (issue #275)
+
+The required push-triggered `Local protocol E2E` workflow remains full and
+unmodified: its default, argument-free runner proves all positive stages,
+three artifact-flavor no-ops, seven negative cases, isolation, and cleanup.
+For iterative debugging of the genuine second Pebble ACME order, invoke
+`bash tests/e2e-local/ci-local-e2e.bash --debug-second-order` on a native
+Linux Docker host (or through the separate manual debug workflow). This
+**partial development** mode retains real initial registration/issuance,
+independent first readback, native post-issuance stabilization with independent
+readback, the second real ACME order and renewed certificate validation,
+both active no-egress probes, and complete container teardown. It skips the
+three unrelated stable-flavor no-ops, the final post-renewal no-op, and seven
+unrelated negatives. A partial result never prints the required
+`full_protocol_gate=passed` receipt and must never substitute for final-head
+full acceptance. Per-stage elapsed seconds are bounded nonsecret diagnostics;
+provider logs and account material stay private. This debug mode is not a
+performance guarantee; the full CI gate still runs on every candidate push.
+
+A named negative case may be isolated in partial mode using
+`--debug-negative=NAME` with exactly one of `ca-production`,
+`s3-unavailable`, `corrupt-archive`, `acme-order-rejected`,
+`route53-unavailable`, `s3-put-reject`, or `acme-unavailable`.
+This builds a genuine initial certificate fixture and verifies native
+metadata stabilization before the selected rejection. The case still
+performs an independent unchanged-object readback. The temporary Pebble
+outage is unpaused under the existing cleanup trap. Full CI never accepts
+a selective-case success as a replacement for its seven mandatory negatives.

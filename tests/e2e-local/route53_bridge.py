@@ -24,7 +24,7 @@ ZONE = "e2e.test."
 ZONE_ID = "ZLOCALONLY123456"
 ACCESS_KEY = "CBOTBOT_LOCAL_TEST_ACCESS_ONLY"
 VALUE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
-NAME_RE = re.compile(r"^_acme-challenge(?:\.[a-z0-9-]+)*\.e2e\.test\.$")
+NAME_RE = re.compile(r"^_acme-challenge(?:\.[a-z0-9-]+)*\.e2e\.test\.?$")
 MAX_BODY = 16384
 
 ET.register_namespace("", NS)
@@ -71,6 +71,12 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
         """Suppress sensitive headers, DNS values, paths and query strings."""
         pass
 
+    @staticmethod
+    def receipt(stage: str) -> None:
+        """Emit a reviewed nonsecret operation stage to private Docker logs."""
+        # No request path, headers, TXT values, account data, or raw errors.
+        print(f"local-route53-stub: {stage}", flush=True)
+
     def reply(self, status: int, data: bytes) -> None:
         """Return XML without redirects or client-controlled headers."""
         self.send_response(status)
@@ -88,6 +94,10 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
         child(item, "Code", code)
         child(item, "Message", "Local test provider refused operation")
         child(root, "RequestId", "local-only")
+        # Error codes are fixed in this stub. Never log caller-supplied data.
+        if code in ("AccessDenied", "InvalidInput", "InvalidAction",
+                    "InvalidChangeBatch", "NoSuchChange"):
+            self.receipt(f"refused={code}")
         self.reply(status, xml_bytes(root))
 
     def authenticated(self) -> bool:
@@ -138,14 +148,22 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
             child(config, "PrivateZone", "false")
             child(root, "IsTruncated", "false")
             child(root, "MaxItems", "1")
+            self.receipt("hosted-zones=accepted")
             self.reply(200, xml_bytes(root))
             return
         if path.startswith(f"/{VERSION}/change/") and not request.query:
             change_id = path[len(f"/{VERSION}/change/"):]
+            # Botocore percent-encodes the Route53 /change/ ID prefix
+            # emitted by the actual service. Accept only that exact form
+            # or the already supported bare ID, never arbitrary escapes.
+            encoded_prefix = "%2Fchange%2F"
+            if change_id.startswith(encoded_prefix):
+                change_id = change_id[len(encoded_prefix):]
             if change_id not in self.server.changes:
                 raise ApiError("NoSuchChange", 404)
             root = element("GetChangeResponse")
             self.change_info(child(root, "ChangeInfo"), change_id, "INSYNC")
+            self.receipt("change-poll=accepted")
             self.reply(200, xml_bytes(root))
             return
         raise ApiError("InvalidAction")
@@ -185,6 +203,9 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
                     or not 0 < int(ttl) <= 300
                     or not 1 <= len(values) <= 10):
                 raise ValueError()
+            # Certbot's plugin uses undotted DNS names; normalize after
+            # strict validation for consistent UPSERT and DELETE identity.
+            name = name.removesuffix(".") + "."
             decoded: list[str] = []
             for value in values:
                 quoted = value.text or ""
@@ -200,8 +221,17 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
 
     def post_api(self, request: urllib.parse.SplitResult) -> None:
         """Record a synthetic mutation; deliberately never update Pebble DNS."""
-        if (request.path != f"/{VERSION}/hostedzone/{ZONE_ID}/rrset"
-                or request.query):
+        # Botocore's ChangeResourceRecordSets RequestUri terminates with
+        # "/rrset/". Requiring the exact modeled route avoids accidentally
+        # accepting unrelated synthetic API paths.
+        # Real Botocore encodes the native /hostedzone/ prefix from the
+        # ListHostedZones Id into the {Id} URI parameter. Permit exactly
+        # the expected bare-ID and encoded native-ID resource paths.
+        allowed_paths = (
+            f"/{VERSION}/hostedzone/{ZONE_ID}/rrset/",
+            f"/{VERSION}/hostedzone/%2Fhostedzone%2F{ZONE_ID}/rrset/",
+        )
+        if request.path not in allowed_paths or request.query:
             raise ApiError("AccessDenied", 403)
         length = self.headers.get("Content-Length", "")
         if not length.isdecimal() or not 0 < int(length) <= MAX_BODY:
@@ -219,6 +249,7 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
             self.server.changes.add(change_id)
         root = element("ChangeResourceRecordSetsResponse")
         self.change_info(child(root, "ChangeInfo"), change_id, "PENDING")
+        self.receipt("rrset-change=accepted")
         self.reply(200, xml_bytes(root))
 
 

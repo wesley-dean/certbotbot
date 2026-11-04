@@ -108,6 +108,7 @@ class Route53StubTests(unittest.TestCase):
             ("GET", "/2013-04-01/hostedzone?marker=untrusted", GOOD_AUTH),
             ("GET", "/2013-04-01/hostedzone/ZOTHER", GOOD_AUTH),
             ("GET", "/2013-04-01/change/CFAKE", GOOD_AUTH),
+            ("GET", "/2013-04-01/change/%2Fchange%2FCFAKE", GOOD_AUTH),
         ]
         for method, path, auth in attempts:
             with self.subTest(path=path, auth=bool(auth)):
@@ -115,7 +116,7 @@ class Route53StubTests(unittest.TestCase):
                 self.assertNotEqual(status, 200)
 
     def test_upsert_change_poll_and_exact_cleanup(self) -> None:
-        path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset"
+        path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset/"
         status, root = self.request("POST", path, change_xml())
         self.assertEqual(status, 200)
         self.assertEqual(self.server.records[DOMAIN], (TXT,))
@@ -132,8 +133,45 @@ class Route53StubTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertNotIn(DOMAIN, self.server.records)
 
+    def test_certbot_name_without_final_dot_uses_same_scoped_record(self) -> None:
+        """Accept Certbot's undotted DNS01 name and normalize both forms."""
+        path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset/"
+        status, _ = self.request(
+            "POST", path, change_xml(name=DOMAIN[:-1])
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(self.server.records, {DOMAIN: (TXT,)})
+        status, _ = self.request(
+            "POST", path, change_xml(action="DELETE", name=DOMAIN)
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(self.server.records)
+
+    def test_botocore_encoded_native_ids_for_update_and_poll(self) -> None:
+        """Use the actual SDK URI encoding of Route53 native Id values."""
+        path = (
+            f"/2013-04-01/hostedzone/%2Fhostedzone%2F"
+            f"{bridge.ZONE_ID}/rrset/"
+        )
+        status, created = self.request("POST", path, change_xml())
+        self.assertEqual(status, 200)
+        self.assertEqual(self.server.records[DOMAIN], (TXT,))
+        change_id = created.findtext(f".//{bridge.tag('Id')}")
+        self.assertTrue(change_id.startswith("/change/CLOCAL"))
+        poll = "/2013-04-01/change/%2Fchange%2F" + change_id.split("/")[-1]
+        status, found = self.request("GET", poll)
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            found.findtext(f".//{bridge.tag('Status')}"), "INSYNC"
+        )
+        status, _ = self.request(
+            "POST", path, change_xml(action="DELETE")
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(self.server.records)
+
     def test_multiple_values_do_not_require_real_dns(self) -> None:
-        path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset"
+        path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset/"
         values = (TXT, OTHER_TXT)
         status, _ = self.request("POST", path, change_xml(values=values))
         self.assertEqual(status, 200)
@@ -145,10 +183,16 @@ class Route53StubTests(unittest.TestCase):
         self.assertNotIn(DOMAIN, self.server.records)
 
     def test_unauthorized_zone_name_type_and_malformed_values(self) -> None:
-        valid_path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset"
+        valid_path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset/"
         attempts = [
-            ("/2013-04-01/hostedzone/ZOTHER/rrset", change_xml()),
+            # The SDK's exact modeled path includes a trailing slash.
+            # A noncanonical path must still fail closed.
+            (valid_path.removesuffix("/"), change_xml()),
+            ("/2013-04-01/hostedzone/ZOTHER/rrset/", change_xml()),
+            ("/2013-04-01/hostedzone/%2Fhostedzone%2FZOTHER/rrset/", change_xml()),
+            ("/2013-04-01/hostedzone/%252Fhostedzone%252FZLOCALONLY123456/rrset/", change_xml()),
             (valid_path, change_xml(name="_acme-challenge.example.org.")),
+            (valid_path, change_xml(name="_acme-challenge.www.e2e.test..")),
             (valid_path, change_xml(name="www.e2e.test.")),
             (valid_path, change_xml(record_type="A")),
             (valid_path, change_xml(values=("wrong",))),
@@ -162,7 +206,7 @@ class Route53StubTests(unittest.TestCase):
         self.assertFalse(self.server.records)
 
     def test_failed_cleanup_does_not_mutate_existing_record(self) -> None:
-        path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset"
+        path = f"/2013-04-01/hostedzone/{bridge.ZONE_ID}/rrset/"
         status, _ = self.request("POST", path, change_xml())
         self.assertEqual(status, 200)
         status, _ = self.request(

@@ -31,6 +31,12 @@ readonly NAME=test.e2e.test
 readonly EMAIL=local-e2e@example.invalid
 readonly FORCE_STATE=/tmp/.certbotbot-e2e-renewal
 
+## @var E2E_CLEANUP_WORKSPACE
+## @brief Retains main's private scratch path until the shell EXIT trap runs.
+## @details Bash destroys local variables when main returns, before EXIT traps
+## run. The trap must not expand a main-local variable under set -u.
+E2E_CLEANUP_WORKSPACE=''
+
 ## @fn error()
 ## @brief Emits a static, nonsecret diagnostic.
 ## @param message Literal fixed diagnostic without raw provider output.
@@ -51,7 +57,7 @@ aws_local() {
     AWS_EC2_METADATA_DISABLED=true AWS_CONFIG_FILE=/dev/null \
     AWS_SHARED_CREDENTIALS_FILE=/dev/null \
     AWS_ENDPOINT_URL_S3=http://172.31.248.4:8333 \
-    AWS_ENDPOINT_URL_ROUTE53=http://172.31.248.6:8056 \
+    AWS_ENDPOINT_URL_ROUTE_53=http://172.31.248.6:8056 \
     aws --no-cli-pager "$@"
 }
 
@@ -194,7 +200,28 @@ bootstrap() {
     --email "$EMAIL" --agree-tos true --eff-email-signup false \
     --s3-bucket "$BUCKET" --s3-key "$KEY" \
     --archive-encryption none >"$workspace/register.log" 2>&1; then
+    # certbotbot emits only fixed errors; recognize exact, reviewed
+    # messages without exposing provider logs, account data or cloud output.
+    local register_reason='unclassified'
+    if grep -Fqx 'certbotbot: ACME registration failed' "$workspace/register.log"; then
+      register_reason=acme-registration
+    elif grep -Fqx 'certbotbot: conditional S3 publication failed; remote state uncertain' \
+      "$workspace/register.log"; then
+      register_reason=s3-conditional-publish
+    elif grep -Fqx 'certbotbot: account archive packaging failed' "$workspace/register.log"; then
+      register_reason=account-packaging
+    elif grep -Fqx 'certbotbot: account state failed final preflight' "$workspace/register.log"; then
+      register_reason=account-final-preflight
+    elif grep -Fqx 'certbotbot: unsupported existing account or certificate state' \
+      "$workspace/register.log"; then
+      register_reason=account-initial-preflight
+    elif grep -Fqx 'certbotbot: S3 object state unavailable' "$workspace/register.log"; then
+      register_reason=s3-object-preflight
+    elif grep -Fqx 'certbotbot: Certbot unavailable' "$workspace/register.log"; then
+      register_reason=certbot-unavailable
+    fi
     error 'real Pebble account registration or conditional S3 publish failed'
+    error "registration_stage=$register_reason"
     return 74
   fi
   grep -Fq 'published=true' "$workspace/register.log" ||
@@ -209,7 +236,60 @@ bootstrap() {
   fi
 
   if ! issuer >"$workspace/issue.log" 2>&1; then
+    # The shipped producer emits fixed, reviewed diagnostics.  Classify
+    # those exact lines without printing private Certbot or AWS output.
+    local issue_reason='unclassified' candidate
+    while IFS='|' read -r candidate reason; do
+      if grep -Fqx -- "$candidate" "$workspace/issue.log"; then
+        issue_reason="$reason"
+        break
+      fi
+    done <<'ISSUE_REASONS'
+certbotbot: existing S3 archive was not found|s3-archive-missing
+certbotbot: S3 object cannot be inspected safely|s3-object-preflight
+certbotbot: S3 archive download failed|s3-fetch
+certbotbot: archive rejected before extraction|archive-restore
+certbotbot: restored account or lineage is unsuitable|restored-state
+certbotbot: unsupported shared archive state|shared-state
+certbotbot: restored ACME account is unavailable|account-unavailable
+certbotbot: existing account or lineage unsuitable|issuance-preflight
+certbotbot: unsupported ACME account identity|issuance-account-identity
+certbotbot: Certbot authenticator probe failed|authenticator-probe
+certbotbot: Certbot Route53 authenticator unavailable|route53-plugin
+certbotbot: restored account is not recognized by Certbot|account-probe
+certbotbot: selected certificate issuance failed|certonly
+certbotbot: newly issued lineage is incomplete|lineage-incomplete
+certbotbot: selected certificate state is unsuitable|post-issue-state
+certbotbot: selected certificate or chain is unusable|certificate-verification
+certbotbot: certificate and private key verification failed|certificate-key
+certbotbot: selected publication state is unsuitable|publish-preflight
+certbotbot: S3 archive upload failed; remote state is uncertain|s3-publish
+certbotbot: unsupported archived renewal metadata|renewal-metadata
+certbotbot: unsupported renewal configuration|renewal-dialect
+certbotbot: selected lineage unavailable for mapping|renewal-lineage
+certbotbot: unsafe renewal metadata file|renewal-unsafe
+certbotbot: unsupported renewal metadata size|renewal-size
+certbotbot: renewal mapping staging unavailable|renewal-staging
+certbotbot: renewal mapping update failed|renewal-write
+certbotbot: selected lineage is ambiguous|lineage-ambiguous
+certbotbot: restored ACME account identity changed|account-identity-changed
+certbotbot: cannot verify unselected certificate state|unselected-state-verify
+certbotbot: unselected certificate state changed|unselected-state-modified
+certbotbot: cannot snapshot unselected certificate state|unselected-state-snapshot
+certbotbot: certificate verification tooling unavailable|certificate-tools
+certbotbot: occupied certificate verification workspace|certificate-workspace
+certbotbot: invalid archive boundaries|archive-boundary
+certbotbot: unsafe or unsupported archive contents|archive-contents
+certbotbot: unsupported ACME environment|acme-selection
+certbotbot: invalid or oversized archive|archive-size
+certbotbot: private workspace unavailable|workspace-unavailable
+certbotbot: AWS CLI v2 is required for publication|s3-cli
+certbotbot: cannot install isolated configuration|archive-install
+ISSUE_REASONS
     error 'real Pebble certificate issuance or S3 publication failed'
+    # Emit the more specific category last so the host's sequential
+    # allowlist classifier cannot overwrite it with this generic marker.
+    error "issuance_stage=$issue_reason"
     return 74
   fi
   grep -Fq 'published=true' "$workspace/issue.log" &&
@@ -261,6 +341,83 @@ object_metadata() {
     { error 'selected S3 identity parsing failed'; return 69; }
 }
 
+## @fn stabilize()
+## @brief Verifies exactly one genuine native metadata-only publication.
+## @details
+## A newly issued Certbot renewal configuration may be updated by its first
+## ordinary non-due check. The checked public producer must publish that
+## durable change as required by ADR-025. This separate, freshly isolated
+## runner proves the current object and selected renewal configuration changed
+## while the leaf DER, actual account identity and selected lineage did not.
+## The host independently checks that Pebble added zero ACME orders and
+## validates the replacement object with a separate verifier runner.
+## This is not one of the three subsequently required strict no-op checks.
+## @param workspace Owned private runner tmpfs directory.
+## @param expected SHA-256 of the independently validated issued archive.
+## @retval 0 One eligible metadata-only publication was proved.
+## @retval 64 Invalid archive identity.
+## @retval 65 Unexpected state, certificate, or publication.
+## @retval 74 Failed genuine provider or S3 operation.
+stabilize() {
+  local workspace="$1" expected="$2" before='' after=''
+  local account_before='' account_after='' cert_before='' cert_after=''
+  [[ "$expected" =~ ^[a-f0-9]{64}$ ]] ||
+    { error 'invalid stabilization archive digest'; return 64; }
+  fetch_archive "$workspace/stabilize-before.tar.gz" || return $?
+  before="$(sha256sum "$workspace/stabilize-before.tar.gz" | awk '{print $1}')" || return 74
+  [[ "$before" == "$expected" ]] ||
+    { error 'stabilization initial object identity differs'; return 65; }
+  verify_account "$workspace/stabilize-before.tar.gz" || return $?
+  verify_selected_only "$workspace/stabilize-before.tar.gz" || return $?
+  verify_certificate "$workspace/stabilize-before.tar.gz" "$workspace" || return $?
+  account_before="$(account_identity "$workspace/stabilize-before.tar.gz")" || return $?
+  cert_before="$(sha256sum "$workspace/leaf.der" | awk '{print $1}')" || return 74
+  [[ "$account_before" =~ ^[a-f0-9]{64}$ &&
+    "$cert_before" =~ ^[a-f0-9]{64}$ ]] || return 65
+  object_metadata "$workspace/stabilize-before.meta" || return $?
+
+  # Installed Certbot and the unchanged public producer perform the one
+  # ordinary check. No mock, force flag, archive rewrite or bypass is used.
+  if ! issuer development >"$workspace/stabilize.log" 2>&1; then
+    error 'native metadata stabilization producer failed'
+    return 74
+  fi
+  if ! grep -Fq 'certbotbot: checked ' "$workspace/stabilize.log" ||
+    ! grep -Fq '; published=true' "$workspace/stabilize.log"; then
+    error 'native metadata stabilization receipt missing'
+    return 65
+  fi
+
+  fetch_archive "$workspace/stabilize-after.tar.gz" || return $?
+  after="$(sha256sum "$workspace/stabilize-after.tar.gz" | awk '{print $1}')" || return 74
+  [[ "$after" =~ ^[a-f0-9]{64}$ && "$after" != "$before" ]] ||
+    { error 'metadata stabilization did not replace object bytes'; return 65; }
+  verify_account "$workspace/stabilize-after.tar.gz" || return $?
+  verify_selected_only "$workspace/stabilize-after.tar.gz" || return $?
+  verify_certificate "$workspace/stabilize-after.tar.gz" "$workspace" || return $?
+  account_after="$(account_identity "$workspace/stabilize-after.tar.gz")" || return $?
+  cert_after="$(sha256sum "$workspace/leaf.der" | awk '{print $1}')" || return 74
+  [[ "$account_after" == "$account_before" && "$cert_after" == "$cert_before" ]] ||
+    { error 'metadata stabilization changed issuer identity or leaf'; return 65; }
+  verify_no_force_persistence "$workspace/stabilize-after.tar.gz" "$workspace" ||
+    return $?
+  tar -xOzf "$workspace/stabilize-before.tar.gz" "./renewal/$NAME.conf" \
+    >"$workspace/stabilize-before.conf" 2>/dev/null ||
+    { error 'initial selected renewal metadata unavailable'; return 65; }
+  tar -xOzf "$workspace/stabilize-after.tar.gz" "./renewal/$NAME.conf" \
+    >"$workspace/stabilize-after.conf" 2>/dev/null ||
+    { error 'updated selected renewal metadata unavailable'; return 65; }
+  ! cmp -s "$workspace/stabilize-before.conf" "$workspace/stabilize-after.conf" ||
+    { error 'native metadata stabilization was not observed'; return 65; }
+  object_metadata "$workspace/stabilize-after.meta" || return $?
+  ! cmp -s "$workspace/stabilize-before.meta" "$workspace/stabilize-after.meta" ||
+    { error 'metadata stabilization did not update S3 object identity'; return 65; }
+
+  # Only the independently checked digest and DER fingerprint leave tmpfs.
+  printf 'local-first-issue: stabilized_archive_sha256=%s\n' "$after"
+  printf 'local-first-issue: stabilized_cert_der_sha256=%s\n' "$cert_after"
+}
+
 ## @fn noop()
 ## @brief Restores one exact public producer flavor and checks a non-due no-op.
 ## @details
@@ -276,32 +433,113 @@ noop() {
   local workspace="$1" flavor="$2" expected="$3" actual=''
   [[ "$expected" =~ ^[a-f0-9]{64}$ ]] ||
     { error 'invalid archive digest for no-op'; return 64; }
+  error 'noop-checkpoint=fetch-before'
   fetch_archive "$workspace/before.tar.gz" || return $?
+  error 'noop-checkpoint=digest-before'
   actual="$(sha256sum "$workspace/before.tar.gz" | awk '{print $1}')" || return 74
   [[ "$actual" == "$expected" ]] ||
     { error 'fresh-runner input archive differs'; return 65; }
+  error 'noop-checkpoint=account-before'
   verify_account "$workspace/before.tar.gz" || return $?
+  error 'noop-checkpoint=cert-before'
   verify_certificate "$workspace/before.tar.gz" "$workspace" || return $?
+  error 'noop-checkpoint=metadata-before'
   object_metadata "$workspace/before.meta" || return $?
 
   # A real producer invocation (not a Certbot mock) fetches and restores
   # account, lineage, renewal paths and keys from SeaweedFS itself.
+  error 'noop-checkpoint=producer'
   if ! issuer "$flavor" >"$workspace/noop.log" 2>&1; then
+    # Inspect a closed list of producer-owned literal refusals only.
+    # Never forward an untrusted provider line, path, SAN, or PEM content.
+    local producer_reason=unclassified known=''
+    while IFS='|' read -r known producer_reason; do
+      if grep -Fqx -- "$known" "$workspace/noop.log"; then
+        error "noop-producer=$producer_reason"
+        break
+      fi
+      producer_reason=unclassified
+    done <<'NOOP_PRODUCER_REFUSALS'
+certbotbot: selected lineage is unsuitable|lineage-preflight
+certbotbot: selected certificate SAN extension is unsafe|san-extension
+certbotbot: selected certificate SANs differ or are unsafe|san-identity
+certbotbot: existing selected lineage is unsuitable|renewal-preflight
+certbotbot: selected certificate renewal failed|certbot-renew
+certbotbot: private renewal path preparation failed|renewal-prepare
+certbotbot: unsupported renewal configuration|renewal-dialect
+certbotbot: account is not recognized by Certbot|certbot-account
+certbotbot: Certbot authenticator probe failed|certbot-plugin
+certbotbot: selected certificate state is unsuitable|post-state
+certbotbot: selected certificate or chain is unusable|material-verification
+certbotbot: selected publication state is unsuitable|publish-preflight
+certbotbot: unsupported archived renewal metadata|archive-renewal
+certbotbot: S3 archive download failed|s3-fetch
+certbotbot: selected certificate SAN extension is unsafe|san-extension
+certbotbot: canonical renewal path restoration failed|renewal-finalize
+certbotbot: restored account or lineage is unsuitable|restore
+NOOP_PRODUCER_REFUSALS
     error 'fresh-runner selected renewal/no-op failed'
     return 74
   fi
-  grep -Fq 'certbotbot: checked ' "$workspace/noop.log" &&
-    grep -Fq '; published=false' "$workspace/noop.log" ||
-    { error 'selected no-op unexpectedly changed or published state'; return 65; }
+  error 'noop-checkpoint=producer-receipt'
+  if ! grep -Fq 'certbotbot: checked ' "$workspace/noop.log" ||
+    ! grep -Fq '; published=false' "$workspace/noop.log"; then
+    # No producer line or dynamic field is echoed; report only literal
+    # status and publication categories known to the public contract.
+    local receipt_status=other receipt_publish=absent
+    if grep -Fq 'certbotbot: checked ' "$workspace/noop.log"; then
+      receipt_status=checked
+    elif grep -Fq 'certbotbot: issued ' "$workspace/noop.log"; then
+      receipt_status=issued
+    fi
+    if grep -Fq '; published=false' "$workspace/noop.log"; then
+      receipt_publish=false
+    elif grep -Fq '; published=true' "$workspace/noop.log"; then
+      receipt_publish=true
+    fi
+    # Diagnostic-only readback after an already rejected no-op. Do not
+    # expose archive bytes, renewal metadata, key material, or S3 responses.
+    local object_delta=unreadable renewal_delta=unreadable
+    if fetch_archive "$workspace/failed-noop-after.tar.gz" >/dev/null 2>&1; then
+      if cmp -s "$workspace/before.tar.gz" "$workspace/failed-noop-after.tar.gz"; then
+        object_delta=unchanged
+      else
+        object_delta=changed
+      fi
+      if tar -xOzf "$workspace/before.tar.gz" "./renewal/$NAME.conf" \
+        >"$workspace/failed-noop-before.conf" 2>/dev/null &&
+        tar -xOzf "$workspace/failed-noop-after.tar.gz" "./renewal/$NAME.conf" \
+          >"$workspace/failed-noop-after.conf" 2>/dev/null; then
+        if cmp -s "$workspace/failed-noop-before.conf" \
+          "$workspace/failed-noop-after.conf"; then
+          renewal_delta=unchanged
+        else
+          renewal_delta=changed
+        fi
+      fi
+    fi
+    error "noop-receipt-status=$receipt_status"
+    error "noop-receipt-publication=$receipt_publish"
+    error "noop-object=$object_delta"
+    error "noop-renewal=$renewal_delta"
+    error 'selected no-op unexpectedly changed or published state'
+    return 65
+  fi
 
+  error 'noop-checkpoint=metadata-after'
   object_metadata "$workspace/after.meta" || return $?
+  error 'noop-checkpoint=metadata-match'
   cmp -s "$workspace/before.meta" "$workspace/after.meta" ||
     { error 'S3 object identity changed during no-op'; return 65; }
+  error 'noop-checkpoint=fetch-after'
   fetch_archive "$workspace/after.tar.gz" || return $?
+  error 'noop-checkpoint=digest-after'
   actual="$(sha256sum "$workspace/after.tar.gz" | awk '{print $1}')" || return 74
   [[ "$actual" == "$expected" ]] ||
     { error 'S3 archive bytes changed during no-op'; return 65; }
+  error 'noop-checkpoint=account-after'
   verify_account "$workspace/after.tar.gz" || return $?
+  error 'noop-checkpoint=cert-after'
   verify_certificate "$workspace/after.tar.gz" "$workspace" || return $?
   printf 'local-first-issue: fresh_runner_noop=%s; archive_sha256=%s\n' "$flavor" "$expected"
 }
@@ -445,6 +683,76 @@ renew() {
   printf '%s\n' 'local-first-issue: real_certbot_force_trigger_consumed=true'
 }
 
+## @fn isolation()
+## @brief Actively verifies the runner has no usable external route or DNS.
+## @details
+## The same nonroot, read-only runner flags are used for real ACME/S3 phases.
+## A test-only staging TLS probe must succeed with the pinned ephemeral root;
+## public destinations and IMDS must remain unreachable through the actual
+## container routing table. TCP probes target RFC 5737 documentation addresses,
+## never public ACME, AWS, metadata or real cloud endpoints. DNS probes use
+## only reserved .invalid names to avoid resolving real services.
+## @retval 0 Staging authority works locally and forbidden paths have no route.
+## @retval 65 Unexpected gateway, resolver, or connectivity boundary.
+isolation() {
+  local destination='' peer=''
+  # Fixed phase markers only identify which boundary was entered. They never
+  # expose response bodies, certificate material, or credentials.
+  printf '%s\n' 'local-first-issue: isolation_stage=provider'
+  # The provider emits only fixed, nonsecret classification messages here.
+  # Preserve them for the host's allowlisted failure classifier; never print
+  # raw Docker, HTTP, ACME, or cloud-provider output.
+  bash "$PROVIDER" --check ||
+    { error 'private staging TLS and route admission check failed'; return 65; }
+  printf '%s\n' 'local-first-issue: isolation_stage=route'
+  [[ -r /proc/net/route ]] ||
+    { error 'isolation route table missing'; return 65; }
+  if awk 'NR > 1 && $2 == "00000000" { found = 1 } END { exit !found }' \
+    /proc/net/route; then
+    error 'isolated runner has a default network route'
+    return 65
+  fi
+  printf '%s\n' 'local-first-issue: isolation_stage=reserved-tcp'
+  for destination in 192.0.2.1 198.51.100.1 203.0.113.1; do
+    # The addresses are reserved for documentation. A successful connection
+    # would prove the absence of the expected deny boundary.
+    if curl --noproxy '*' --silent --output /dev/null \
+      --connect-timeout 1 --max-time 2 "http://$destination/" 2>/dev/null; then
+      error 'outside-documentation-network connection unexpectedly succeeded'
+      return 65
+    fi
+  done
+  printf '%s\n' 'local-first-issue: isolation_stage=reserved-dns'
+  for peer in acme.invalid aws.invalid route53.invalid; do
+    if getent hosts "$peer" >/dev/null 2>&1; then
+      error 'private runner resolved forbidden external DNS name'
+      return 65
+    fi
+  done
+  printf '%s\n' 'local-first-issue: isolation_passed=true; challenge_validation=bypassed'
+}
+
+## @fn isolation_cleanup()
+## @brief Cleans private probe scratch and preserves the original process status.
+## @details
+## A successful isolation assertion is not accepted unless its ephemeral
+## scratch was also removed. An exact nonsecret completion receipt identifies
+## failures occurring after the probe's last assertion, without revealing raw
+## container or provider output.
+## @param original Status present when Bash entered the EXIT trap.
+## @param workspace Private test-only scratch directory.
+## @retval 75 Cleanup failed, overriding any earlier success.
+isolation_cleanup() {
+  local original="$1" workspace="$2"
+  trap - EXIT
+  if ! rm -rf -- "$workspace"; then
+    error 'isolation workspace cleanup failed'
+    exit 75
+  fi
+  printf '%s\n' 'local-first-issue: isolation_cleanup_verified=true'
+  exit "$original"
+}
+
 ## @fn main()
 ## @brief Runs one bounded phase and removes private state on every exit.
 main() {
@@ -452,6 +760,11 @@ main() {
   case "$mode" in
     bootstrap) (( $# == 1 )) || { error 'unexpected bootstrap arguments'; return 64; } ;;
     verify) (( $# == 2 )) || { error 'expected one digest'; return 64; } ;;
+    stabilize)
+      (( $# == 2 )) || { error 'expected one stabilization archive digest'; return 64; }
+      [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
+        { error 'invalid stabilization archive digest'; return 64; }
+      ;;
     noop)
       (( $# == 3 )) || { error 'expected flavor and archive digest'; return 64; }
       case "$2" in development|ordinary|minified) ;; *)
@@ -463,6 +776,9 @@ main() {
       (( $# == 2 )) || { error 'expected one renewal archive digest'; return 64; }
       [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
         { error 'invalid renewal archive digest'; return 64; }
+      ;;
+    isolation)
+      (( $# == 1 )) || { error 'unexpected isolation arguments'; return 64; }
       ;;
     baseline)
       (( $# == 1 )) || { error 'unexpected baseline arguments'; return 64; }
@@ -476,20 +792,28 @@ main() {
       [[ "$3" =~ ^[a-f0-9]{64}$ ]] ||
         { error 'invalid fault archive digest'; return 64; }
       ;;
-    *) error 'usage: first-issue.bash bootstrap|verify|noop|renew|baseline|fault'; return 64 ;;
+    *) error 'usage: first-issue.bash bootstrap|verify|stabilize|noop|renew|isolation|baseline|fault'; return 64 ;;
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
+  # EXIT traps run after main() has returned, so main-local variables are
+  # unavailable under nounset. Preserve only the owned cleanup pathname in
+  # global state; use the local value for all ordinary phase operations.
+  E2E_CLEANUP_WORKSPACE="$workspace"
   if [[ "$mode" == renew ]]; then
-    trap 'rm -rf -- "$workspace" "$FORCE_STATE"' EXIT
+    trap 'rm -rf -- "$E2E_CLEANUP_WORKSPACE" "$FORCE_STATE"' EXIT
+  elif [[ "$mode" == isolation ]]; then
+    trap 'isolation_cleanup "$?" "$E2E_CLEANUP_WORKSPACE"' EXIT
   else
-    trap 'rm -rf -- "$workspace"' EXIT
+    trap 'rm -rf -- "$E2E_CLEANUP_WORKSPACE"' EXIT
   fi
   case "$mode" in
     bootstrap) bootstrap "$workspace" ;;
     verify) verify "$workspace" "$2" ;;
+    stabilize) stabilize "$workspace" "$2" ;;
     noop) noop "$workspace" "$2" "$3" ;;
     renew) renew "$workspace" "$2" ;;
+    isolation) isolation ;;
     baseline)
       # Test-only helpers are never sourced in release or positive runs.
       source /usr/local/libexec/certbotbot-e2e/negative-scenarios.bash

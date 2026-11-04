@@ -17,6 +17,7 @@
 ## bash tests/e2e-local/first-issue-host.bash build
 ## bash tests/e2e-local/run.bash fetch
 ## bash tests/e2e-local/run.bash up
+## bash tests/e2e-local/first-issue-host.bash probe
 ## bash tests/e2e-local/first-issue-host.bash run
 ## bash tests/e2e-local/first-issue-host.bash run-faults
 ## bash tests/e2e-local/run.bash down
@@ -175,8 +176,12 @@ pebble_order_count() {
 ## @brief Issues once, verifies, then proves three isolated non-due no-ops.
 ## @param image Already built and locally cached checked runner tag.
 run_lifecycle() (
-  local image="$1" tmp='' cert_ca='' cid='' log='' digest='' result=''
+  local image="$1" mode="${2-full}" tmp='' cert_ca='' cid='' log='' digest='' result=''
   local flavor count_before count_after renewed_digest='' renewed_cert='' old_cert=''
+  case "$mode" in full|debug-second-order|debug-seed) ;; *)
+    problem 'invalid local lifecycle mode'
+    return 64 ;;
+  esac
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'runner image missing; use build before starting sealed services'; return 69; }
   bash "$HARNESS" status >/dev/null ||
@@ -190,7 +195,7 @@ run_lifecycle() (
     -p certbotbot-local-e2e ps -q acme-gateway)" || return 74
   [[ -n "$cid" ]] ||
     { problem 'canonical gateway container missing'; return 65; }
-  docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$cert_ca" >/dev/null 2>&1 ||
+  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$cert_ca" 2>/dev/null ||
     { problem 'ephemeral public gateway CA unavailable'; return 74; }
   chmod 0644 "$cert_ca"
   openssl x509 -in "$cert_ca" -noout >/dev/null 2>&1 ||
@@ -198,8 +203,116 @@ run_lifecycle() (
   log="$tmp/bootstrap.log"
   # Destroy the runner, account keys, client caches and logs even if a step
   # fails. No logs are printed from inside the untrusted provider process.
+  # Literal stage receipts remain bounded even if a later command exits via
+  # errexit before its own fixed diagnostic is printed.
+  problem 'lifecycle-phase=first-issuance'
   if ! run_phase "$image" "$cert_ca" bootstrap >"$log" 2>&1; then
-    problem 'real registration/initial issuance failed; raw provider output discarded'
+    # Only script-owned literal failure messages may escape this private log.
+    # Raw Certbot, AWS, ACME and container output remains discarded.
+    local reason='unclassified' line
+    while IFS= read -r line; do
+      case "$line" in
+        'local-first-issue: local SeaweedFS bucket creation failed') reason=s3-bucket-create ;;
+        'local-first-issue: new synthetic bucket unavailable') reason=s3-bucket-head ;;
+        'local-first-issue: existing current archive forbids a first-issuance test') reason=unexpected-existing-object ;;
+        'local-first-issue: current S3 object state is ambiguous') reason=s3-missing-object-ambiguous ;;
+        'local-first-issue: ordinary issuance accepted missing account archive') reason=missing-account-accepted ;;
+        'local-first-issue: failed ordinary issuance unexpectedly published an object') reason=failed-issue-published ;;
+        'local-first-issue: current S3 object state became ambiguous after failed issuance') reason=s3-state-changed ;;
+        'local-first-issue: real Pebble account registration or conditional S3 publish failed') reason=registration-or-publish ;;
+        'local-first-issue: registration_stage=acme-registration') reason=register-acme ;;
+        'local-first-issue: registration_stage=s3-conditional-publish') reason=register-s3-publish ;;
+        'local-first-issue: registration_stage=account-packaging') reason=register-account-packaging ;;
+        'local-first-issue: registration_stage=account-final-preflight') reason=register-account-final-preflight ;;
+        'local-first-issue: registration_stage=account-initial-preflight') reason=register-account-initial-preflight ;;
+        'local-first-issue: registration_stage=s3-object-preflight') reason=register-s3-preflight ;;
+        'local-first-issue: registration_stage=certbot-unavailable') reason=register-certbot-unavailable ;;
+        'local-first-issue: registration_stage=unclassified') reason=register-unclassified ;;
+        'local-first-issue: registration did not confirm publication') reason=registration-receipt ;;
+        'local-first-issue: account archive is unreadable') reason=account-archive-unreadable ;;
+        'local-first-issue: native staging account data missing') reason=account-native-state-missing ;;
+        'local-first-issue: registration unexpectedly created a certificate lineage') reason=registration-created-lineage ;;
+        'local-first-issue: real Pebble certificate issuance or S3 publication failed') reason=issuance-or-publish ;;
+        'local-first-issue: issuance_stage=s3-archive-missing') reason=issue-s3-archive-missing ;;
+        'local-first-issue: issuance_stage=s3-object-preflight') reason=issue-s3-object-preflight ;;
+        'local-first-issue: issuance_stage=s3-fetch') reason=issue-s3-fetch ;;
+        'local-first-issue: issuance_stage=archive-restore') reason=issue-archive-restore ;;
+        'local-first-issue: issuance_stage=restored-state') reason=issue-restored-state ;;
+        'local-first-issue: issuance_stage=shared-state') reason=issue-shared-state ;;
+        'local-first-issue: issuance_stage=account-unavailable') reason=issue-account-unavailable ;;
+        'local-first-issue: issuance_stage=issuance-preflight') reason=issue-issuance-preflight ;;
+        'local-first-issue: issuance_stage=issuance-account-identity') reason=issue-account-identity ;;
+        'local-first-issue: issuance_stage=authenticator-probe') reason=issue-authenticator-probe ;;
+        'local-first-issue: issuance_stage=route53-plugin') reason=issue-route53-plugin ;;
+        'local-first-issue: issuance_stage=account-probe') reason=issue-account-probe ;;
+        'local-first-issue: issuance_stage=certonly') reason=issue-certonly ;;
+        'local-first-issue: issuance_stage=lineage-incomplete') reason=issue-lineage-incomplete ;;
+        'local-first-issue: issuance_stage=post-issue-state') reason=issue-post-issue-state ;;
+        'local-first-issue: issuance_stage=certificate-verification') reason=issue-certificate-verification ;;
+        'local-first-issue: issuance_stage=certificate-key') reason=issue-certificate-key ;;
+        'local-first-issue: issuance_stage=publish-preflight') reason=issue-publish-preflight ;;
+        'local-first-issue: issuance_stage=s3-publish') reason=issue-s3-publish ;;
+        'local-first-issue: issuance_stage=renewal-metadata') reason=issue-renewal-metadata ;;
+        'local-first-issue: issuance_stage=renewal-dialect') reason=issue-renewal-dialect ;;
+        'local-first-issue: issuance_stage=renewal-lineage') reason=issue-renewal-lineage ;;
+        'local-first-issue: issuance_stage=renewal-unsafe') reason=issue-renewal-unsafe ;;
+        'local-first-issue: issuance_stage=renewal-size') reason=issue-renewal-size ;;
+        'local-first-issue: issuance_stage=renewal-staging') reason=issue-renewal-staging ;;
+        'local-first-issue: issuance_stage=renewal-write') reason=issue-renewal-write ;;
+        'local-first-issue: issuance_stage=lineage-ambiguous') reason=issue-lineage-ambiguous ;;
+        'local-first-issue: issuance_stage=account-identity-changed') reason=issue-account-identity-changed ;;
+        'local-first-issue: issuance_stage=unselected-state-verify') reason=issue-unselected-state-verify ;;
+        'local-first-issue: issuance_stage=unselected-state-modified') reason=issue-unselected-state-modified ;;
+        'local-first-issue: issuance_stage=unselected-state-snapshot') reason=issue-unselected-state-snapshot ;;
+        'local-first-issue: issuance_stage=certificate-tools') reason=issue-certificate-tools ;;
+        'local-first-issue: issuance_stage=certificate-workspace') reason=issue-certificate-workspace ;;
+        'local-first-issue: issuance_stage=archive-boundary') reason=issue-archive-boundary ;;
+        'local-first-issue: issuance_stage=archive-contents') reason=issue-archive-contents ;;
+        'local-first-issue: issuance_stage=acme-selection') reason=issue-acme-selection ;;
+        'local-first-issue: issuance_stage=archive-size') reason=issue-archive-size ;;
+        'local-first-issue: issuance_stage=workspace-unavailable') reason=issue-workspace-unavailable ;;
+        'local-first-issue: issuance_stage=s3-cli') reason=issue-s3-cli ;;
+        'local-first-issue: issuance_stage=archive-install') reason=issue-archive-install ;;
+        'local-first-issue: issuance_stage=unclassified') reason=issue-unclassified ;;
+        'local-first-issue: first issuance did not report issuance and publication') reason=issuance-receipt ;;
+        'local-first-issue: independent S3 object download failed') reason=s3-object-read ;;
+        'local-first-issue: downloaded S3 object is empty') reason=s3-object-empty ;;
+        'local-first-issue: certificate archive unreadable') reason=certificate-archive-unreadable ;;
+        'local-first-issue: selected renewal lineage missing') reason=certificate-lineage-missing ;;
+        'local-first-issue: selected certificate bytes absent') reason=certificate-missing ;;
+        'local-first-issue: certificate extraction failed') reason=certificate-extraction ;;
+        'local-first-issue: leaf SAN does not match requested identity') reason=certificate-san ;;
+        'local-first-issue: invalid issued PEM certificate') reason=certificate-pem ;;
+        'local-first-issue: private key and certificate mismatch') reason=certificate-key-mismatch ;;
+      esac
+    done <"$log"
+    # Only fixed, self-authored stage receipts are exported from the bridge.
+    # Python/server logs stay private, even if a protocol request is malformed.
+    local bridge_id='' bridge_log='' route_stage=no-request route_refusal=none
+    bridge_id="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
+      -p certbotbot-local-e2e ps -q route53-bridge 2>/dev/null)" || bridge_id=''
+    if [[ -n "$bridge_id" ]]; then
+      bridge_log="$(docker logs "$bridge_id" 2>/dev/null)" || bridge_log=''
+      if grep -Fqx 'local-route53-stub: hosted-zones=accepted' <<<"$bridge_log"; then
+        route_stage=hosted-zones
+      fi
+      if grep -Fqx 'local-route53-stub: rrset-change=accepted' <<<"$bridge_log"; then
+        route_stage=rrset-change
+      fi
+      if grep -Fqx 'local-route53-stub: change-poll=accepted' <<<"$bridge_log"; then
+        route_stage=change-poll
+      fi
+      local fixed_code
+      for fixed_code in AccessDenied InvalidInput InvalidAction InvalidChangeBatch NoSuchChange; do
+        if grep -Fqx "local-route53-stub: refused=$fixed_code" <<<"$bridge_log"; then
+          route_refusal="$fixed_code"
+          break
+        fi
+      done
+    fi
+    problem "route53-checkpoint=$route_stage"
+    problem "route53-refusal=$route_refusal"
+    problem "bootstrap-failure=$reason"
     return 74
   fi
   digest="$(sed -n 's/^local-first-issue: issued_archive_sha256=\([a-f0-9]\{64\}\)$/\1/p' "$log")"
@@ -207,6 +320,7 @@ run_lifecycle() (
     { problem 'bootstrap did not supply a valid object identity'; return 65; }
 
   result="$tmp/verify.log"
+  problem 'lifecycle-phase=first-readback'
   if ! run_phase "$image" "$cert_ca" verify "$digest" >"$result" 2>&1; then
     problem 'independent fresh runner could not verify stored certificate'
     return 74
@@ -220,13 +334,124 @@ run_lifecycle() (
   printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
   sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
 
+  # A newly issued real Certbot lineage may perform one legitimate,
+  # metadata-only durable update on its first ordinary check (ADR-054).
+  # Treat it as an explicit, independently verified stabilization, never
+  # as one of the three strict non-due no-op acceptance results.
+  count_before="$(pebble_order_count)" || return $?
+  problem 'lifecycle-phase=metadata-stabilization'
+  if ! run_phase "$image" "$cert_ca" stabilize "$digest" \
+    >"$tmp/stabilize.log" 2>&1; then
+    problem 'native metadata-only stabilization failed'
+    return 74
+  fi
+  local stabilized_digest='' stabilized_cert=''
+  stabilized_digest="$(sed -nE \
+    's/^local-first-issue: stabilized_archive_sha256=([0-9a-f]{64})$/\1/p' \
+    "$tmp/stabilize.log")"
+  stabilized_cert="$(sed -nE \
+    's/^local-first-issue: stabilized_cert_der_sha256=([0-9a-f]{64})$/\1/p' \
+    "$tmp/stabilize.log")"
+  [[ "$stabilized_digest" =~ ^[0-9a-f]{64}$ &&
+    "$stabilized_digest" != "$digest" &&
+    "$stabilized_cert" == "$old_cert" ]] ||
+    { problem 'native stabilization did not retain the issued certificate'; return 65; }
+  count_after="$(pebble_order_count)" || return $?
+  [[ "$count_after" == "$count_before" ]] ||
+    { problem 'metadata stabilization unexpectedly added an ACME order'; return 65; }
+
+  # Independent validator starts with no shared private files, and proves
+  # the new S3 object contains the identical real issued leaf certificate.
+  problem 'lifecycle-phase=stabilized-readback'
+  if ! run_phase "$image" "$cert_ca" verify "$stabilized_digest" \
+    >"$tmp/stabilized-verify.log" 2>&1; then
+    problem 'independent native stabilization readback failed'
+    return 74
+  fi
+  grep -Fqx "local-first-issue: independently_verified_cert_der_sha256=$old_cert" \
+    "$tmp/stabilized-verify.log" ||
+    { problem 'stabilized object changed initial certificate identity'; return 65; }
+  digest="$stabilized_digest"
+  printf '%s\n' \
+    'local-first-issue-host: native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true'
+
+  if [[ "$mode" == debug-seed ]]; then
+    problem 'partial-development=true; target=negative-fixture; full-acceptance=false'
+    printf '%s\n' 'local-first-issue-host: focused_seed=passed; full_acceptance=false'
+    return 0
+  fi
+
   # The pinned Pebble server records a nonsecret counter for every new order.
   # A no-op succeeds only when this count remains unchanged for each exact
   # producer flavor, proving no new order was added to Pebble's DB.
   count_before="$(pebble_order_count)" || return $?
+  if [[ "$mode" == full ]]; then
   for flavor in development ordinary minified; do
+    # Flavor is drawn exclusively from the literal fixed loop above.
+    problem "lifecycle-phase=noop-$flavor"
     if ! run_phase "$image" "$cert_ca" noop "$flavor" "$digest" \
       >"$tmp/noop-$flavor.log" 2>&1; then
+      # Only literal checkpoints from our own runner may cross the boundary.
+      local noop_checkpoint=not-reported noop_producer=not-reported code
+      for code in fetch-before digest-before account-before cert-before \
+        metadata-before producer producer-receipt metadata-after \
+        metadata-match fetch-after digest-after account-after cert-after; do
+        if grep -Fqx -- "local-first-issue: noop-checkpoint=$code" \
+          "$tmp/noop-$flavor.log"; then
+          noop_checkpoint="$code"
+        fi
+      done
+      for code in unclassified lineage-preflight san-extension san-identity \
+        renewal-preflight certbot-renew renewal-prepare renewal-dialect \
+        certbot-account certbot-plugin post-state material-verification \
+        publish-preflight archive-renewal s3-fetch renewal-finalize restore; do
+        if grep -Fqx -- "local-first-issue: noop-producer=$code" \
+          "$tmp/noop-$flavor.log"; then
+          noop_producer="$code"
+        fi
+      done
+      local receipt_status=not-reported receipt_publish=not-reported value
+      for value in checked issued other; do
+        if grep -Fqx -- "local-first-issue: noop-receipt-status=$value" \
+          "$tmp/noop-$flavor.log"; then
+          receipt_status="$value"
+        fi
+      done
+      for value in true false absent; do
+        if grep -Fqx -- "local-first-issue: noop-receipt-publication=$value" \
+          "$tmp/noop-$flavor.log"; then
+          receipt_publish="$value"
+        fi
+      done
+      problem "noop-checkpoint=$noop_checkpoint"
+      problem "noop-producer=$noop_producer"
+      local object_delta=not-reported renewal_delta=not-reported \
+        order_delta=unavailable current_orders='' observation
+      for observation in changed unchanged unreadable; do
+        if grep -Fqx -- "local-first-issue: noop-object=$observation" \
+          "$tmp/noop-$flavor.log"; then
+          object_delta="$observation"
+        fi
+        if grep -Fqx -- "local-first-issue: noop-renewal=$observation" \
+          "$tmp/noop-$flavor.log"; then
+          renewal_delta="$observation"
+        fi
+      done
+      current_orders="$(pebble_order_count 2>/dev/null)" || current_orders=''
+      if [[ "$current_orders" =~ ^[0-9]+$ && "$count_before" =~ ^[0-9]+$ ]]; then
+        if [[ "$current_orders" == "$count_before" ]]; then
+          order_delta=unchanged
+        elif (( current_orders > count_before )); then
+          order_delta=increased
+        fi
+      fi
+      problem "noop-checkpoint=$noop_checkpoint"
+      problem "noop-producer=$noop_producer"
+      problem "noop-receipt-status=$receipt_status"
+      problem "noop-receipt-publication=$receipt_publish"
+      problem "noop-object=$object_delta"
+      problem "noop-renewal=$renewal_delta"
+      problem "noop-orders=$order_delta"
       problem 'fresh-runner selected renewal/no-op failed'
       return 74
     fi
@@ -238,13 +463,29 @@ run_lifecycle() (
       { problem 'new Pebble ACME order appeared during supposed no-op'; return 65; }
     printf 'local-first-issue-host: restored_noop=%s; no_new_order=true; no_republish=true\n' "$flavor"
   done
+  fi
 
   # The first runner is long gone; this separate runner restores the current
   # S3 state, requests exactly one selected renewal using a one-shot private
   # force marker, and publishes through the unchanged public producer.
   count_before="$(pebble_order_count)" || return $?
-  if ! run_phase "$image" "$cert_ca" renew "$digest" \
-    >"$tmp/renew.log" 2>&1; then
+  problem 'lifecycle-phase=second-order'
+  local renewal_start=$SECONDS renewal_status=0 renewal_reason=unclassified
+  run_phase "$image" "$cert_ca" renew "$digest" \
+    >"$tmp/renew.log" 2>&1 || renewal_status=$?
+  problem "timing-phase=second-order; elapsed-seconds=$((SECONDS-renewal_start))"
+  if (( renewal_status != 0 )); then
+    case "$renewal_status" in
+      124|137) renewal_reason=timeout ;;
+      125) renewal_reason=docker-startup ;;
+      126|127) renewal_reason=runner-executable ;;
+    esac
+    if [[ "$renewal_reason" == unclassified ]] &&
+      grep -Fqx 'local-first-issue: selected real-Certbot renewal or publication failed' \
+        "$tmp/renew.log"; then
+      renewal_reason=producer-rejected
+    fi
+    problem "second-order-failure=$renewal_reason"
     problem 'isolated second real Certbot renewal or S3 republication failed'
     return 74
   fi
@@ -263,6 +504,7 @@ run_lifecycle() (
 
   # A third-party real S3 download from an entirely new container must
   # independently establish remote archive and certificate identity.
+  problem 'lifecycle-phase=renewed-readback'
   if ! run_phase "$image" "$cert_ca" verify "$renewed_digest" \
     >"$tmp/renew-verify.log" 2>&1; then
     problem 'fresh independent validator rejected renewed S3 archive'
@@ -273,9 +515,16 @@ run_lifecycle() (
     { problem 'independent DER identity did not match renewed certificate'; return 65; }
   printf 'local-first-issue-host: second_real_pebble_order=true; renewed_archive_sha256=%s; renewed_cert_der_sha256=%s\n' "$renewed_digest" "$renewed_cert"
 
+  if [[ "$mode" == debug-second-order ]]; then
+    problem 'partial-development=true; target=second-order; full-acceptance=false'
+    printf '%s\n' 'local-first-issue-host: focused_second_order=passed; full_acceptance=false'
+    return 0
+  fi
+
   # Nothing in the renewed archive may silently force later public renewals.
   # The same normal, unchanged no-op behavior must hold in another fresh
   # runner even after the deliberate one-shot renewal completed.
+  problem 'lifecycle-phase=post-renewal-noop'
   if ! run_phase "$image" "$cert_ca" noop ordinary "$renewed_digest" \
     >"$tmp/noop-after-renew.log" 2>&1; then
     problem 'normal post-renewal check failed or unexpectedly republished'
@@ -300,8 +549,12 @@ run_lifecycle() (
 ## No raw Certbot/AWS/ACME logs or private state are reported.
 ## @param image Already cached runner from the verified public producer.
 run_faults() (
-  local image="$1" tmp='' cert_ca='' cid='' pebble_id='' scenario=''
+  local image="$1" selected="${2-all}" tmp='' cert_ca='' cid='' pebble_id='' scenario=''
   local digest='' observed='' stdout_file=''
+  case "$selected" in
+    all|ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable) ;;
+    *) problem 'invalid focused negative scenario'; return 64 ;;
+  esac
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'negative runner image missing; build before entering isolation'; return 69; }
   bash "$HARNESS" status >/dev/null ||
@@ -314,7 +567,7 @@ run_faults() (
     -p certbotbot-local-e2e ps -q acme-gateway)" || return 74
   [[ -n "$cid" ]] ||
     { problem 'local canonical staging gateway absent'; return 65; }
-  docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$cert_ca" >/dev/null 2>&1 ||
+  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$cert_ca" 2>/dev/null ||
     { problem 'temporary gateway public root unavailable'; return 74; }
   chmod 0644 "$cert_ca"
   openssl x509 -in "$cert_ca" -noout >/dev/null 2>&1 ||
@@ -329,6 +582,7 @@ run_faults() (
     { problem 'baseline did not establish exact remote object digest'; return 65; }
 
   for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected route53-unavailable s3-put-reject; do
+    [[ "$selected" == all || "$selected" == "$scenario" ]] || continue
     stdout_file="$tmp/fault-$scenario.log"
     if ! run_phase "$image" "$cert_ca" fault "$scenario" "$digest" \
       >"$stdout_file" 2>&1; then
@@ -349,6 +603,7 @@ run_faults() (
     printf 'local-first-issue-host: negative=%s; remote_unchanged=true\n' "$scenario"
   done
 
+  if [[ "$selected" == all || "$selected" == acme-unavailable ]]; then
   # ACME availability is a local service outage, not an ACME order refusal.
   # Do not interfere with the pinned synthetic S3 object or the gateway PKI.
   pebble_id="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
@@ -377,18 +632,133 @@ run_faults() (
   [[ "$observed" == "$digest" ]] ||
     { problem 'remote object changed during ACME outage'; return 65; }
   printf '%s\n' 'local-first-issue-host: negative=acme-unavailable; remote_unchanged=true'
-  printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
+  fi
+  if [[ "$selected" == all ]]; then
+    printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
+  else
+    problem "partial-development=true; target=negative-$selected; full-acceptance=false"
+    printf 'local-first-issue-host: focused_negative=%s; full_acceptance=false\n' "$selected"
+  fi
+)
+
+## @fn run_isolation_probe()
+## @brief Exercises the same nonroot, no-egress runner flags used by lifecycle.
+## @details
+## The only host-to-container data is a disposable public-only gateway root,
+## extracted from this project's own running Caddy container. The dedicated
+## probe phase verifies actual private HTTPS and attempts TCP connections
+## only to documentation-reserved IPs, never real public provider services.
+## Its temporary logs and root copy are removed on all normal exit paths.
+## @param image Locally cached, source-bound runner image name.
+## @retval 0 A nonsecret explicit private-route attestation was observed.
+## @retval 65 Isolation, gateway or run receipt does not match contract.
+run_isolation_probe() (
+  local image="$1" tmp='' cid='' ca_file=''
+  docker image inspect "$image" >/dev/null 2>&1 ||
+    { problem 'checked isolation runner image missing'; return 69; }
+  bash "$HARNESS" status >/dev/null ||
+    { problem 'isolated Compose project is not in a verified running state'; return 65; }
+  tmp="$(mktemp -d)" ||
+    { problem 'private probe scratch unavailable'; return 74; }
+  trap 'rm -rf -- "$tmp"' EXIT
+  ca_file="$tmp/gateway-root.crt"
+  cid="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
+    -p certbotbot-local-e2e ps -q acme-gateway)" || return 74
+  [[ -n "$cid" ]] ||
+    { problem 'isolation gateway container missing'; return 65; }
+  docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$ca_file" 2>/dev/null ||
+    { problem 'public-only gateway root unavailable for isolation probe'; return 74; }
+  chmod 0644 "$ca_file"
+  openssl x509 -in "$ca_file" -noout >/dev/null 2>&1 ||
+    { problem 'isolation gateway public root invalid'; return 65; }
+  # Preserve only an exit code and exact script-owned diagnostics. Nothing
+  # from Docker stderr or the private container log is copied to CI.
+  local phase_status=0 reason='unclassified' line
+  run_phase "$image" "$ca_file" isolation >"$tmp/isolation.log" 2>&1 ||
+    phase_status=$?
+  if (( phase_status != 0 )); then
+    while IFS= read -r line; do
+      case "$line" in
+        'local-provider: default network route forbidden') reason=provider-default-route ;;
+        'local-provider: ephemeral test trust root unavailable') reason=missing-test-root ;;
+        'local-provider: endpoint verifier unavailable') reason=missing-verifier ;;
+        'local-provider: canonical staging name resolution failed') reason=staging-dns-failed ;;
+        'local-provider: staging name is not bound to test gateway') reason=staging-dns-mismatch ;;
+        'local-provider: production CA name must not resolve') reason=production-dns-resolved ;;
+        'local-provider: authenticated staging directory unavailable') reason=staging-tls-or-http-failed ;;
+        'local-provider: foreign or malformed ACME directory') reason=staging-directory-mismatch ;;
+        'local-first-issue: private staging TLS and route admission check failed') reason=provider-admission-failed ;;
+        'local-first-issue: isolated runner has a default network route') reason=runner-default-route ;;
+        'local-first-issue: isolation route table missing') reason=missing-route-table ;;
+        'local-first-issue: outside-documentation-network connection unexpectedly succeeded') reason=external-tcp-succeeded ;;
+        'local-first-issue: private runner resolved forbidden external DNS name') reason=forbidden-dns-resolved ;;
+      esac
+    done <"$tmp/isolation.log"
+    if [[ "$reason" == unclassified ]] &&
+      grep -Fqx 'local-first-issue: isolation_passed=true; challenge_validation=bypassed' \
+        "$tmp/isolation.log"; then
+      if grep -Fqx 'local-first-issue: isolation workspace cleanup failed' \
+        "$tmp/isolation.log"; then
+        reason=runner-cleanup-failed
+      elif grep -Fqx 'local-first-issue: isolation_cleanup_verified=true' \
+        "$tmp/isolation.log"; then
+        reason=runner-cleanup-succeeded-but-exited
+      else
+        reason=runner-cleanup-unverified
+      fi
+    fi
+    if [[ "$reason" == unclassified ]]; then
+      case "$phase_status" in
+        124|137) reason=runner-timeout ;;
+        125) reason=docker-startup-rejected ;;
+        126|127) reason=runner-executable-unavailable ;;
+        64|65|69|74) reason=runner-inner-exit ;;
+        *) reason=runner-exit-other ;;
+      esac
+      # Stage markers are fixed text issued by this test-only executable.
+      # The last marker is useful if a shell or third-party binary exits
+      # without an explicit error classification.
+      if [[ "$reason" == runner-inner-exit || "$reason" == runner-exit-other ]]; then
+        if grep -Fqx 'local-first-issue: isolation_stage=reserved-dns' "$tmp/isolation.log"; then
+          reason=runner-stage-reserved-dns
+        elif grep -Fqx 'local-first-issue: isolation_stage=reserved-tcp' "$tmp/isolation.log"; then
+          reason=runner-stage-reserved-tcp
+        elif grep -Fqx 'local-first-issue: isolation_stage=route' "$tmp/isolation.log"; then
+          reason=runner-stage-route
+        elif grep -Fqx 'local-first-issue: isolation_stage=provider' "$tmp/isolation.log"; then
+          reason=runner-stage-provider
+        else
+          reason=runner-before-isolation-entrypoint
+        fi
+      fi
+    fi
+    problem "sealed runner isolation probe failed: $reason; exit_status=$phase_status"
+    return 65
+  fi
+  grep -Fqx 'local-first-issue: isolation_passed=true; challenge_validation=bypassed' \
+    "$tmp/isolation.log" ||
+    { problem 'bounded isolation test receipt missing'; return 65; }
+  printf '%s\n' 'local-first-issue-host: active_no_egress_probe=true; challenge_validation=bypassed'
 )
 
 ## @fn main()
 ## @brief Dispatches explicit dependency-fetch and sealed-test phases only.
 main() {
   local action="${1-}" image=''
-  (( $# == 1 )) ||
-    { problem 'usage: first-issue-host.bash build|run'; return 64; }
+  if [[ "$action" == run-debug-fault ]]; then
+    (( $# == 2 )) ||
+      { problem 'focused fault requires one named scenario'; return 64; }
+    case "$2" in
+      ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable) ;;
+      *) problem 'invalid focused negative scenario'; return 64 ;;
+    esac
+  else
+    (( $# == 1 )) ||
+      { problem 'usage: first-issue-host.bash build|probe|run|run-faults'; return 64; }
+  fi
   case "$action" in
-    build|run|run-faults) ;;
-    *) problem 'usage: first-issue-host.bash build|run|run-faults'; return 64 ;;
+    build|probe|run|run-debug-second-order|run-debug-seed|run-faults|run-debug-fault) ;;
+    *) problem 'usage: first-issue-host.bash build|probe|run|run-debug-second-order|run-faults'; return 64 ;;
   esac
   reject_cloud_env || return $?
   require_engine || return $?
@@ -399,10 +769,14 @@ main() {
   fi
   # No remote image pull, package installation, or source compilation here.
   # Cleanup is deliberately scoped to this project's known ephemeral runner names.
-  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable >/dev/null 2>&1 || true' EXIT
+  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-stabilize certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable certbotbot-local-e2e-isolation >/dev/null 2>&1 || true' EXIT
   case "$action" in
-    run) run_lifecycle "$image" ;;
-    run-faults) run_faults "$image" ;;
+    probe) run_isolation_probe "$image" ;;
+    run) run_lifecycle "$image" full ;;
+    run-debug-second-order) run_lifecycle "$image" debug-second-order ;;
+    run-debug-seed) run_lifecycle "$image" debug-seed ;;
+    run-faults) run_faults "$image" all ;;
+    run-debug-fault) run_faults "$image" "$2" ;;
   esac
 }
 

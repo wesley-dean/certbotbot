@@ -1,0 +1,518 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+## @file tests/e2e-local/ci-local-e2e.bash
+## @brief Runs mandatory isolated ACME/S3 positive, negative, and egress tests.
+## @details
+## CI obtains source dependencies, verifies the real published producer artifact
+## flavors and pulls immutable pinned service images BEFORE the internal Docker
+## network starts. After that, all real protocol tests use unprivileged,
+## no-egress, fresh runners with synthetic AWS credentials, Pebble ACME and
+## SeaweedFS. Raw provider logs remain in disposable mode-0700 scratch and are
+## never uploaded. A passing gate is NOT live AWS, Route53, DNS-01 validation or
+## Let's Encrypt acceptance. See ADRs 046, 047, 048 and 049.
+## @par Usage
+## @code{.sh}
+## bash tests/e2e-local/ci-local-e2e.bash
+## @endcode
+
+set -euo pipefail
+umask 077
+readonly REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+readonly E2E="$REPO/tests/e2e-local"
+readonly STACK="$E2E/run.bash"
+readonly HOST="$E2E/first-issue-host.bash"
+readonly COMPOSE_FILE="$E2E/compose.yml"
+readonly PROJECT=certbotbot-local-e2e
+readonly NETWORK=certbotbot-local-e2e_isolated
+WORK=''
+PROJECT_STARTED=false
+
+## @fn error()
+## @brief Prints a fixed nonsecret failure classification.
+## @param message Nonsecret diagnostic string.
+error() {
+  printf 'local-e2e-ci: %s\n' "$1" >&2
+}
+
+## @fn reject_credentials()
+## @brief Refuses inherited cloud authentication and remote Docker contexts.
+## @retval 0 No unsafe exported credentials or Docker connection were found.
+## @retval 65 Potential real cloud authority was detected.
+reject_credentials() {
+  local key
+  [[ -z "${DOCKER_HOST-}" && -z "${DOCKER_CONTEXT-}" ]] ||
+    { error 'remote Docker context forbidden'; return 65; }
+  while IFS= read -r key; do
+    case "$key" in
+      AWS_*|GPG_SYMMETRIC_KEY|AZURE_CLIENT_ID|AZURE_CLIENT_SECRET|AZURE_TENANT_ID|AZURE_FEDERATED_TOKEN_FILE|GOOGLE_APPLICATION_CREDENTIALS)
+        error 'ambient cloud credentials/settings forbidden'
+        return 65
+        ;;
+    esac
+  done < <(compgen -e)
+}
+
+## @fn require_host()
+## @brief Validates a nonroot native Linux Docker and Compose v2 host.
+## @retval 69 Required tools or local Docker engine are unavailable.
+require_host() {
+  local tool
+  [[ "$(uname -s)" == Linux && "$(id -u)" -ne 0 ]] ||
+    { error 'native unprivileged Linux host required'; return 69; }
+  for tool in docker make bash curl jq openssl sha256sum timeout grep awk sed mktemp; do
+    command -v "$tool" >/dev/null 2>&1 ||
+      { error 'local verification tool missing'; return 69; }
+  done
+  [[ "$(docker context show 2>/dev/null)" == default &&
+    "$(docker info --format '{{.OSType}}' 2>/dev/null)" == linux ]] ||
+    { error 'local Linux Docker engine unavailable'; return 69; }
+  docker compose version >/dev/null 2>&1 ||
+    { error 'Docker Compose v2 unavailable'; return 69; }
+}
+
+## @fn require_receipt()
+## @brief Requires an exact nonsecret phase receipt in a private log.
+## @param file Previously captured private phase output.
+## @param line Exact expected bounded proof line.
+## @retval 65 Required proof not observed.
+require_receipt() {
+  [[ -f "$1" && ! -L "$1" ]] && grep -Fqx -- "$2" "$1" ||
+    { error 'required bounded protocol proof missing'; return 65; }
+}
+
+## @fn prepare()
+## @brief Acquires and verifies all dependencies before private-network startup.
+## @details
+## No mutable released producer, secret or default public CA is used. All
+## artifacts derive from this checked source and have valid checksum companions.
+## @retval 74 Dependency, build, checksum, or pinned image verification failed.
+prepare() {
+  local name
+  if ! (cd "$REPO" && make deps && make deps-check) >"$WORK/deps.log" 2>&1; then
+    error 'dependency preparation or offline verification failed'
+    return 74
+  fi
+  if ! (cd "$REPO" && make build VERSION=0.0.0-dev) >"$WORK/build.log" 2>&1; then
+    error 'public artifact build failed'
+    return 74
+  fi
+  for name in certbotbot.dev.bash certbotbot.bash certbotbot.min.bash; do
+    [[ -f "$REPO/dist/$name" && -f "$REPO/dist/$name.sha256" &&
+      ! -L "$REPO/dist/$name" && ! -L "$REPO/dist/$name.sha256" ]] ||
+      { error 'public artifact or checksum missing'; return 65; }
+    (cd "$REPO/dist" && sha256sum -c "$name.sha256") >/dev/null 2>&1 ||
+      { error 'public artifact checksum mismatch'; return 65; }
+  done
+  if ! bash "$HOST" build >"$WORK/runner-build.log" 2>&1; then
+    error 'real Certbot runner image build failed'
+    # This stage runs BEFORE any cloud/provider credential or ACME account
+    # material exists. Only its public package/image build diagnostics are
+    # safe to expose; later provider/runtime logs must remain private.
+    tail -n 45 "$WORK/runner-build.log" >&2 || true
+    return 74
+  fi
+  if ! bash "$STACK" fetch >"$WORK/service-fetch.log" 2>&1; then
+    error 'pinned upstream image fetch/digest gate failed'
+    return 74
+  fi
+  printf '%s\n' 'local-e2e-ci: dependencies_and_images=prefetched_and_verified'
+}
+
+## @fn start_private_project()
+## @brief Starts pinned preloaded services with actual private network checks.
+## @retval 65/74 Container/network isolation or service readiness failed.
+start_private_project() {
+  PROJECT_STARTED=true
+  if ! bash "$STACK" up >"$WORK/startup.log" 2>&1; then
+    error 'isolated ACME/SeaweedFS services unavailable'
+    # Startup occurs before ACME account registration or S3 certificate
+    # publication. The topology/readiness errors contain only owned service
+    # names and public gateway diagnostics, not provider credentials.
+    # Never expose the later real Certbot/AWS execution logs.
+    tail -n 45 "$WORK/startup.log" >&2 || true
+    return 74
+  fi
+  [[ "$(docker network inspect "$NETWORK" --format '{{.Internal}}' 2>/dev/null)" == true &&
+    "$(docker network inspect "$NETWORK" --format '{{.Driver}}' 2>/dev/null)" == bridge ]] ||
+    { error 'actual network is not an internal bridge'; return 65; }
+  printf '%s\n' 'local-e2e-ci: private_network=inspected'
+}
+
+## @fn probe_no_egress()
+## @brief Tests actual private runner routing, DNS and staging TLS before/after.
+## @param phase before or after the real protocol scenarios.
+## @retval 65 The real container isolation probe could not be proven.
+probe_no_egress() {
+  local phase="$1" logfile="$WORK/isolation-$1.log"
+  if ! timeout --signal=TERM --kill-after=15s 240s \
+    bash "$HOST" probe >"$logfile" 2>&1; then
+    # The host emits an allowlisted classification from the sealed runner.
+    # Match only exact owned receipts; never echo the underlying Docker
+    # or provider output from private logs into the Actions console.
+    local reason='unclassified' classification
+    for classification in \
+      provider-default-route missing-test-root missing-verifier \
+      staging-dns-failed staging-dns-mismatch production-dns-resolved \
+      staging-tls-or-http-failed staging-directory-mismatch \
+      provider-admission-failed runner-default-route missing-route-table \
+      external-tcp-succeeded forbidden-dns-resolved \
+      runner-timeout docker-startup-rejected runner-executable-unavailable \
+      runner-inner-exit runner-exit-other runner-stage-reserved-dns \
+      runner-stage-reserved-tcp runner-stage-route runner-stage-provider \
+      runner-before-isolation-entrypoint runner-reported-success-but-exited \
+      runner-cleanup-failed runner-cleanup-succeeded-but-exited \
+      runner-cleanup-unverified; do
+      if grep -Eq -- \
+        "^local-first-issue-host: sealed runner isolation probe failed: $classification; exit_status=([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$" \
+        "$logfile"; then
+        reason="$classification"
+        break
+      fi
+    done
+    # Earlier host-side failures also have stable, static messages.
+    if [[ "$reason" == unclassified ]]; then
+      local line
+      while IFS= read -r line; do
+        case "$line" in
+          'local-first-issue-host: checked isolation runner image missing') reason=runner-image-missing ;;
+          'local-first-issue-host: isolated Compose project is not in a verified running state') reason=project-unhealthy ;;
+          'local-first-issue-host: private probe scratch unavailable') reason=probe-scratch-unavailable ;;
+          'local-first-issue-host: isolation gateway container missing') reason=gateway-container-missing ;;
+          'local-first-issue-host: public-only gateway root unavailable for isolation probe') reason=gateway-root-unavailable ;;
+          'local-first-issue-host: isolation gateway public root invalid') reason=gateway-root-invalid ;;
+          'local-first-issue-host: bounded isolation test receipt missing') reason=probe-receipt-missing ;;
+        esac
+      done <"$logfile"
+    fi
+    error "active no-egress and staging TLS probe failed: $reason"
+    return 65
+  fi
+  require_receipt "$logfile" \
+    'local-first-issue-host: active_no_egress_probe=true; challenge_validation=bypassed' ||
+    return $?
+  printf 'local-e2e-ci: no_egress_probe=%s; challenge_validation=bypassed\n' "$phase"
+}
+
+## @fn run_positive()
+## @brief Proves first issue, three fresh no-ops, second order and republish.
+## @retval 74 Real ACME and SeaweedFS acceptance could not be demonstrated.
+run_positive() {
+  local logfile="$WORK/positive.log" flavor action=run
+  case "${E2E_MODE-full}" in
+    debug-second-order) action=run-debug-second-order ;;
+    debug-negative) action=run-debug-seed ;;
+  esac
+  if ! timeout --signal=TERM --kill-after=15s 2100s \
+    bash "$HOST" "$action" >"$logfile" 2>&1; then
+    # Only literal host-owned bounded failure categories may reach CI output.
+    # Full private runner logs and provider responses stay in scratch.
+    local reason='unclassified' category
+    for category in \
+      s3-bucket-create s3-bucket-head unexpected-existing-object \
+      s3-missing-object-ambiguous missing-account-accepted failed-issue-published \
+      s3-state-changed registration-or-publish registration-receipt \
+      account-archive-unreadable account-native-state-missing \
+      registration-created-lineage issuance-or-publish issuance-receipt \
+      s3-object-read s3-object-empty certificate-archive-unreadable \
+      certificate-lineage-missing certificate-missing certificate-extraction \
+      certificate-san certificate-pem certificate-key-mismatch \
+      register-acme register-s3-publish register-account-packaging \
+      register-account-final-preflight register-account-initial-preflight \
+      register-s3-preflight register-certbot-unavailable register-unclassified \
+      issue-s3-archive-missing issue-s3-object-preflight issue-s3-fetch \
+      issue-archive-restore issue-restored-state issue-shared-state \
+      issue-account-unavailable issue-issuance-preflight issue-account-identity \
+      issue-authenticator-probe issue-route53-plugin issue-account-probe \
+      issue-certonly issue-lineage-incomplete issue-post-issue-state \
+      issue-certificate-verification issue-certificate-key \
+      issue-publish-preflight issue-s3-publish \
+      issue-renewal-metadata issue-renewal-dialect issue-renewal-lineage \
+      issue-renewal-unsafe issue-renewal-size issue-renewal-staging \
+      issue-renewal-write issue-lineage-ambiguous issue-account-identity-changed \
+      issue-unselected-state-verify issue-unselected-state-modified \
+      issue-unselected-state-snapshot issue-certificate-tools \
+      issue-certificate-workspace issue-archive-boundary issue-archive-contents \
+      issue-acme-selection issue-archive-size issue-workspace-unavailable \
+      issue-s3-cli issue-archive-install issue-unclassified; do
+      if grep -Fqx -- "local-first-issue-host: bootstrap-failure=$category" \
+        "$logfile"; then
+        reason="$category"
+        break
+      fi
+    done
+    # Translate fixed host-owned stub receipts only. Never print provider or
+    # Docker logs; even an absent receipt must remain a failing result.
+    local checkpoint=not-reported refusal=not-reported value
+    for value in no-request hosted-zones rrset-change change-poll; do
+      if grep -Fqx -- "local-first-issue-host: route53-checkpoint=$value" "$logfile"; then
+        checkpoint="$value"
+        break
+      fi
+    done
+    for value in none AccessDenied InvalidInput InvalidAction InvalidChangeBatch NoSuchChange; do
+      if grep -Fqx -- "local-first-issue-host: route53-refusal=$value" "$logfile"; then
+        refusal="$value"
+        break
+      fi
+    done
+    # The host owns these literal checkpoints; all private provider output is
+    # discarded. Report only the last recognized phase, never a raw log line.
+    local lifecycle_stage=not-reported receipt
+    while IFS= read -r receipt; do
+      case "$receipt" in
+        'local-first-issue-host: lifecycle-phase=first-issuance')
+          lifecycle_stage=first-issuance ;;
+        'local-first-issue-host: lifecycle-phase=first-readback')
+          lifecycle_stage=first-readback ;;
+        'local-first-issue-host: lifecycle-phase=metadata-stabilization')
+          lifecycle_stage=metadata-stabilization ;;
+        'local-first-issue-host: lifecycle-phase=stabilized-readback')
+          lifecycle_stage=stabilized-readback ;;
+        'local-first-issue-host: lifecycle-phase=noop-development')
+          lifecycle_stage=noop-development ;;
+        'local-first-issue-host: lifecycle-phase=noop-ordinary')
+          lifecycle_stage=noop-ordinary ;;
+        'local-first-issue-host: lifecycle-phase=noop-minified')
+          lifecycle_stage=noop-minified ;;
+        'local-first-issue-host: lifecycle-phase=second-order')
+          lifecycle_stage=second-order ;;
+        'local-first-issue-host: lifecycle-phase=renewed-readback')
+          lifecycle_stage=renewed-readback ;;
+        'local-first-issue-host: lifecycle-phase=post-renewal-noop')
+          lifecycle_stage=post-renewal-noop ;;
+      esac
+    done <"$logfile"
+    error "real Pebble certificate lifecycle or S3 publication failed: $reason"
+    error "bounded local lifecycle stage=$lifecycle_stage"
+    local renewal_failure=not-reported renewal_category
+    for renewal_category in timeout docker-startup runner-executable producer-rejected unclassified; do
+      if grep -Fqx -- "local-first-issue-host: second-order-failure=$renewal_category" \
+        "$logfile"; then
+        renewal_failure="$renewal_category"
+        break
+      fi
+    done
+    error "bounded second-order failure=$renewal_failure"
+    # Fixed test-runner classifications. Neither private runner logs nor
+    # extracted account/certificate content is relayed.
+    local noop_checkpoint=not-reported noop_producer=not-reported code
+    for code in fetch-before digest-before account-before cert-before \
+      metadata-before producer producer-receipt metadata-after \
+      metadata-match fetch-after digest-after account-after cert-after; do
+      if grep -Fqx -- "local-first-issue-host: noop-checkpoint=$code" "$logfile"; then
+        noop_checkpoint="$code"
+      fi
+    done
+    for code in unclassified lineage-preflight san-extension san-identity \
+      renewal-preflight certbot-renew renewal-prepare renewal-dialect \
+      certbot-account certbot-plugin post-state material-verification \
+      publish-preflight archive-renewal s3-fetch renewal-finalize restore; do
+      if grep -Fqx -- "local-first-issue-host: noop-producer=$code" "$logfile"; then
+        noop_producer="$code"
+      fi
+    done
+    local receipt_status=not-reported receipt_publish=not-reported value
+    for value in checked issued other; do
+      if grep -Fqx -- "local-first-issue-host: noop-receipt-status=$value" \
+        "$logfile"; then
+        receipt_status="$value"
+      fi
+    done
+    for value in true false absent; do
+      if grep -Fqx -- "local-first-issue-host: noop-receipt-publication=$value" \
+        "$logfile"; then
+        receipt_publish="$value"
+      fi
+    done
+    error "bounded noop checkpoint=$noop_checkpoint; producer=$noop_producer"
+    error "bounded noop receipt=status-$receipt_status; published-$receipt_publish"
+    local object_delta=not-reported renewal_delta=not-reported \
+      order_delta=not-reported observation
+    for observation in changed unchanged unreadable; do
+      if grep -Fqx -- "local-first-issue-host: noop-object=$observation" \
+        "$logfile"; then
+        object_delta="$observation"
+      fi
+      if grep -Fqx -- "local-first-issue-host: noop-renewal=$observation" \
+        "$logfile"; then
+        renewal_delta="$observation"
+      fi
+    done
+    for observation in unchanged increased unavailable; do
+      if grep -Fqx -- "local-first-issue-host: noop-orders=$observation" \
+        "$logfile"; then
+        order_delta="$observation"
+      fi
+    done
+    error "bounded no-op readback=object-$object_delta; renewal-$renewal_delta; orders-$order_delta"
+    error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
+    return 74
+  fi
+  require_receipt "$logfile" \
+    'local-first-issue-host: native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true' || return $?
+  if [[ "${E2E_MODE-full}" == debug-second-order ]]; then
+    require_receipt "$logfile" \
+      'local-first-issue-host: focused_second_order=passed; full_acceptance=false' || return $?
+    printf '%s\n' 'local-e2e-ci: partial-development=true; target=second-order; full_acceptance=false'
+    return 0
+  fi
+  if [[ "${E2E_MODE-full}" == debug-negative ]]; then
+    require_receipt "$logfile" \
+      'local-first-issue-host: focused_seed=passed; full_acceptance=false' || return $?
+    printf '%s\n' 'local-e2e-ci: partial-development=true; target=negative-fixture; full_acceptance=false'
+    return 0
+  fi
+  for flavor in development ordinary minified; do
+    require_receipt "$logfile" \
+      "local-first-issue-host: restored_noop=$flavor; no_new_order=true; no_republish=true" ||
+      return $?
+  done
+  grep -Eq \
+    '^local-first-issue-host: second_real_pebble_order=true; renewed_archive_sha256=[a-f0-9]{64}; renewed_cert_der_sha256=[a-f0-9]{64}$' \
+    "$logfile" ||
+    { error 'second real Pebble order and certificate replacement unproven'; return 65; }
+  require_receipt "$logfile" \
+    'local-first-issue-host: renewed_object_independently_verified=true; subsequent_normal_noop=true' ||
+    return $?
+  printf '%s\n' 'local-e2e-ci: positive=passed; second_real_pebble_order=true; independent_s3_readback=true'
+}
+
+## @fn run_negative()
+## @brief Proves all seven external-provider faults preserve remote state.
+## @retval 74 A required failure or independent S3 readback was not proven.
+run_negative() {
+  local logfile="$WORK/negative.log" scenario
+  if ! timeout --signal=TERM --kill-after=15s 2100s \
+    bash "$HOST" run-faults >"$logfile" 2>&1; then
+    error 'isolated ACME, Route53 stub, S3 or archive failure gate failed'
+    return 74
+  fi
+  for scenario in \
+    ca-production s3-unavailable corrupt-archive acme-order-rejected \
+    route53-unavailable s3-put-reject acme-unavailable; do
+    require_receipt "$logfile" \
+      "local-first-issue-host: negative=$scenario; remote_unchanged=true" ||
+      return $?
+  done
+  require_receipt "$logfile" \
+    'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed' ||
+    return $?
+  printf '%s\n' 'local-e2e-ci: negative_seven=passed; original_seaweedfs_archive=unchanged'
+}
+
+## @fn run_focused_negative()
+## @brief Tests only the explicitly allowlisted negative scenario in partial mode.
+## @details Genuine issuance and stabilization were seeded by run_positive.
+## @retval 0 A real refusal and independent unchanged SeaweedFS readback passed.
+run_focused_negative() {
+  local logfile="$WORK/focused-negative.log" scenario="$E2E_NEGATIVE"
+  if ! timeout --signal=TERM --kill-after=15s 2100s \
+    bash "$HOST" run-debug-fault "$scenario" >"$logfile" 2>&1; then
+    error "focused negative=$scenario failed (partial-development only)"
+    return 74
+  fi
+  require_receipt "$logfile" \
+    "local-first-issue-host: negative=$scenario; remote_unchanged=true" || return $?
+  require_receipt "$logfile" \
+    "local-first-issue-host: focused_negative=$scenario; full_acceptance=false" || return $?
+  printf 'local-e2e-ci: focused_negative=%s; full_acceptance=false\n' "$scenario"
+}
+
+## @fn cleanup()
+## @brief Unpauses project-owned Pebble and deletes only this Compose project.
+## @details
+## An unfinished failure test can leave Pebble paused; unpause before teardown.
+## If cleanup fails after a green scenario, turn the CI result red. No private
+## logs or certificates are ever uploaded to the workflow.
+## @param original Original exit code, preserved if nonzero.
+cleanup() {
+  local original="$1" cleanup_failure=0 pebble=''
+  trap - EXIT HUP INT TERM
+  if [[ "$PROJECT_STARTED" == true ]]; then
+    pebble="$(docker compose --env-file /dev/null -f "$COMPOSE_FILE" \
+      -p "$PROJECT" ps -q pebble 2>/dev/null || true)"
+    if [[ -n "$pebble" ]] &&
+      [[ "$(docker inspect "$pebble" --format '{{.State.Paused}}' 2>/dev/null)" == true ]]; then
+      docker unpause "$pebble" >/dev/null 2>&1 || cleanup_failure=1
+    fi
+    bash "$STACK" down >/dev/null 2>&1 || cleanup_failure=1
+    if docker network inspect "$NETWORK" >/dev/null 2>&1; then
+      cleanup_failure=1
+    fi
+  fi
+  if [[ -n "$WORK" && -d "$WORK" ]]; then
+    rm -rf -- "$WORK" || cleanup_failure=1
+  fi
+  if (( cleanup_failure != 0 )); then
+    error 'private Docker project cleanup could not be verified'
+    (( original != 0 )) && exit "$original"
+    exit 75
+  fi
+  exit "$original"
+}
+
+## @fn timed_stage()
+## @brief Prints bounded duration for a fixed trusted test phase even on failure.
+## @param label Fixed internal phase identifier (never provider output).
+## @param ... Fixed local function plus internal arguments.
+timed_stage() {
+  local label="$1" start=$SECONDS status=0
+  shift
+  "$@" || status=$?
+  printf 'local-e2e-ci: timing_phase=%s; elapsed_seconds=%d; status=%s\n' \
+    "$label" "$((SECONDS-start))" "$([[ $status -eq 0 ]] && printf pass || printf fail)"
+  return "$status"
+}
+
+## @fn main()
+## @brief Runs mandatory prefetch, no-egress, positive, negative and cleanup.
+## @retval 0 Every genuine protocol acceptance stage and security probe passed.
+## @retval 64 Unexpected command-line input.
+## @retval 65 One security boundary or required proof is missing.
+## @retval 69 Required native Linux Docker prerequisites are absent.
+## @retval 74 Real protocol or fixture operations could not be verified.
+main() {
+  E2E_MODE=full
+  E2E_NEGATIVE=''
+  if (($# == 1)); then
+    case "$1" in
+      --debug-second-order) E2E_MODE=debug-second-order ;;
+      --debug-negative=*)
+        E2E_NEGATIVE="${1#--debug-negative=}"
+        case "$E2E_NEGATIVE" in
+          ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable)
+            E2E_MODE=debug-negative ;;
+          *) error 'unsupported focused negative scenario'; return 64 ;;
+        esac ;;
+      *) error 'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'; return 64 ;;
+    esac
+  elif (($# != 0)); then
+    error 'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'
+    return 64
+  fi
+  reject_credentials || return $?
+  require_host || return $?
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/certbotbot-local-ci.XXXXXXXX")" ||
+    { error 'private CI temporary workspace unavailable'; return 74; }
+  trap 'cleanup "$?"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  timed_stage prepare prepare || return $?
+  timed_stage private-startup start_private_project || return $?
+  timed_stage pre-isolation probe_no_egress before || return $?
+  timed_stage positive-lifecycle run_positive || return $?
+  if [[ "$E2E_MODE" == full ]]; then
+    timed_stage seven-negatives run_negative || return $?
+  elif [[ "$E2E_MODE" == debug-negative ]]; then
+    timed_stage focused-negative run_focused_negative || return $?
+  fi
+  timed_stage post-isolation probe_no_egress after || return $?
+  if [[ "$E2E_MODE" != full ]]; then
+    printf '%s\n' 'local-e2e-ci: partial-development=passed; full_protocol_gate=not-run'
+    return 0
+  fi
+  printf '%s\n' 'local-e2e-ci: full_protocol_gate=passed; mode=challenge-validation-bypassed; aws_route53_dns01_live_ca=not_tested'
+}
+
+main "$@"

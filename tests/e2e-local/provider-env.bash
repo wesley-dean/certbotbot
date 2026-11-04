@@ -150,7 +150,7 @@ main() {
         AWS_EC2_METADATA_DISABLED=true AWS_CONFIG_FILE=/dev/null \
         AWS_SHARED_CREDENTIALS_FILE=/dev/null \
         AWS_ENDPOINT_URL_S3="$s3_endpoint" \
-        AWS_ENDPOINT_URL_ROUTE53="$route53_endpoint" \
+        AWS_ENDPOINT_URL_ROUTE_53="$route53_endpoint" \
         LOCAL_E2E_FAULT_MODE="$fault" \
         REQUESTS_CA_BUNDLE="$TRUST_FILE" SSL_CERT_FILE="$TRUST_FILE" \
         CURL_CA_BUNDLE="$TRUST_FILE" \

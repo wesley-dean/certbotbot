@@ -12,10 +12,13 @@ setup() {
   FIRST_ISSUE="$REPO_ROOT/tests/e2e-local/first-issue.bash"
   FIRST_HOST="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
   RUNNER_DOCKERFILE="$REPO_ROOT/tests/e2e-local/runner.Dockerfile"
+  RUNNER_IGNORE="$REPO_ROOT/tests/e2e-local/runner.Dockerfile.dockerignore"
   PEBBLE_CONFIG="$REPO_ROOT/tests/e2e-local/pebble-config.json"
   CERTBOT_RENEW_ADAPTER="$REPO_ROOT/tests/e2e-local/certbot-force-renewal.bash"
   S3_FAULT="$REPO_ROOT/tests/e2e-local/aws-put-reject.bash"
   NEGATIVE_SCENARIOS="$REPO_ROOT/tests/e2e-local/negative-scenarios.bash"
+  CI_LOCAL_RUNNER="$REPO_ROOT/tests/e2e-local/ci-local-e2e.bash"
+  LOCAL_E2E_WORKFLOW="$REPO_ROOT/.github/workflows/local-protocol-e2e.yml"
 }
 
 @test "local harness Bash syntax is valid without Docker" {
@@ -44,6 +47,13 @@ setup() {
   run grep -Ec '^[[:space:]]+platform: linux/amd64$' "$TOPOLOGY"
   [ "$status" -eq 0 ]
   [ "$output" = 4 ]
+}
+
+@test "local Caddy ACME gateway invokes the binary and requires canonical private command shape" {
+  run grep -F 'command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]' "$TOPOLOGY"
+  [ "$status" -eq 0 ]
+  run grep -F '.services["acme-gateway"].command == ["caddy","run","--config","/etc/caddy/Caddyfile","--adapter","caddyfile"]' "$HARNESS"
+  [ "$status" -eq 0 ]
 }
 
 @test "no published ports, host networking, Docker socket or privileged services" {
@@ -126,8 +136,10 @@ setup() {
   [ "$status" -eq 0 ]
   run grep -F 'route53_endpoint="http://$ROUTE53_IP:8056"' "$PROVIDER"
   [ "$status" -eq 0 ]
-  run grep -F 'AWS_ENDPOINT_URL_ROUTE53="$route53_endpoint"' "$PROVIDER"
+  run grep -F 'AWS_ENDPOINT_URL_ROUTE_53="$route53_endpoint"' "$PROVIDER"
   [ "$status" -eq 0 ]
+  run grep -F 'AWS_ENDPOINT_URL_ROUTE53=' "$PROVIDER"
+  [ "$status" -ne 0 ]
   run grep -F 'AWS_EC2_METADATA_DISABLED=true' "$PROVIDER"
   [ "$status" -eq 0 ]
   run grep -F 'REQUESTS_CA_BUNDLE="$TRUST_FILE"' "$PROVIDER"
@@ -426,5 +438,227 @@ setup() {
   run grep -F 'negative_issue_foreign_name "$scenario" blocked.e2e.test' "$NEGATIVE_SCENARIOS"
   [ "$status" -eq 0 ]
   run grep -F 'for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+}
+
+@test "dedicated local E2E CI runner validates syntax and rejects arguments without Docker" {
+  run bash -n "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run bash "$CI_LOCAL_RUNNER" unexpected
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'* ]]
+}
+
+@test "local protocol acceptance runs only on push or manual dispatch without credentials" {
+  run grep -F 'name: Local protocol E2E (challenge validation bypassed)' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+  run grep -E '^  (push|workflow_dispatch):$' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'push:'* && "$output" == *'workflow_dispatch:'* ]]
+  run grep -E '^  pull_request:|^  pull_request_target:|^  schedule:' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -ne 0 ]
+  run grep -E 'secrets\.|id-token:[[:space:]]*write' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -ne 0 ]
+  run grep -F 'permissions:' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+  run grep -F 'contents: read' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+}
+
+@test "local E2E CI has fixed bounded runtimes, concurrency and defensive cleanup" {
+  for evidence in 'runs-on: ubuntu-24.04' 'timeout-minutes: 90' \
+    'cancel-in-progress: true' 'if: always()' '--remove-orphans' '--volumes' \
+    'persist-credentials: false'; do
+    run grep -F -- "$evidence" "$LOCAL_E2E_WORKFLOW"
+    [ "$status" -eq 0 ]
+  done
+  run grep -F 'bash tests/e2e-local/ci-local-e2e.bash' "$LOCAL_E2E_WORKFLOW"
+  [ "$status" -eq 0 ]
+}
+
+@test "local E2E CI fetches before starting sealed project and executes all positive and negative gates" {
+  for stage in prepare start_private_project probe_no_egress run_positive run_negative cleanup; do
+    run grep -F "$stage" "$CI_LOCAL_RUNNER"
+    [ "$status" -eq 0 ]
+  done
+  run grep -F 'make deps && make deps-check' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'make build VERSION=0.0.0-dev' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'bash "$HOST" build' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'bash "$STACK" fetch' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'bash "$STACK" up' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'bash "$HOST" run-faults' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'second_real_pebble_order=true;' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'all-negative-scenarios=passed; dns-validation=bypassed' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+}
+
+@test "local E2E probes actual no-route and local HTTPS without contacting real providers" {
+  run bash -n "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run bash -n "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run bash "$FIRST_ISSUE" isolation extra
+  [ "$status" -eq 64 ]
+  run grep -F 'bash "$PROVIDER" --check' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F '192.0.2.1 198.51.100.1 203.0.113.1' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'for peer in acme.invalid aws.invalid route53.invalid' "$FIRST_ISSUE"
+  [ "$status" -eq 0 ]
+  run grep -F 'docker network inspect "$NETWORK"' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'run_phase "$image" "$ca_file" isolation' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+}
+
+
+@test "failed native E2E reports only a closed host lifecycle stage" {
+  local host="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
+  local ci="$REPO_ROOT/tests/e2e-local/ci-local-e2e.bash"
+  local stage
+  for stage in first-issuance first-readback noop-development noop-ordinary \
+    noop-minified second-order renewed-readback post-renewal-noop; do
+    grep -Fq "lifecycle-phase=$stage" "$ci"
+  done
+  grep -Fq "lifecycle-phase=first-issuance" "$host"
+  grep -Fq "lifecycle-phase=first-readback" "$host"
+  grep -Fq "lifecycle-phase=second-order" "$host"
+  grep -Fq "lifecycle-phase=renewed-readback" "$host"
+  grep -Fq "lifecycle-phase=post-renewal-noop" "$host"
+  grep -Fq 'problem "lifecycle-phase=noop-$flavor"' "$host"
+  grep -Fq 'done <"$logfile"' "$ci"
+  grep -Fq 'bounded local lifecycle stage=$lifecycle_stage' "$ci"
+  bash -n "$host"
+  bash -n "$ci"
+}
+
+@test "one-time real metadata stabilization precedes all three strict no-ops" {
+  run bash "$FIRST_ISSUE" stabilize malformed-digest
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'invalid stabilization archive digest'* ]]
+  grep -Fq 'stabilize) stabilize "$workspace" "$2"' "$FIRST_ISSUE"
+  grep -Fq 'stabilized_archive_sha256=' "$FIRST_ISSUE"
+  grep -Fq 'stabilized_cert_der_sha256=' "$FIRST_ISSUE"
+  grep -Fq 'native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true' "$FIRST_HOST"
+  grep -Fq 'lifecycle-phase=metadata-stabilization' "$FIRST_HOST"
+  grep -Fq 'lifecycle-phase=stabilized-readback' "$FIRST_HOST"
+  grep -Fq 'lifecycle_stage=metadata-stabilization' "$CI_LOCAL_RUNNER"
+  grep -Fq 'lifecycle_stage=stabilized-readback' "$CI_LOCAL_RUNNER"
+  grep -Fq "for flavor in development ordinary minified; do" "$FIRST_HOST"
+  grep -Fq 'fresh_runner_noop=$flavor' "$FIRST_HOST" || \
+    grep -Fq 'restored_noop=%s; no_new_order=true; no_republish=true' "$FIRST_HOST"
+  grep -Fq 'certbotbot-local-e2e-stabilize' "$FIRST_HOST"
+  bash -n "$FIRST_ISSUE"
+  bash -n "$FIRST_HOST"
+  bash -n "$CI_LOCAL_RUNNER"
+}
+
+@test "native no-op failure diagnostics are a closed, private-log allowlist" {
+  local runner="$REPO_ROOT/tests/e2e-local/first-issue.bash"
+  local host="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
+  local ci="$REPO_ROOT/tests/e2e-local/ci-local-e2e.bash"
+  grep -Fq 'noop-checkpoint=producer' "$runner"
+  grep -Fq 'noop-checkpoint=cert-after' "$runner"
+  grep -Fq 'noop-producer=$producer_reason' "$runner"
+  grep -Fq 'noop-receipt-status=$receipt_status' "$runner"
+  grep -Fq 'noop-receipt-publication=$receipt_publish' "$runner"
+  grep -Fq 'noop-object=$object_delta' "$runner"
+  grep -Fq 'noop-renewal=$renewal_delta' "$runner"
+  grep -Fq 'noop-orders=$order_delta' "$host"
+  grep -Fq 'bounded no-op readback=object-$object_delta; renewal-$renewal_delta; orders-$order_delta' "$ci"
+  grep -Fq 'noop-receipt-status=$receipt_status' "$host"
+  grep -Fq 'noop-receipt-publication=$receipt_publish' "$host"
+  grep -Fq 'bounded noop receipt=status-$receipt_status; published-$receipt_publish' "$ci"
+  grep -Fq '<<' "$runner"
+  grep -Fq 'noop-checkpoint=$noop_checkpoint' "$host"
+  grep -Fq 'noop-producer=$noop_producer' "$host"
+  grep -Fq 'bounded noop checkpoint=$noop_checkpoint; producer=$noop_producer' "$ci"
+  grep -Fq 'grep -Fqx -- "local-first-issue: noop-checkpoint=$code"' "$host"
+  grep -Fq 'grep -Fqx -- "local-first-issue-host: noop-checkpoint=$code"' "$ci"
+  bash -n "$runner"
+  bash -n "$host"
+  bash -n "$ci"
+}
+
+@test "focused second-order mode remains partial and full CI stays mandatory" {
+  run bash "$CI_LOCAL_RUNNER" --not-a-real-mode
+  [ "$status" -eq 64 ]
+  grep -Fq 'run-debug-second-order) run_lifecycle "$image" debug-second-order' "$FIRST_HOST"
+  grep -Fq 'full_acceptance=false' "$FIRST_HOST"
+  grep -Fq 'focused_second_order=passed; full_acceptance=false' "$CI_LOCAL_RUNNER"
+  grep -Fq 'full_protocol_gate=not-run' "$CI_LOCAL_RUNNER"
+  run bash "$CI_LOCAL_RUNNER" --debug-negative=not-listed
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'unsupported focused negative scenario'* ]]
+  grep -Fq 'run-debug-seed) run_lifecycle "$image" debug-seed' "$FIRST_HOST"
+  grep -Fq 'run-debug-fault) run_faults "$image" "$2"' "$FIRST_HOST"
+  grep -Fq 'focused_negative=%s; full_acceptance=false' "$FIRST_HOST"
+  grep -Fq 'timed_stage focused-negative run_focused_negative' "$CI_LOCAL_RUNNER"
+  grep -Fq 'second-order-failure=timeout' "$FIRST_HOST" || \
+    grep -Fq 'renewal_reason=timeout' "$FIRST_HOST"
+  grep -Fq 'bounded second-order failure=' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage seven-negatives run_negative' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage pre-isolation probe_no_egress before' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage post-isolation probe_no_egress after' "$CI_LOCAL_RUNNER"
+  bash -n "$CI_LOCAL_RUNNER"
+  bash -n "$FIRST_HOST"
+}
+
+@test "local E2E evidence stays bounded and its real-provider nonclaim is explicit" {
+  run grep -F 'no_egress_probe=%s; challenge_validation=bypassed' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'aws_route53_dns01_live_ca=not_tested' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'WORK="$(mktemp -d' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'rm -rf -- "$WORK"' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+  run grep -F 'cleanup "$?"' "$CI_LOCAL_RUNNER"
+  [ "$status" -eq 0 ]
+}
+
+@test "private local runner context is explicitly allowlisted without weakening production Docker ignore" {
+  run grep -Fx '**' "$REPO_ROOT/.dockerignore"
+  [ "$status" -eq 0 ]
+  run grep -Fx '**' "$RUNNER_IGNORE"
+  [ "$status" -eq 0 ]
+  for name in \
+    oci/alpine-repositories \
+    dist/certbotbot.dev.bash dist/certbotbot.dev.bash.sha256 \
+    dist/certbotbot.bash dist/certbotbot.bash.sha256 \
+    dist/certbotbot.min.bash dist/certbotbot.min.bash.sha256 \
+    tests/e2e-local/first-issue.bash tests/e2e-local/provider-env.bash \
+    tests/e2e-local/negative-scenarios.bash \
+    tests/e2e-local/certbot-force-renewal.bash \
+    tests/e2e-local/aws-put-reject.bash; do
+    run grep -Fx "!$name" "$RUNNER_IGNORE"
+    [ "$status" -eq 0 ]
+  done
+  run grep -E '^!src/|^!lib/|^!vendor/|^!.*secret|^!.*\.env' "$RUNNER_IGNORE"
+  [ "$status" -ne 0 ]
+}
+
+@test "private Caddy public root is read by the container user not Docker copy" {
+  # The root is mode 0600 and owned by Caddy's unprivileged user. Docker's
+  # archive copy API cannot read this tmpfs path on the hosted Docker engine.
+  # docker exec runs cat as the container owner, exporting only root.crt.
+  for file in "$HARNESS" "$FIRST_HOST"; do
+    run grep -F 'docker cp' "$file"
+    [ "$status" -ne 0 ]
+    run grep -F 'docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt' "$file"
+    [ "$status" -eq 0 ]
+  done
+  run grep -F 'cat /data/caddy/pki/authorities/local/root.crt >"$ca_file"' "$HARNESS"
+  [ "$status" -eq 0 ]
+  run grep -F 'cat /data/caddy/pki/authorities/local/root.crt >"$cert_ca"' "$FIRST_HOST"
+  [ "$status" -eq 0 ]
+  run grep -F 'openssl x509 -in "$ca_file"' "$FIRST_HOST"
   [ "$status" -eq 0 ]
 }

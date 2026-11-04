@@ -112,6 +112,7 @@ validate_topology() {
     and ([.services[] | .platform] | all(. == "linux/amd64"))
     and (.services.pebble.environment.PEBBLE_VA_ALWAYS_VALID == "1")
     and (.services.pebble.command == ["-config","/opt/local-e2e-pebble.json","-strict"])
+    and (.services["acme-gateway"].command == ["caddy","run","--config","/etc/caddy/Caddyfile","--adapter","caddyfile"])
     and (.services["route53-bridge"].networks.isolated.ipv4_address == "172.31.248.6")
     and ([.services[] | .image] |
        all(test("^[a-z0-9./:-]+@sha256:[0-9a-f]{64}$")))
@@ -205,12 +206,12 @@ probe_services() {
   done
   (( attempt <= 45 )) || { fail 'SeaweedFS S3 HTTP readiness timed out'; return 1; }
 
-  # Copy only the gateway's ephemeral public root cert, never its private key.
+  # Read only the gateway's ephemeral public root cert, never its private key.
   cid="$(compose ps -q acme-gateway)"
   ca_file="$(umask 077; mktemp)" ||
     { fail 'temporary test-only CA trust unavailable'; return 1; }
   for ((attempt = 1; attempt <= 45; attempt++)); do
-    if docker cp "$cid:/data/caddy/pki/authorities/local/root.crt" "$ca_file" >/dev/null 2>&1 &&
+    if docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$ca_file" 2>/dev/null &&
       directory="$(curl --noproxy '*' -4 -fsS --cacert "$ca_file"         --connect-timeout 1 --max-time 3         --resolve "$STAGING_HOST:443:$GATEWAY_IP"         "https://$STAGING_HOST/directory" 2>/dev/null)" &&
       jq -e --arg prefix "https://$STAGING_HOST/" '
         (.newNonce | type == "string" and startswith($prefix))
@@ -222,6 +223,28 @@ probe_services() {
     fi
     sleep 1
   done
+  # This is still pre-registration: no ACME account, certificate archive,
+  # provider session, or real cloud credentials exist. Report a final bounded
+  # TLS/HTTP error so a gateway failure cannot be mistaken for an ACME failure.
+  if [[ -s "$ca_file" ]]; then
+    report_error 'canonical staging TLS/HTTP probe diagnostic follows'
+    curl --noproxy '*' -4 -fsS --cacert "$ca_file" \
+      --connect-timeout 1 --max-time 3 \
+      --resolve "$STAGING_HOST:443:$GATEWAY_IP" \
+      "https://$STAGING_HOST/directory" \
+      --output /dev/null >/dev/null || true
+  else
+    report_error 'canonical gateway public root did not materialize'
+    # Public root only, before ACME account registration.  Show the actual
+    # Exact public-only read error and file metadata, never key material.
+    report_error 'retrying public-only root read with stderr visible'
+    docker exec "$cid" cat /data/caddy/pki/authorities/local/root.crt >"$ca_file" \
+      2>/dev/null || true
+    report_error 'listing public-root file location inside isolated Caddy'
+    docker exec "$cid" sh -c \
+      'ls -ld /data /data/caddy /data/caddy/pki /data/caddy/pki/authorities/local; ls -l /data/caddy/pki/authorities/local/root.crt' \
+      2>&1 || true
+  fi
   rm -f -- "$ca_file"
   fail 'verified canonical staging gateway readiness timed out'
   return 1
@@ -271,6 +294,15 @@ main() {
     return 74
   fi
   if ! check_running_isolation || ! probe_services; then
+    # Only owned service startup logs, bounded to pre-ACME-registration time.
+    # Do not use this diagnostic in positive or negative credentialed phases.
+    local service service_id
+    for service in acme-gateway pebble; do
+      service_id="$(compose ps -a -q "$service" 2>/dev/null || true)"
+      [[ -n "$service_id" ]] || continue
+      report_error "pre-registration $service startup diagnostic"
+      docker logs --tail 14 "$service_id" 2>&1 || true
+    done
     teardown >/dev/null 2>&1 || true
     report_error 'readiness/isolation failed; private resources removed'
     return 74

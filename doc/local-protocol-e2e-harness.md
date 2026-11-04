@@ -56,7 +56,7 @@ Task #241 adds a fourth service, the digest-pinned official Caddy v2.10.2 image,
 
 The maintained [gateway configuration](../tests/e2e-local/gateway.Caddyfile) accepts only the canonical staging hostname and maps `/directory` to Pebble's `/dir`; all ACME traffic is forwarded only to `https://pebble:14000`. Pebble receives the original staging Host and the explicit forwarded HTTPS scheme. Pebble source at revision `b1e1ca4` constructs absolute resource URLs from those fields, so this *may* retain signed ACME URL integrity without altering the shipped producer or rewriting JWS bodies. That interoperability is still **unproven** until actual Certbot runs against the stack.
 
-Gateway-to-Pebble transport verifies the pinned upstream's `pebble` TLS hostname using the [upstream public PEM fixture](../tests/e2e-local/pebble-upstream.pem) copied from revision `b1e1ca4`. The gateway creates its own ephemeral test certificate for the exact public staging hostname with `tls internal`. Startup copies only the gateway's **public root certificate** into a temporary host file for certificate-verified readiness, then deletes it. Nothing installs the test root into the host trust store; all gateway private keys remain container-local tmpfs state.
+Gateway-to-Pebble transport verifies the pinned upstream's `pebble` TLS hostname using the [upstream public PEM fixture](../tests/e2e-local/pebble-upstream.pem) copied from revision `b1e1ca4`. The gateway creates its own ephemeral test certificate for the exact public staging hostname with `tls internal`. Startup reads only the gateway's **public root certificate** as the unprivileged Caddy container user, writing it into a temporary host file for strict certificate-verified readiness, then deletes it. Docker's archive-copy API is not used for this mode-0600, container-owned tmpfs file. Nothing installs the test root into the host trust store; all gateway private keys remain container-local tmpfs state.
 
 The future independent runner in task #244 must bind the staging hostname to `172.31.248.5` in **its own** namespace, mount a private copy of the gateway's public root at `/run/certbotbot-e2e/gateway-root.crt`, and have no default route. The test-only [provider process gate](../tests/e2e-local/provider-env.bash) requires those conditions, an unavailable production CA DNS name, and a certificate-verified staging directory with only same-origin ACME endpoints. It then runs an exact checksum-verified public producer under `env -i` with synthetic AWS keys, disabled metadata, empty shared AWS configuration, a local-only `AWS_ENDPOINT_URL_S3`, and per-process trust environment, including the bounded internal Route53 endpoint. Its CLI requires precisely one explicit staging selection; it never creates a new public ACME selector. Service-specific endpoint variables are supported by the [AWS CLI documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html), but actual installed AWS CLI and Certbot plugin support must be verified.
 
@@ -80,7 +80,8 @@ successful local issuance **does not prove AWS Route53 or DNS-01 correctness**.
 This reduces test complexity while retaining real ACME registration, orders,
 certificate issuance, SeaweedFS persistence, and native Certbot state, once
 those end-to-end tests are implemented and executed. The upstream plugin must
-still be verified to honor `AWS_ENDPOINT_URL_ROUTE53`; a public fallback is
+still be verified to honor `AWS_ENDPOINT_URL_ROUTE_53` (Botocore's
+Route 53 service identifier is `route-53`); a public fallback is
 forbidden. The synthetic hosted zone currently uses a fixed test fixture; the
 ID/name selection enhancement in issue #252 is separately tracked.
 
@@ -159,7 +160,7 @@ Failures are fail-closed. In particular, SeaweedFS must genuinely support
 `If-None-Match` and `If-Match` as applicable, real ETag identity and
 independent `GetObject`. A response fabricated by the harness cannot
 establish these semantics. The installed Certbot plugin must respect
-`AWS_ENDPOINT_URL_ROUTE53`; an ignored override cannot be replaced by
+`AWS_ENDPOINT_URL_ROUTE_53`; an ignored override cannot be replaced by
 live Route53. A failing runtime probe is a compatibility blocker, not
 permission to disable certificate validation or modify the producer.
 
@@ -397,3 +398,162 @@ protocol tests but **does not claim that a Docker-backed negative
 sequence has passed**. The dedicated, fully gated CI invocation remains
 task #247. Milestone #4's manually authorized real-provider staging
 acceptance remains separately necessary.
+
+
+## Automatic isolated protocol acceptance in CI (task #247)
+
+The **Local protocol E2E (challenge validation bypassed)** workflow
+(`.github/workflows/local-protocol-e2e.yml`) provides the dedicated CI
+acceptance gate. It runs on same-repository `push` and parameterless
+`workflow_dispatch` only, following ADR-048's decision to avoid duplicate
+pull-request-triggered Test runs. The workflow is separate from the normal
+three-flavor Bats/OCI suites and the owner-authorized, secret-bearing
+live milestone #4 staging workflow.
+
+The job uses a disposable `ubuntu-24.04` hosted Linux runner with native
+Docker and Compose v2, checkout fixed to the commit under test, read-only
+repository permissions, no GitHub/AWS/OIDC secrets, no pushed images, and no
+Docker socket in the test containers. A concurrency group cancels older
+runs for the same branch, and the job has a fixed timeout. No workflow
+artifacts containing certificates, archives, provider responses, or other
+sensitive runtime state are uploaded.
+
+The private runner Dockerfile has its own deny-by-default
+[`runner.Dockerfile.dockerignore`](../tests/e2e-local/runner.Dockerfile.dockerignore).
+It allowlists only the three checksum-verified public producer flavors and
+their checksum files, the pinned Alpine repositories file, and the
+five required local runner helpers. The repository's production
+`.dockerignore` remains unchanged and continues to exclude test code
+from normal published OCI build contexts.
+
+The exact entry point is:
+
+```bash
+bash tests/e2e-local/ci-local-e2e.bash
+```
+
+It takes **no user-controlled arguments, CA URLs, credentials or bucket
+values**. Its mandatory execution order is:
+
+1. Refuse inherited cloud credential environment variables, remote Docker
+   contexts, and root execution; verify required local tools.
+2. Acquire and check pinned repository build dependencies (`make deps`,
+   `make deps-check`), assemble all public producers with
+   `make build VERSION=0.0.0-dev`, verify their checksum companions,
+   build the exact runner containing real Certbot/AWS CLI, and pull the
+   four immutable-digest service images. All **acquisition precedes**
+   the sealed service phase.
+3. Start the existing fixed Docker Compose project with cached images,
+   verify the actual `internal: true` bridge, no published host ports,
+   no unexpected privilege, and check private service readiness.
+4. Run `first-issue-host.bash probe` using the same ephemeral nonroot,
+   read-only, no-default-route runner flags as normal issuance. Assert
+   trusted canonical staging-name HTTPS works locally. Try connecting
+   only to the three reserved documentation IPv4 addresses
+   `192.0.2.1`, `198.51.100.1` and `203.0.113.1`, and resolving
+   only reserved `.invalid` DNS names; they must all fail. No probe
+   intentionally connects to a public AWS, Let's Encrypt or metadata host.
+5. Run `first-issue-host.bash run`: explicit real Pebble registration,
+   first ACME order, SeaweedFS publication, independent clean-runner
+   verification, three public producer no-ops, exactly one second real
+   ACME order using the one-shot test-only Certbot force trigger,
+   changed DER/remote object, another independent fetch and a final
+   ordinary no-op. Every bounded attestation is required.
+6. Run `first-issue-host.bash run-faults`: all **seven** literal failure
+   modes, including a real Pebble `newOrder` rejection, synthetic Route53
+   outage, unavailable/rejected S3, corrupt archive, production-CA
+   refusal and Pebble outage. Each checks the real SeaweedFS current
+   object remains unchanged, with another independent readback.
+7. Repeat the active no-egress probe, then tear down only the disposable
+   Compose containers, private network and anonymous volumes. An EXIT
+   trap attempts to unpause Pebble before teardown, even on error. The
+   workflow has a separate unconditional defensive cleanup step. Any
+   failed or incomplete cleanup is a failed job.
+
+**Fail-closed policy:** A skipped stage, absent receipt, public route,
+bad checksum, wrong image, missing Docker, failed real protocol call,
+unparseable evidence, or service cleanup error is a CI failure. Private
+runner logs and gateway public root files are temporary and removed.
+Only exact, nonsecret status identifiers and verified lifecycle outcomes
+are printed. The scenario reports its mode as
+`challenge-validation-bypassed`, and explicitly marks
+`aws_route53_dns01_live_ca=not_tested`.
+
+**Important nonclaims:** Docker's `internal: true` network and actual
+no-route/reserved-IP probes provide meaningful local isolation evidence,
+but are not full packet capture or proof against a compromised Docker
+engine, kernel or host. Pebble's `PEBBLE_VA_ALWAYS_VALID=1` still
+**bypasses DNS-01 challenge verification**, and the Route53 API is an
+allowlisted test double. Genuine Let's Encrypt staging, AWS Route53 DNS
+propagation and Amazon S3 IAM/interoperability remain the separate
+milestone #4 manual staging acceptance, under ADR-043.
+
+## Native Post-Issuance Metadata Stabilization (ADR-054)
+
+The real challenge-validation-bypassed Pebble/Certbot [run
+41780291675](https://github.com/wesley-dean/certbotbot/actions/runs/41780291675)
+showed a successful non-due certificate check with `published=true`:
+the genuine SeaweedFS object's bytes changed, the selected renewal
+configuration changed, and no new ACME order appeared.  A disposable
+unchanged-producer replay [run
+41781308764](https://github.com/wesley-dean/certbotbot/actions/runs/41781308764)
+then returned `checked; published=false`, with both archive and renewal
+configuration unchanged.  These observations support one native
+metadata-only stabilization immediately following real first issuance.
+
+Under ADR-054 the local positive workflow first verifies the initial issued
+object independently, then runs exactly one **separate real producer
+stabilization**, with `UPLOAD_NO_RENEWAL=false`.  It permits that *single*
+durable renewal-metadata publication only after independently checking that
+the ACME account identity, selected lineage, and matching certificate/key
+are unchanged.  The host must independently show no extra Pebble ACME
+order. A *new* verifier runner then checks the exact replacement SeaweedFS
+object and the original certificate DER before updating its expected
+archive digest.
+
+Only after that setup does the workflow count the three required strict
+fresh-runner non-due no-ops (development, ordinary, and minified).
+**Each of those three must still avoid all S3 rewrites and all new ACME
+orders**, preserve exact object identity, and pass independent certificate
+checks.  The genuine second order, separate replacement readback, ordinary
+post-renewal no-op, seven negative scenarios, pre/post no-egress proofs,
+and complete private-network cleanup remain mandatory. The local test
+still does not validate actual DNS-01 propagation, AWS Route53, Amazon S3,
+or Let's Encrypt. Do not simulate normalization, forge renewal metadata,
+suppress legitimate producer publication, or bypass negative assertions.
+
+For a first no-op failure, the same confidentiality boundary applies at the
+runner's individual subchecks: an exact finite checkpoint identifies before-
+and after-archive readback, private account and leaf validation, producer
+invocation and its success receipt, remote object metadata, and digest
+comparisons. When the unchanged producer exits unsuccessfully, only a short
+allowlisted category corresponding to a literal self-authored product error
+may be relayed. If the producer exits successfully but its no-op receipt fails,
+the harness classifies the public status as `checked`, `issued`, or `other`,
+and publication as `true`, `false`, or `absent`. On a rejected
+completion it may independently reread the selected remote object and compare
+only opaque bytes and the selected renewal configuration, reporting
+`changed`, `unchanged`, or `unreadable`. The host also compares Pebble's
+nonsecret order counter to its previous value, reporting `unchanged`,
+`increased`, or `unavailable`. No diagnostic makes a previously failing
+no-op successful, and none reports Certbot stdout/stderr, actual SAN values,
+private paths, account material or complete logs. An unknown error remains
+`noop-producer=unclassified`. These receipts describe the last attempted
+operation and never turn an otherwise failing no-op into acceptance.
+
+The local E2E failure reporter also recognizes literal, host-owned lifecycle
+checkpoints covering first issuance, independent first readback, each of the
+three producer no-ops, the second ACME order, renewed archive readback, and
+the final post-renewal no-op. On failure it reports only the last recognized
+checkpoint as `bounded local lifecycle stage=...`; if none is observed,
+the fixed category is `not-reported`. These labels diagnose where the
+harness last made progress. They do **not** establish that a stage succeeded,
+replace a receipt, disclose untrusted provider or runner output, or relax
+any ACME/S3/no-egress/negative/cleanup acceptance criterion. The previously
+allowlisted bootstrap rejection reasons remain separately reported.
+
+If the Test workflow or static linters pass but this dedicated protocol
+gate fails, milestone #16 does **not** have positive protocol execution
+acceptance. If this workflow's own steps have not run successfully on a
+qualified GitHub-hosted Docker engine, do not represent its committed
+source as evidence of a passing full E2E test.
