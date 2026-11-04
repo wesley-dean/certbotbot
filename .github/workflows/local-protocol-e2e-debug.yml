@@ -5,21 +5,6 @@ name: Local protocol E2E focused debug (partial only)
 # yamllint disable-line rule:truthy
 on:
   workflow_dispatch:
-    inputs:
-      target:
-        description: Focused partial diagnostic (never full acceptance)
-        type: choice
-        required: true
-        default: second-order
-        options:
-          - second-order
-          - ca-production
-          - s3-unavailable
-          - corrupt-archive
-          - acme-order-rejected
-          - route53-unavailable
-          - s3-put-reject
-          - acme-unavailable
 
 permissions:
   contents: read
@@ -52,13 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ inputs.target }}" in
-            second-order)
-              bash tests/e2e-local/ci-local-e2e.bash --debug-second-order ;;
-            ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable)
-              bash tests/e2e-local/ci-local-e2e.bash "--debug-negative=${{ inputs.target }}" ;;
-            *) echo 'unsupported local debug target' >&2; exit 64 ;;
-          esac
+          bash tests/e2e-local/ci-local-e2e.bash --debug-second-order
       - name: Verify private project removal even on failure
         if: always()
         shell: bash
