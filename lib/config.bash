@@ -22,14 +22,18 @@
 ## @brief Associative literal values parsed from the selected configuration.
 declare -A CERTBOTBOT_FILE_VALUES=()
 
+# shellcheck disable=SC2034
 ## @var CERTBOTBOT_AWS_ARGS
 ## @brief Bounded AWS CLI global argument vector, defaulting empty.
-  # shellcheck disable=SC2034
-  declare -a CERTBOTBOT_AWS_ARGS=()
+declare -a CERTBOTBOT_AWS_ARGS=()
+# shellcheck disable=SC2034
 ## @var CERTBOTBOT_GPG_ARGS
 ## @brief Bounded authenticated encryption tuning arguments, defaulting empty.
-  # shellcheck disable=SC2034
-  declare -a CERTBOTBOT_GPG_ARGS=()
+declare -a CERTBOTBOT_GPG_ARGS=()
+# shellcheck disable=SC2034
+## @var CERTBOTBOT_CERTBOT_ARGS
+## @brief Complete ordered Certbot vector used on issuance and renewal.
+declare -a CERTBOTBOT_CERTBOT_ARGS=()
 ## @var CERTBOTBOT_CERTBOT_GLOBAL_ARGS
 ## @brief Safe global Certbot arguments shared across allowed subcommands.
 declare -a CERTBOTBOT_CERTBOT_GLOBAL_ARGS=()
@@ -81,6 +85,10 @@ certbotbot_disable_application_environment() {
 certbotbot_extra_args_resolve() {
   local kind="$1" json="$2" encoded token value limit=0
   local -i i=0
+  case "$kind" in
+    AWS|GPG|CERTBOT) ;;
+    *) certbotbot_error 'unknown provider argument collection'; return 64 ;;
+  esac
   local -n output="CERTBOTBOT_${kind}_ARGS"
   output=()
   if [[ "$kind" == CERTBOT ]]; then
