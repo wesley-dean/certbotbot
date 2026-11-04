@@ -428,6 +428,7 @@ and [ADR-047](doc/adr/ADR-047-mocked-route53-local-lifecycle-e2e.md).
 The CI workflow fails closed if a real Docker-backed lifecycle stage cannot
 be proved; it does not silently skip a missing container engine.
 
+
 ## Manual staging E2E acceptance
 
 Milestone 4's real Let's Encrypt staging acceptance is operator-controlled,

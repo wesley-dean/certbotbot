@@ -210,6 +210,94 @@ map_private_certificate_paths() {
   cmp -s "$RENEWAL" "$TEST_ROOT/previous"
 }
 
+
+@test "finalize reports a fixed runtime-path rejection without leaking values" {
+  map_private_certificate_paths
+  add_runtime_options "config_dir = /tmp/SECRET_SENTINEL_PRIVATE_PATH"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  [[ "$output" == *'renewal rejection category=renewal-config_dir'* ]]
+  [[ "$output" == *'certbotbot: unsupported renewal configuration'* ]]
+  [[ "$output" != *SECRET_SENTINEL_PRIVATE_PATH* ]]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
+@test "unknown renewal option cannot become part of the diagnostic" {
+  map_private_certificate_paths
+  add_runtime_options "secret_sentinel_unknown_field = value"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  [[ "$output" == *'renewal rejection category=renewal-unknown-field'* ]]
+  [[ "$output" != *secret_sentinel_unknown_field* ]]
+  [[ "$output" != *value* ]]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
+@test "invalid canonical path reports only a fixed allowlisted field" {
+  sed -i 's|/etc/letsencrypt/live/example.com/cert.pem|/tmp/SECRET_SENTINEL_PATH|' "$RENEWAL"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal prepare
+  [ "$status" -eq 65 ]
+  [[ "$output" == *'renewal rejection category=canonical-path-cert'* ]]
+  [[ "$output" != *SECRET_SENTINEL_PATH* ]]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
+@test "Certbot one-element DNS-01 challenge tuple survives all mapping modes" {
+  add_runtime_options "pref_challs = dns-01,"
+  cp "$RENEWAL" "$TEST_ROOT/original"
+  map_renewal prepare
+  [ "$status" -eq 0 ]
+  grep -Fxq 'pref_challs = dns-01,' "$RENEWAL"
+  map_renewal finalize
+  [ "$status" -eq 0 ]
+  cmp -s "$RENEWAL" "$TEST_ROOT/original"
+  map_renewal verify
+  [ "$status" -eq 0 ]
+  grep -Fxq 'pref_challs = dns-01,' "$RENEWAL"
+}
+
+@test "finalize accepts genuine singleton DNS-01 tuple with private paths" {
+  map_private_certificate_paths
+  add_runtime_options "config_dir = $CONFIG" "pref_challs = dns-01,"
+  map_renewal finalize
+  [ "$status" -eq 0 ]
+  grep -Fxq 'pref_challs = dns-01,' "$RENEWAL"
+  ! grep -Eq '^config_dir[[:blank:]]*=' "$RENEWAL"
+  map_renewal verify
+  [ "$status" -eq 0 ]
+}
+
+@test "non-DNS, multiple, and malformed pref_challs stay refused without mutation" {
+  local value direction
+  for value in 'http-01,' 'dns-01,http-01' 'dns-01, http-01' \
+    'dns-01,,' 'dns-01,,' 'dns-01, dns-01' 'dns-01;http-01'; do
+    for direction in prepare finalize; do
+      cp "$RENEWAL" "$TEST_ROOT/base"
+      if [[ "$direction" == finalize ]]; then
+        map_private_certificate_paths
+      fi
+      add_runtime_options "pref_challs = $value"
+      cp "$RENEWAL" "$TEST_ROOT/previous"
+      map_renewal "$direction"
+      [ "$status" -eq 65 ]
+      [[ "$output" == *'renewal rejection category=renewal-pref_challs'* ]]
+      cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+      cp "$TEST_ROOT/base" "$RENEWAL"
+    done
+  done
+}
+
+@test "preferred_challenges does not acquire Certbot tuple exception" {
+  add_runtime_options 'preferred_challenges = dns-01,'
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal verify
+  [ "$status" -eq 65 ]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
 @test "prepare maps exactly five paths into a private root" {
   map_renewal prepare
   [ "$status" -eq 0 ]

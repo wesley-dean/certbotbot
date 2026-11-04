@@ -135,6 +135,20 @@ See [milestone 4 release evidence](milestone-4-release-evidence.md) and
 Live acceptance stays exclusively under the
 [operator-controlled staging procedure](milestone-4-staging-acceptance.md).
 
+## Certbot 5.8 Renewal Directory Metadata
+
+The selected Certbot provider supplies explicit private `--config-dir`,
+`--work-dir`, and `--logs-dir` arguments.  Certbot 5.8 may persist
+corresponding `config_dir`, `work_dir`, and `logs_dir` fields under
+`[renewalparams]`.  ADR-051 permits only `finalize` to recognize them,
+verify exact invocation-private workspace values, and omit them before
+archiving.  Canonical `verify` and private `prepare` refuse those keys.
+Mapping tests must check optional exact matches, mixed subsets, duplicate
+and foreign path refusals, no input mutation on failure, and normal
+reversible five-field path translation.  A mocked native renewal fixture
+cannot replace independent full real Certbot/Pebble/SeaweedFS acceptance in
+milestone 16 PR #260.
+
 ## Native Certbot Registration Contact Compatibility
 
 Real Certbot 5.8 writes native registration state with an empty `regr.json`
@@ -205,6 +219,45 @@ cleanup, and refusal cases. They are **not** a substitute for an engine-backed
 negative run. A separate CI runtime gate remains task #247; the manually
 authorized real-provider staging gate remains milestone #4.
 
+## Certbot One-Element Challenge Tuple Compatibility
+
+The native milestone-16 Pebble run on PR #260, using the merged ADR-051
+adapter, reported a bounded `renewal-pref_challs` rejection after genuine
+Certbot issuance. Public Certbot renewal-file examples document
+`pref_challs = dns-01,` for one preferred DNS-01 challenge; the run did
+not expose the actual value, so the trailing-comma explanation remains an
+integration hypothesis until rerun. ADR-052 permits only the two exact
+single-DNS-01 values for `pref_challs`. Tests require reversible
+prepare/finalize, read-only verify, rejection of HTTP/multiple/malformed
+challenges, unchanged bytes on failure, and no accidental widening of
+`preferred_challenges`. The E2E test must still prove genuine ACME order,
+publication, restore, negative isolation, and cleanup. This is not proof
+of real Route53 propagation or AWS/Let's Encrypt interoperability.
+
+## Bounded Renewal-Parser Diagnostics (Milestone 16)
+
+A real Certbot 5.8 issuance can be rejected by the selected renewal
+metadata adapter with the generic `unsupported renewal configuration` error.
+The adapter now also emits a bounded, fixed-category
+`renewal rejection category=...` diagnostic. Categories identify the
+parser check (for example, `renewal-config_dir`,
+`renewal-unknown-field`, or `canonical-path-cert`) without displaying
+any field value, unknown field name, renewal line, account identifier,
+or private filesystem path. Recognized field names come exclusively from
+the adapter's literal allowlist; unknown field names receive one generic
+category. This is **diagnostic evidence**, not permission to accept
+previously unsupported metadata.
+
+All refused metadata remains unchanged, and the existing generic error
+and nonzero exit status remain authoritative. Tests check confidentiality
+and byte preservation under rejected cases in all three shipped producer
+flavors. A green mocked Bats run does not identify the actual reason
+for the failed Pebble E2E invocation or establish real-provider compatibility.
+The isolated real-protocol test must classify the generated renewal
+configuration *without* exporting raw Certbot or archive contents and
+still require every positive, negative, isolation, and cleanup acceptance
+condition before merging the parent E2E PR.
+
 ## Mandatory local protocol E2E CI gate (milestone #16)
 
 The separate workflow
@@ -237,19 +290,6 @@ ADRs 046, 047, 048 and 049. A merged test workflow without at least one
 successful engine-backed run must **not** be reported as validated E2E
 behavior.
 
-## Certbot 5.8 Renewal Directory Metadata
-
-The selected Certbot provider supplies explicit private `--config-dir`,
-`--work-dir`, and `--logs-dir` arguments.  Certbot 5.8 may persist
-corresponding `config_dir`, `work_dir`, and `logs_dir` fields under
-`[renewalparams]`.  ADR-051 permits only `finalize` to recognize them,
-verify exact invocation-private workspace values, and omit them before
-archiving.  Canonical `verify` and private `prepare` refuse those keys.
-Mapping tests must check optional exact matches, mixed subsets, duplicate
-and foreign path refusals, no input mutation on failure, and normal
-reversible five-field path translation.  A mocked native renewal fixture
-cannot replace independent full real Certbot/Pebble/SeaweedFS acceptance in
-milestone 16 PR #260.
 
 ## Build and Compatibility Evidence
 

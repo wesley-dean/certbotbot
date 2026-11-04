@@ -76,7 +76,7 @@ The critical feasibility assumptions are not established by source review:
 - Real Certbot accepts the TLS-verified local staging-name gateway,
   including its ACME absolute URLs and native account directory.
 - The installed Certbot Route53 plugin's botocore client honors the
-  test-only `AWS_ENDPOINT_URL_ROUTE_53` (or another reviewed sealed
+  test-only `AWS_ENDPOINT_URL_ROUTE53` (or another reviewed sealed
   endpoint override), and never falls back to real Route53.
 - The bounded stub's XML responses and behavior satisfy that installed
   plugin's actual requests.
