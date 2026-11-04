@@ -367,6 +367,22 @@ eligibility in ADR-027, retaining their other security obligations.
 
 See [ADR-030](adr/ADR-030-shared-archive-multiple-lineages.md).
 
+### ADR-058: Explicit, Fail-Closed Renewal of Every Validated Archived Lineage
+
+An explicit `RENEW_ALL=true` may check each verified, previously archived
+certificate lineage exactly once, using its own persisted SANs and a named
+Certbot renewal call. The ordinary selected-only behavior remains the default;
+an opted-in domainless run requires at least one complete archived lineage,
+while an explicitly selected issuance or SAN reconciliation retains its
+normal bounded authority. Per-target integrity checks, aggregate
+durable-change/no-op classification, and all-or-nothing local validation
+precede the existing one-key publication path; conflicting orphan removal
+is rejected pending a separate approved policy. This design does not yet
+implement the option, authorize global Certbot renewal, or guarantee S3
+rollback or concurrent-writer safety.
+
+See [ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md).
+
 ### ADR-031: Opt-In Authenticated GnuPG Encryption of the Shared Archive
 
 The one existing S3 archive may optionally be wrapped in a versioned,
