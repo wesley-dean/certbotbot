@@ -49,6 +49,22 @@ teardown() {
   [ "$output" = 'global=--max-log-backups 9 --max-log-backups 10|challenge=--dns-route53-propagation-seconds 30|gpg=--compress-level 0|original=--max-log-backups 9 --dns-route53-propagation-seconds 30 --max-log-backups 10' ]
 }
 
+@test "JSON argv retains spaces and literal quotes for approved Certbot comments" {
+  run bash -c '
+    source "$1" --help >/dev/null || exit $?
+    certbotbot_config_resolve --s3-bucket bucket \
+      --certbot-args "$2" example.com || exit $?
+    printf "%s" "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[1]}"
+  ' _ "$BASH_STARTER_ARTIFACT" '["--user-agent-comment","QA Team \\"nightly\\""]'
+  [ "$status" -eq 0 ]
+  [ "$output" = 'QA Team "nightly"' ]
+
+  run "$BASH_STARTER_ARTIFACT" --s3-bucket bucket \
+    --certbot-args '["--user-agent-comment","secret;bad"]' example.com
+  [ "$status" -eq 64 ]
+  [[ "$output" != *secret* ]]
+}
+
 @test "malformed and unauthorized provider args fail before external effects" {
   local json
   for json in \
