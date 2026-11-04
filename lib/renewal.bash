@@ -103,14 +103,14 @@ certbotbot_renewal_map() {
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     count_bytes=$((count_bytes + ${#line} + 1))
-    rejection=line-safety
+    rejection='line-safety'
     if (( ${#line} > 8192 )) ||
       [[ "$line" == *$'\r'* || ! "$line" =~ ^[[:print:][:blank:]]*$ ||
         "${line,,}" == *hook* ]]; then
       valid=false
       break
     fi
-    rejection=section-order
+    rejection='section-order'
     if [[ "$line" =~ ^[[:blank:]]*\[([^][]+)\][[:blank:]]*$ ]]; then
       case "${BASH_REMATCH[1]}" in
         renewalparams)
