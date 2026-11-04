@@ -197,9 +197,13 @@ probe_no_egress() {
 ## @brief Proves first issue, three fresh no-ops, second order and republish.
 ## @retval 74 Real ACME and SeaweedFS acceptance could not be demonstrated.
 run_positive() {
-  local logfile="$WORK/positive.log" flavor
+  local logfile="$WORK/positive.log" flavor action=run
+  case "${E2E_MODE-full}" in
+    debug-second-order) action=run-debug-second-order ;;
+    debug-negative) action=run-debug-seed ;;
+  esac
   if ! timeout --signal=TERM --kill-after=15s 2100s \
-    bash "$HOST" run >"$logfile" 2>&1; then
+    bash "$HOST" "$action" >"$logfile" 2>&1; then
     # Only literal host-owned bounded failure categories may reach CI output.
     # Full private runner logs and provider responses stay in scratch.
     local reason='unclassified' category
@@ -280,6 +284,15 @@ run_positive() {
     done <"$logfile"
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
     error "bounded local lifecycle stage=$lifecycle_stage"
+    local renewal_failure=not-reported renewal_category
+    for renewal_category in timeout docker-startup runner-executable producer-rejected unclassified; do
+      if grep -Fqx -- "local-first-issue-host: second-order-failure=$renewal_category" \
+        "$logfile"; then
+        renewal_failure="$renewal_category"
+        break
+      fi
+    done
+    error "bounded second-order failure=$renewal_failure"
     # Fixed test-runner classifications. Neither private runner logs nor
     # extracted account/certificate content is relayed.
     local noop_checkpoint=not-reported noop_producer=not-reported code
@@ -337,6 +350,18 @@ run_positive() {
   fi
   require_receipt "$logfile" \
     'local-first-issue-host: native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true' || return $?
+  if [[ "${E2E_MODE-full}" == debug-second-order ]]; then
+    require_receipt "$logfile" \
+      'local-first-issue-host: focused_second_order=passed; full_acceptance=false' || return $?
+    printf '%s\n' 'local-e2e-ci: partial-development=true; target=second-order; full_acceptance=false'
+    return 0
+  fi
+  if [[ "${E2E_MODE-full}" == debug-negative ]]; then
+    require_receipt "$logfile" \
+      'local-first-issue-host: focused_seed=passed; full_acceptance=false' || return $?
+    printf '%s\n' 'local-e2e-ci: partial-development=true; target=negative-fixture; full_acceptance=false'
+    return 0
+  fi
   for flavor in development ordinary minified; do
     require_receipt "$logfile" \
       "local-first-issue-host: restored_noop=$flavor; no_new_order=true; no_republish=true" ||
@@ -375,6 +400,24 @@ run_negative() {
   printf '%s\n' 'local-e2e-ci: negative_seven=passed; original_seaweedfs_archive=unchanged'
 }
 
+## @fn run_focused_negative()
+## @brief Tests only the explicitly allowlisted negative scenario in partial mode.
+## @details Genuine issuance and stabilization were seeded by run_positive.
+## @retval 0 A real refusal and independent unchanged SeaweedFS readback passed.
+run_focused_negative() {
+  local logfile="$WORK/focused-negative.log" scenario="$E2E_NEGATIVE"
+  if ! timeout --signal=TERM --kill-after=15s 2100s \
+    bash "$HOST" run-debug-fault "$scenario" >"$logfile" 2>&1; then
+    error "focused negative=$scenario failed (partial-development only)"
+    return 74
+  fi
+  require_receipt "$logfile" \
+    "local-first-issue-host: negative=$scenario; remote_unchanged=true" || return $?
+  require_receipt "$logfile" \
+    "local-first-issue-host: focused_negative=$scenario; full_acceptance=false" || return $?
+  printf 'local-e2e-ci: focused_negative=%s; full_acceptance=false\n' "$scenario"
+}
+
 ## @fn cleanup()
 ## @brief Unpauses project-owned Pebble and deletes only this Compose project.
 ## @details
@@ -408,6 +451,19 @@ cleanup() {
   exit "$original"
 }
 
+## @fn timed_stage()
+## @brief Prints bounded duration for a fixed trusted test phase even on failure.
+## @param label Fixed internal phase identifier (never provider output).
+## @param ... Fixed local function plus internal arguments.
+timed_stage() {
+  local label="$1" start=$SECONDS status=0
+  shift
+  "$@" || status=$?
+  printf 'local-e2e-ci: timing_phase=%s; elapsed_seconds=%d; status=%s\n' \
+    "$label" "$((SECONDS-start))" "$([[ $status -eq 0 ]] && printf pass || printf fail)"
+  return "$status"
+}
+
 ## @fn main()
 ## @brief Runs mandatory prefetch, no-egress, positive, negative and cleanup.
 ## @retval 0 Every genuine protocol acceptance stage and security probe passed.
@@ -416,8 +472,24 @@ cleanup() {
 ## @retval 69 Required native Linux Docker prerequisites are absent.
 ## @retval 74 Real protocol or fixture operations could not be verified.
 main() {
-  (($# == 0)) ||
-    { error 'usage: ci-local-e2e.bash (no arguments)'; return 64; }
+  E2E_MODE=full
+  E2E_NEGATIVE=''
+  if (($# == 1)); then
+    case "$1" in
+      --debug-second-order) E2E_MODE=debug-second-order ;;
+      --debug-negative=*)
+        E2E_NEGATIVE="${1#--debug-negative=}"
+        case "$E2E_NEGATIVE" in
+          ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable)
+            E2E_MODE=debug-negative ;;
+          *) error 'unsupported focused negative scenario'; return 64 ;;
+        esac ;;
+      *) error 'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'; return 64 ;;
+    esac
+  elif (($# != 0)); then
+    error 'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'
+    return 64
+  fi
   reject_credentials || return $?
   require_host || return $?
   WORK="$(mktemp -d "${TMPDIR:-/tmp}/certbotbot-local-ci.XXXXXXXX")" ||
@@ -426,12 +498,20 @@ main() {
   trap 'exit 129' HUP
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  prepare || return $?
-  start_private_project || return $?
-  probe_no_egress before || return $?
-  run_positive || return $?
-  run_negative || return $?
-  probe_no_egress after || return $?
+  timed_stage prepare prepare || return $?
+  timed_stage private-startup start_private_project || return $?
+  timed_stage pre-isolation probe_no_egress before || return $?
+  timed_stage positive-lifecycle run_positive || return $?
+  if [[ "$E2E_MODE" == full ]]; then
+    timed_stage seven-negatives run_negative || return $?
+  elif [[ "$E2E_MODE" == debug-negative ]]; then
+    timed_stage focused-negative run_focused_negative || return $?
+  fi
+  timed_stage post-isolation probe_no_egress after || return $?
+  if [[ "$E2E_MODE" != full ]]; then
+    printf '%s\n' 'local-e2e-ci: partial-development=passed; full_protocol_gate=not-run'
+    return 0
+  fi
   printf '%s\n' 'local-e2e-ci: full_protocol_gate=passed; mode=challenge-validation-bypassed; aws_route53_dns01_live_ca=not_tested'
 }
 

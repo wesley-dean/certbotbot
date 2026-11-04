@@ -446,7 +446,7 @@ setup() {
   [ "$status" -eq 0 ]
   run bash "$CI_LOCAL_RUNNER" unexpected
   [ "$status" -eq 64 ]
-  [[ "$output" == *'usage: ci-local-e2e.bash (no arguments)'* ]]
+  [[ "$output" == *'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'* ]]
 }
 
 @test "local protocol acceptance runs only on push or manual dispatch without credentials" {
@@ -585,6 +585,30 @@ setup() {
   bash -n "$runner"
   bash -n "$host"
   bash -n "$ci"
+}
+
+@test "focused second-order mode remains partial and full CI stays mandatory" {
+  run bash "$CI_LOCAL_RUNNER" --not-a-real-mode
+  [ "$status" -eq 64 ]
+  grep -Fq 'run-debug-second-order) run_lifecycle "$image" debug-second-order' "$FIRST_HOST"
+  grep -Fq 'full_acceptance=false' "$FIRST_HOST"
+  grep -Fq 'focused_second_order=passed; full_acceptance=false' "$CI_LOCAL_RUNNER"
+  grep -Fq 'full_protocol_gate=not-run' "$CI_LOCAL_RUNNER"
+  run bash "$CI_LOCAL_RUNNER" --debug-negative=not-listed
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'unsupported focused negative scenario'* ]]
+  grep -Fq 'run-debug-seed) run_lifecycle "$image" debug-seed' "$FIRST_HOST"
+  grep -Fq 'run-debug-fault) run_faults "$image" "$2"' "$FIRST_HOST"
+  grep -Fq 'focused_negative=%s; full_acceptance=false' "$FIRST_HOST"
+  grep -Fq 'timed_stage focused-negative run_focused_negative' "$CI_LOCAL_RUNNER"
+  grep -Fq 'second-order-failure=timeout' "$FIRST_HOST" || \
+    grep -Fq 'renewal_reason=timeout' "$FIRST_HOST"
+  grep -Fq 'bounded second-order failure=' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage seven-negatives run_negative' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage pre-isolation probe_no_egress before' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage post-isolation probe_no_egress after' "$CI_LOCAL_RUNNER"
+  bash -n "$CI_LOCAL_RUNNER"
+  bash -n "$FIRST_HOST"
 }
 
 @test "local E2E evidence stays bounded and its real-provider nonclaim is explicit" {
