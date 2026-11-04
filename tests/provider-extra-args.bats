@@ -12,11 +12,11 @@ teardown() {
 @test "provider JSON collections resolve with CLI-over-environment replacement" {
   run bash -c '
     source "$1" --help >/dev/null || exit $?
-    AWS_EXTRA_ARGS='''["--cli-read-timeout","20"]'''
-    export AWS_EXTRA_ARGS
-    certbotbot_config_resolve --s3-bucket bucket --aws-args "$2" example.com || exit $?
+    export AWS_EXTRA_ARGS="$2"
+    certbotbot_config_resolve --s3-bucket bucket --aws-args "$3" example.com || exit $?
     printf "%s|" "${CERTBOTBOT_AWS_ARGS[@]}"
-  ' _ "$BASH_STARTER_ARTIFACT" '["--cli-connect-timeout","30","--cli-read-timeout","40"]'
+  ' _ "$BASH_STARTER_ARTIFACT" '["--cli-read-timeout","20"]' \
+    '["--cli-connect-timeout","30","--cli-read-timeout","40"]'
   [ "$status" -eq 0 ]
   [ "$output" = '--cli-connect-timeout|30|--cli-read-timeout|40|' ]
 }
@@ -24,10 +24,10 @@ teardown() {
 @test "explicit empty argv collection replaces nonempty environment values" {
   run bash -c '
     source "$1" --help >/dev/null || exit $?
-    export AWS_EXTRA_ARGS='''["--cli-read-timeout","20"]'''
+    export AWS_EXTRA_ARGS="$2"
     certbotbot_config_resolve --s3-bucket bucket --aws-args "[]" example.com || exit $?
     printf "%s" "${#CERTBOTBOT_AWS_ARGS[@]}"
-  ' _ "$BASH_STARTER_ARTIFACT"
+  ' _ "$BASH_STARTER_ARTIFACT" '["--cli-read-timeout","20"]'
   [ "$status" -eq 0 ]
   [ "$output" = 0 ]
 }
@@ -139,8 +139,9 @@ teardown() {
     source "$1" --help >/dev/null || exit $?
     certbotbot_config_resolve --s3-bucket fixture-bucket \
       --aws-args "$3" example.com || exit $?
+    LOGFILE="$2"
     aws() {
-      printf "%s\n" "$*" >>"$2"
+      printf "%s\n" "$*" >>"$LOGFILE"
       return 1
     }
     workspace="$(umask 077; mktemp -d)" || exit $?
