@@ -518,6 +518,27 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+
+@test "failed native E2E reports only a closed host lifecycle stage" {
+  local host="$REPO/tests/e2e-local/first-issue-host.bash"
+  local ci="$REPO/tests/e2e-local/ci-local-e2e.bash"
+  local stage
+  for stage in first-issuance first-readback noop-development noop-ordinary \
+    noop-minified second-order renewed-readback post-renewal-noop; do
+    grep -Fq "lifecycle-phase=$stage" "$ci"
+  done
+  grep -Fq "lifecycle-phase=first-issuance" "$host"
+  grep -Fq "lifecycle-phase=first-readback" "$host"
+  grep -Fq "lifecycle-phase=second-order" "$host"
+  grep -Fq "lifecycle-phase=renewed-readback" "$host"
+  grep -Fq "lifecycle-phase=post-renewal-noop" "$host"
+  grep -Fq 'problem "lifecycle-phase=noop-$flavor"' "$host"
+  grep -Fq 'done <"$logfile"' "$ci"
+  grep -Fq 'bounded local lifecycle stage=$lifecycle_stage' "$ci"
+  bash -n "$host"
+  bash -n "$ci"
+}
+
 @test "local E2E evidence stays bounded and its real-provider nonclaim is explicit" {
   run grep -F 'no_egress_probe=%s; challenge_validation=bypassed' "$CI_LOCAL_RUNNER"
   [ "$status" -eq 0 ]
