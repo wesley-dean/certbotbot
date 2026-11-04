@@ -53,6 +53,55 @@ if forbidden behavior could still occur through another observable path.
 Threat-model findings should drive tests for important mitigations and residual
 boundaries where executable evidence is practical.  See `doc/threat-modeling.md`.
 
+## Bulk archived-lineage acceptance (milestone 15, task #100)
+
+The opt-in `RENEW_ALL` implementation is governed by
+[ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md)
+and [the bulk renewal contract](renew-all-contract.md).
+
+The `tests/bulk-renewal.bats` suite covers initial implementation-level
+routing, exact-name checks, invalid inputs, and changed/no-op publication.
+`tests/bulk-renewal-acceptance.bats` independently exercises the *shipped
+public producer executable*, not sourced implementation functions, in the
+complete Bats matrix of **development**, **ordinary**, and **minified** flavors.
+It uses the synthetic first-party AWS/Certbot process doubles, actual
+locally generated X.509 certificates, GNU tar/gzip, and fresh private
+runner directories.
+
+The acceptance coverage includes:
+
+- Two independent archived lineages (including overlapping SAN sets),
+  exact once-per-name enumeration, default selected-only isolation, and
+  independently selected issuance exercised by the initial suite.
+- Mixed due/no-op outcomes, actual leaf replacement for one lineage,
+  unchanged other-lineage certificate/private-key metadata, account
+  identity continuity, metadata-only durable changes, and one complete
+  current-key publication.
+- A later named Certbot failure after an earlier successful local
+  renewal, malicious cross-lineage mutation, missing triplets, invalid
+  unselected X.509 material, duplicate archive members, invalid account
+  material, and remote PutObject uncertainty.
+- Separate invocation-owned runner directories for seeding, changing,
+  and subsequently checking the durable archive, with no remaining
+  ephemeral state and no new account registration or extra publication.
+- Boolean/config precedence and an optional GnuPG 2.4.7+ authenticated
+  encryption check; `--no-env` and default-false behavior remain covered
+  by `tests/bulk-renewal.bats`.
+
+Each failed local run must be nonzero with no `PutObject`, while any
+uncertain remote `PutObject` remains a nonzero failure without a
+rollback claim. These tests never contact real Route53, AWS, or ACME
+servers. Local challenge-bypassed Pebble/SeaweedFS evidence and live
+staging verification are **different** acceptance boundaries; a green
+mocked test is not proof of DNS propagation, external account access,
+or consumer certificate deployment.
+
+The normal CI test-file wildcard includes the acceptance suite without
+a new trigger or extra matrix workflow. `make test-one` requires the
+exact generated producer and checksum sidecar, and the regular CI
+build/handoff verifies artifact provenance, release flavors, and
+minimum Bash 4.3 compatibility.
+
 ## Artifact Matrix
 
 `make test` runs the suite against the development, stripped, and minified
