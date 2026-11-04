@@ -54,6 +54,7 @@ supports repetition its native last-wins behavior applies.
 | GnuPG | `--compress-level` | Decimal integer 0–9 | Authenticated symmetric encryption packet creation, including the capability probe |
 | GnuPG | `--no-compress` | Presence-only; mutually exclusive with `--compress-level` | Same encryption calls |
 | Certbot | `--max-log-backups` | Decimal integer 1–1000 | Registration, account checks, authenticator probes, issuance, and selected renewal |
+| Certbot | `--user-agent-comment` | Printable 1–80-character string beginning alphanumeric; spaces and double quotes permitted; no shell metacharacters | Same permitted Certbot calls; the comment may be sent to the selected ACME service |
 | Certbot | `--dns-route53-propagation-seconds` | Decimal integer 1–300 | Selected issuance and selected renewal only; not available for `register` |
 
 The fixed command name, required security arguments, private workspaces,
