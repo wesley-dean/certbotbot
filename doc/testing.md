@@ -392,6 +392,32 @@ an undocumented convention.
 See ADR-010 and ADR-017 for the generated-documentation ownership model.
 
 
+### Per-negative timing and isolated parallelism assessment (issue #276)
+
+The full, push-triggered Pebble/SeaweedFS local E2E gate retains **serial**
+execution of all seven negative cases. Each case now provides one bounded
+`negative_timing` observation **only after** expected provider refusal and
+independent unchanged-object readback have passed. The host-side CI runner
+requires exactly one valid receipt per case, clamps the printed duration to
+the existing 2100-second stage bound, and emits only the known scenario name
+and elapsed seconds. The aggregate `seven-negatives` timer remains intact;
+an elapsed time alone never establishes provider or remote-state acceptance.
+
+The known positive lifecycle, three stable no-ops, genuine second Pebble
+order, seven negatives, private recovery and final no-egress remain mandatory.
+Focused negative debugging emits a single case's timing under the existing
+`partial-development` marker, never a `full_protocol_gate=passed` receipt.
+
+Successful [run 41875100822](https://github.com/wesley-dean/certbotbot/actions/runs/41875100822)
+observed 128 seconds for the full seven-negative stage, 171 seconds for
+initial positive lifecycle, and 24 seconds for private project startup.
+A hypothetical seven-way isolated fan-out that re-created each complete
+seed state would add more setup latency than the entire existing negative
+stage. This is a cost model, **not** evidence of an implemented parallel run
+or a measured speedup. See ADR-057 and the
+[negative E2E benchmark](e2e-negative-parallelism-benchmark.md) for
+observations, limitations and conditions for reconsideration.
+
 ### Focused local protocol debugging (issue #275)
 
 The required push-triggered `Local protocol E2E` workflow remains full and
