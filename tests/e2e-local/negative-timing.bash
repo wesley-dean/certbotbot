@@ -50,7 +50,7 @@ negative_timing_report() {
   while IFS= read -r line; do
     [[ "$line" == "$prefix"* ]] || continue
     (( found+=1 ))
-    if [[ "$line" =~ ^local-first-issue-host:\ negative_timing=[a-z-]+\;\ elapsed_seconds=([0-9]{1,4})\;\ status=pass$ ]]; then
+    if [[ "$line" =~ ^local-first-issue-host:\ negative_timing=[a-z0-9-]+\;\ elapsed_seconds=([0-9]{1,4})\;\ status=pass$ ]]; then
       elapsed="${BASH_REMATCH[1]}"
       (( 10#$elapsed <= 2100 )) || {
         printf '%s\n' 'local-e2e-ci: negative timing exceeds stage bound' >&2
