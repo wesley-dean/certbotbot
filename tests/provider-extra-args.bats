@@ -37,15 +37,16 @@ teardown() {
     source "$1" --help >/dev/null || exit $?
     certbotbot_config_resolve --s3-bucket bucket \
       --certbot-args "$2" --gpg-args "$3" example.com || exit $?
-    printf "global=%s|challenge=%s|gpg=%s" \
+    printf "global=%s|challenge=%s|gpg=%s|original=%s" \
       "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[*]}" \
       "${CERTBOTBOT_CERTBOT_CHALLENGE_ARGS[*]}" \
-      "${CERTBOTBOT_GPG_ARGS[*]}"
+      "${CERTBOTBOT_GPG_ARGS[*]}" \
+      "${CERTBOTBOT_CERTBOT_ARGS[*]}"
   ' _ "$BASH_STARTER_ARTIFACT" \
     '["--max-log-backups","9","--dns-route53-propagation-seconds","30","--max-log-backups","10"]' \
     '["--compress-level","0"]'
   [ "$status" -eq 0 ]
-  [ "$output" = 'global=--max-log-backups 9 --max-log-backups 10|challenge=--dns-route53-propagation-seconds 30|gpg=--compress-level 0' ]
+  [ "$output" = 'global=--max-log-backups 9 --max-log-backups 10|challenge=--dns-route53-propagation-seconds 30|gpg=--compress-level 0|original=--max-log-backups 9 --dns-route53-propagation-seconds 30 --max-log-backups 10' ]
 }
 
 @test "malformed and unauthorized provider args fail before external effects" {
