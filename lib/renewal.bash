@@ -13,12 +13,14 @@
 ## Requires a restored private configuration passing the local ACME state
 ## preflight, and a regular private renewal file for the selected name.
 ## prepare converts canonical /etc/letsencrypt paths into the private root;
-## finalize performs exactly the inverse. verify checks canonical source
-## paths and the supported metadata schema without modifying any file.
-## The entire input is parsed before
-## writing a same-directory temporary output, so validation failures preserve
-## the original bytes. Only a bounded conservative Route53 configuration
-## dialect is supported. No account, host, PEM, or S3 data is mutated.
+## finalize performs exactly the inverse for five durable path fields.
+## Certbot 5.8 can save explicit invocation-private config_dir, work_dir, and
+## logs_dir fields in renewalparams. Under ADR-051, only finalize may omit
+## those fields, and only if each equals the exact current workspace path.
+## prepare and read-only verify reject the three ephemeral fields in archives.
+## The entire input is parsed before a same-directory replacement, so
+## validation failures preserve the original bytes. Other Route53 metadata
+## remains narrowly allowlisted. No account, host, PEM, or S3 data is mutated.
 ## @param config Absolute canonical owned mode-0700 config directory.
 ## @param name Validated single non-wildcard certificate lineage name.
 ## @param direction prepare, finalize, or read-only verify.
@@ -174,6 +176,29 @@ certbotbot_renewal_map() {
       esac
     elif [[ "$section" == renewalparams ]]; then
       case "$key" in
+        config_dir|work_dir|logs_dir)
+          # Certbot persists explicitly supplied runtime locations.  They
+          # belong to this invocation, not to the portable S3 archive.
+          # Accept only the exact owned workspace paths during finalize.
+          # An archived occurrence is always unsafe for prepare or verify.
+          if [[ "$direction" != finalize || "$config" != */config ||
+            -n "$suffix" ]]; then
+            valid=false
+            break
+          fi
+          case "$key" in
+            config_dir) replacement="$config" ;;
+            work_dir) replacement="${config%/*}/work" ;;
+            logs_dir) replacement="${config%/*}/logs" ;;
+          esac
+          if [[ "$value" != "$replacement" ]]; then
+            valid=false
+            break
+          fi
+          # This is the only accepted deletion.  No unverified private
+          # path or arbitrary renewal option may survive into storage.
+          continue
+          ;;
         account) [[ "$value" == "$account_id" ]] || { valid=false; break; } ;;
         authenticator)
           [[ "$value" == dns-route53 ]] || { valid=false; break; }
