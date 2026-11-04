@@ -14,7 +14,7 @@ setup() {
 [[ "$1" == x509 ]] || exit 1
 case " $* " in
   *" -checkend "*) [[ "$CERT_VERIFY_CASE" != expiry ]] ;;
-  *" /chain.pem "*) [[ "$CERT_VERIFY_CASE" != chain ]] ;;
+  *"/chain.pem "*) [[ "$CERT_VERIFY_CASE" != chain ]] ;;
   *) exit 1 ;;
 esac
 MOCK
