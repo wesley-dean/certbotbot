@@ -276,7 +276,7 @@ certbotbot_read_env_file() {
 ## @retval 0 Effective settings were resolved.
 ## @retval 64 Invalid settings or arguments.
 certbotbot_config_resolve() {
-  local name key value arg config_file='' explicit_config=false
+  local name key value arg config_file='' explicit_config=false no_env=false
   local -a args=("$@") san_cli=()
   local -A cli=()
   CERTBOTBOT_FILE_VALUES=()
@@ -284,12 +284,19 @@ certbotbot_config_resolve() {
   while (( i < ${#args[@]} )); do
     arg="${args[i]}"
     case "$arg" in
-      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed)
+      --no-env)
+        [[ "$no_env" == false ]] ||
+          { certbotbot_error 'duplicate no-env option'; return 64; }
+        no_env=true
+        (( i+=1 ))
+        continue
+        ;;
+      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--aws-args|--gpg-args|--certbot-args)
         (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --config=*|--domain=*|--san=*|--acme-environment=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*)
+      --config=*|--domain=*|--san=*|--acme-environment=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*|--aws-args=*|--gpg-args=*|--certbot-args=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -340,18 +347,27 @@ certbotbot_config_resolve() {
       --archive-encryption) key=ARCHIVE_ENCRYPTION ;;
       --archive-migration) key=ARCHIVE_MIGRATION ;;
       --archive-migration-backup-confirmed) key=ARCHIVE_MIGRATION_BACKUP_CONFIRMED ;;
+      --aws-args) key=AWS_EXTRA_ARGS ;;
+      --gpg-args) key=GPG_EXTRA_ARGS ;;
+      --certbot-args) key=CERTBOT_EXTRA_ARGS ;;
     esac
     if [[ "$arg" != --config ]]; then
       [[ -z "${cli[$key]+x}" ]] || { certbotbot_error 'duplicate option'; return 64; }
       cli[$key]="$value"
     fi
   done
-  if [[ "$explicit_config" == false && -f .env ]]; then config_file=.env; fi
-  if [[ -n "$config_file" ]]; then
-    certbotbot_read_env_file "$config_file" || return 64
-  elif [[ "$explicit_config" == true ]]; then
-    certbotbot_error 'configuration file is missing'
-    return 64
+  if [[ "$no_env" == true ]]; then
+    [[ "$explicit_config" == false ]] ||
+      { certbotbot_error 'no-env conflicts with explicit config'; return 64; }
+    certbotbot_disable_application_environment || return 64
+  else
+    if [[ "$explicit_config" == false && -f .env ]]; then config_file=.env; fi
+    if [[ -n "$config_file" ]]; then
+      certbotbot_read_env_file "$config_file" || return 64
+    elif [[ "$explicit_config" == true ]]; then
+      certbotbot_error 'configuration file is missing'
+      return 64
+    fi
   fi
   local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [BACKUP_RETENTION_COUNT]=0 [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false [ACME_ENVIRONMENT]=production)
   for name in ACME_ENVIRONMENT DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
@@ -523,4 +539,9 @@ certbotbot_config_resolve() {
       "$CERTBOTBOT_S3_KEY" != *[[:space:]]* ]] ||
       { certbotbot_error 'invalid S3 object key'; return 64; }
   fi
+  certbotbot_extra_args_config \
+    "${cli[AWS_EXTRA_ARGS]-}" "${cli[GPG_EXTRA_ARGS]-}" \
+    "${cli[CERTBOT_EXTRA_ARGS]-}" \
+    "${cli[AWS_EXTRA_ARGS]+true}" "${cli[GPG_EXTRA_ARGS]+true}" \
+    "${cli[CERTBOT_EXTRA_ARGS]+true}" || return $?
 }
