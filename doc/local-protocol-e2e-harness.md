@@ -511,9 +511,10 @@ case's duration is reported, without a full acceptance claim.
 
 Historical successful [run 41875100822](https://github.com/wesley-dean/certbotbot/actions/runs/41875100822)
 measured 128 seconds across the seven negatives; its positive lifecycle
-alone cost 171 seconds and private startup 24 seconds. Repeating both to
+alone cost 171 seconds and private startup 24 seconds. Repeating both serially after the main positive lifecycle to
 seed independent Compose workers would exceed the entire serial negative
-stage. This *estimate* does not prove all forms of concurrency unprofitable;
+stage. Concurrent preparation might overlap but has not been benchmarked.
+This *estimate* does not prove all forms of concurrency unprofitable;
 it establishes that the naive full-fixture-per-worker approach cannot
 justify itself against this run. Running the existing seven cases
 concurrently against one shared Pebble/SeaweedFS project is unsafe,
