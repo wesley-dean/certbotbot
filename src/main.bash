@@ -89,7 +89,7 @@ certbotbot_version() {
 ## @par STDOUT
 ## Nothing is written to STDOUT.
 ## @par STDERR
-## One static non-sensitive diagnostic on failed verification.
+## Fixed non-sensitive stage and failure messages on failed verification.
 ## @returns Nothing is written to STDOUT.
 ## @retval 0 All local certificate assertions passed.
 ## @retval 65 Local certificate, chain, SAN or key is unsuitable.
@@ -113,10 +113,21 @@ certbotbot_verify_material() {
     printf '%s\n' 'certbotbot: selected certificate state is unsuitable' >&2
     return 65
   fi
-  if ! certbotbot_renew_sans_match "$root/cert.pem" "$@" ||
-    ! openssl x509 -in "$root/cert.pem" -checkend 0 -noout \
-      >/dev/null 2>&1 ||
-    ! openssl x509 -in "$root/chain.pem" -noout >/dev/null 2>&1; then
+  # Fixed classifications reveal only which verifier rejected the material.
+  # Never relay PEM, SAN content, private paths, or OpenSSL diagnostics.
+  if ! certbotbot_renew_sans_match "$root/cert.pem" "$@"; then
+    printf '%s\n' 'certbotbot: certificate verification stage=sans' >&2
+    printf '%s\n' 'certbotbot: selected certificate or chain is unusable' >&2
+    return 65
+  fi
+  if ! openssl x509 -in "$root/cert.pem" -checkend 0 -noout \
+    >/dev/null 2>&1; then
+    printf '%s\n' 'certbotbot: certificate verification stage=expiry' >&2
+    printf '%s\n' 'certbotbot: selected certificate or chain is unusable' >&2
+    return 65
+  fi
+  if ! openssl x509 -in "$root/chain.pem" -noout >/dev/null 2>&1; then
+    printf '%s\n' 'certbotbot: certificate verification stage=chain' >&2
     printf '%s\n' 'certbotbot: selected certificate or chain is unusable' >&2
     return 65
   fi

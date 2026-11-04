@@ -258,6 +258,22 @@ configuration *without* exporting raw Certbot or archive contents and
 still require every positive, negative, isolation, and cleanup acceptance
 condition before merging the parent E2E PR.
 
+## Bounded Selected-Certificate Verification Diagnostics
+
+When selected certificate material fails the prepublication verifier, a fixed
+`certificate verification stage` diagnostic identifies one of three refused
+predicates: `sans` (exact DNS SAN set), `expiry` (OpenSSL `-checkend 0`),
+or `chain` (OpenSSL chain PEM parsing). The prior generic refusal and
+exit status remain unchanged. No certificate bytes, private keys, SAN
+identities, account data, pathnames, or OpenSSL output are emitted. These
+categories are diagnostic only and never relax verification, expiry, or
+chain acceptance requirements.
+
+The real local Pebble/SeaweedFS E2E run must still establish which predicate
+fails for its native Certbot certificate. Mocked Bats cases exercise the
+three literal categories and ensure that private fixture content is not
+emitted. A green mocked check does not constitute real-protocol acceptance.
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful
