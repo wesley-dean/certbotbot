@@ -281,6 +281,15 @@ run_positive() {
     done <"$logfile"
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
     error "bounded local lifecycle stage=$lifecycle_stage"
+    local renewal_failure=not-reported renewal_category
+    for renewal_category in timeout docker-startup runner-executable producer-rejected unclassified; do
+      if grep -Fqx -- "local-first-issue-host: second-order-failure=$renewal_category" \
+        "$logfile"; then
+        renewal_failure="$renewal_category"
+        break
+      fi
+    done
+    error "bounded second-order failure=$renewal_failure"
     # Fixed test-runner classifications. Neither private runner logs nor
     # extracted account/certificate content is relayed.
     local noop_checkpoint=not-reported noop_producer=not-reported code
