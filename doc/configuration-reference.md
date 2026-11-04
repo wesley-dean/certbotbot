@@ -169,6 +169,7 @@ evaluation or `--flag=value` shorthand. Invalid input is not logged.
 | AWS CLI | `--cli-connect-timeout`, `--cli-read-timeout` | Separate canonical decimal 1–600 |
 | GnuPG | `--compress-level`, `--no-compress` | Level 0–9; mutually exclusive compression switches; encryption only |
 | Certbot | `--max-log-backups` | Separate decimal 1–1000; all permitted Certbot invocations |
+| Certbot | `--user-agent-comment` | Printable 1–80-character value starting alphanumeric; spaces and double quotes allowed; potentially transmitted to ACME provider |
 | Certbot | `--dns-route53-propagation-seconds` | Separate decimal 1–300; selected issuance/renewal only, forbidden in `register` |
 
 Allowed extra tokens appear after Certbotbot's required named options
