@@ -210,3 +210,44 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$output" = verified ]
 }
+
+@test "Certbot extra args reach only compatible simulated subcommands" {
+  run bash -c '
+    source "$1" --help >/dev/null || exit $?
+    certbotbot_config_resolve --s3-bucket bucket \
+      --certbot-args "$2" example.com || exit $?
+    local_root="$3/fixture"
+    mkdir -m 700 "$local_root" || exit $?
+    mkdir -p "$local_root/config/accounts/acme-v02.api.letsencrypt.org/directory/localacct" || exit $?
+    CERTBOTBOT_CA_HOST=acme-v02.api.letsencrypt.org
+    CERTBOTBOT_CA_SERVER=https://acme-v02.api.letsencrypt.org/directory
+    certbotbot_dns_valid() { return 0; }
+    certbotbot_provider_sans() { return 0; }
+    certbotbot_state_preflight() {
+      CERTBOTBOT_LINEAGE_STATE=absent
+      return 0
+    }
+    certbotbot_state_canonical_all() { return 0; }
+    CERTBOT_LOG="$3/certbot.log"
+    export CERTBOT_LOG
+    cat >"$3/certbot" <<EOF
+#!/usr/bin/env bash
+printf "%s\\n" "\\$*" >> "\\$CERTBOT_LOG"
+if [[ "\\$1" == plugins ]]; then printf "  * dns-route53\\n"; fi
+exit 0
+EOF
+    chmod 700 "$3/certbot" || exit $?
+    PATH="$3:$PATH"
+    export PATH
+    certbotbot_provider_issue "$local_root" example.com example.com || exit $?
+    [[ "$(grep -Fc -- "--dns-route53-propagation-seconds 27" "$CERTBOT_LOG")" -eq 1 ]] || exit 1
+    grep -Eq "certonly .*--max-log-backups 11 --dns-route53-propagation-seconds 27 -d example.com" \
+      "$CERTBOT_LOG" || exit $?
+    [[ "$(grep -Fc -- "--max-log-backups 11" "$CERTBOT_LOG")" -eq 3 ]] || exit 1
+    printf verified
+  ' _ "$BASH_STARTER_ARTIFACT" \
+    '["--max-log-backups","11","--dns-route53-propagation-seconds","27"]' \
+    "$EXTRA_TEST_DIR"
+  [ "$status" -eq 0 ]
+  [ "$output" = verified ]
+}
