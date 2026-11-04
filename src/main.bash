@@ -120,6 +120,254 @@ certbotbot_verify_material() {
     if ! certbotbot_provider_sans "$@"; then
       printf '%s\n' 'certbotbot: private SAN diagnostic=arguments' >&2
     elif ! certbotbot_renew_sans_read "$root/cert.pem"; then
+      # Identify only the OpenSSL extension header category; do not print it.
+      local san_header=''
+      san_header="$(openssl x509 -in "$root/cert.pem" -noout -ext subjectAltName 2>/dev/null)" || san_header=''
+      san_header="${san_header%%
+    elif (( ${#CERTBOTBOT_EXISTING_SANS[@]} != $# )); then
+      printf '%s\n' 'certbotbot: private SAN diagnostic=count' >&2
+    else
+      printf '%s\n' 'certbotbot: private SAN diagnostic=identity' >&2
+    fi
+    printf '%s\n' 'certbotbot: certificate verification stage=sans' >&2
+    printf '%s\n' 'certbotbot: selected certificate or chain is unusable' >&2
+    return 65
+  fi
+  if ! openssl x509 -in "$root/cert.pem" -checkend 0 -noout \
+    >/dev/null 2>&1; then
+    printf '%s\n' 'certbotbot: certificate verification stage=expiry' >&2
+    printf '%s\n' 'certbotbot: selected certificate or chain is unusable' >&2
+    return 65
+  fi
+  if ! openssl x509 -in "$root/chain.pem" -noout >/dev/null 2>&1; then
+    printf '%s\n' 'certbotbot: certificate verification stage=chain' >&2
+    printf '%s\n' 'certbotbot: selected certificate or chain is unusable' >&2
+    return 65
+  fi
+  pub_cert="$workspace/.leaf-public.pem"
+  pub_key="$workspace/.key-public.pem"
+  leaf_der="$workspace/.leaf.der"
+  full_der="$workspace/.fullchain-leaf.der"
+  if [[ -e "$pub_cert" || -L "$pub_cert" ||
+    -e "$pub_key" || -L "$pub_key" ||
+    -e "$leaf_der" || -L "$leaf_der" ||
+    -e "$full_der" || -L "$full_der" ]]; then
+    printf '%s\n' 'certbotbot: occupied certificate verification workspace' >&2
+    return 65
+  fi
+  if ! (umask 077
+    openssl x509 -in "$root/cert.pem" -pubkey -noout >"$pub_cert" 2>/dev/null &&
+    openssl pkey -in "$root/privkey.pem" -pubout >"$pub_key" 2>/dev/null &&
+    openssl x509 -in "$root/cert.pem" -outform DER >"$leaf_der" 2>/dev/null &&
+    openssl x509 -in "$root/fullchain.pem" -outform DER >"$full_der" 2>/dev/null
+  ) || ! cmp -s -- "$pub_cert" "$pub_key" ||
+    ! cmp -s -- "$leaf_der" "$full_der"; then
+    status=65
+  fi
+  rm -f -- "$pub_cert" "$pub_key" "$leaf_der" "$full_der"
+  if (( status != 0 )); then
+    printf '%s\n' \
+      'certbotbot: certificate and private key verification failed' >&2
+  fi
+  return "$status"
+}
+
+## @fn certbotbot_lifecycle_execute()
+## @brief Runs one selected certificate from the single shared S3 archive.
+## @details
+## Runs as a conventional Bash function so the pinned release minifier can
+## serialize it safely.  The public executable invokes it only after resolving
+## identity and S3 parameters, then exits.  Its process-level EXIT trap owns
+## cleanup of the freshly allocated workspace on every exit or failure,
+## including handled termination signals.  Because the EXIT trap runs after
+## the function returns, the owned workspace pathname is also kept in the
+## script-scope CERTBOTBOT_ACTIVE_WORKSPACE variable; a function-local value
+## would have expired before cleanup.  This function is not a sourced library
+## API: callers must not rely on preserving their EXIT trap.
+##
+## All restored lineage metadata is validated before provider execution.
+## Unselected state is fingerprinted before and after selected Certbot work;
+## any mutation refuses publication. Missing or unsafe S3 state never triggers
+## account registration or host fallback.  An absent selected lineage is issued using the restored account;
+## an existing one is renewed or reconciled only as explicitly authorized.
+## First issuance requires canonical renewal path finalization before it can
+## pass the same certificate and archive gates as an existing lineage.
+## Publisher input uses the identical bucket/key used by the fetch adapter.
+## Only after complete certificate/key verification does the orchestrator
+## forward the provider's durable-change Boolean and the resolved literal
+## UPLOAD_NO_RENEWAL Boolean. A successful unchanged run can republish without
+## forcing ACME issuance; false cannot suppress publication of changed state.
+## This public integration is exercised in
+## doc/mvp-upload-no-renewal-integration.md. No publication follows any
+## nonzero provider or verification status.
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## One non-secret status describing the selected S3 object on success.
+## @par STDERR
+## Fixed diagnostics from the failing stage; no external tool output.
+## @returns Completed selected-certificate lifecycle and publication status.
+## @retval 0 Successful issuance/renewal plus publication, or verified no-op.
+## @retval 64 Invalid runtime arguments or private workspace.
+## @retval 65 Unsafe state, metadata, or certificate validation.
+## @retval 66 Mandatory seeded S3 object was confirmed absent.
+## @retval 69 Required external provider or S3 service is unavailable.
+## @retval 74 Local staging, Certbot or S3 transfer failed.
+## @note The exact nonzero stage status is propagated unchanged.
+certbotbot_lifecycle_execute() {
+  local workspace='' config account_dir account_before='' entry
+  local changed='' outcome='' unselected_before='' unselected_after=''
+  workspace="$(certbotbot_workspace_create)" || return $?
+  # An EXIT trap runs after a returned function loses its local variables.
+  # Hold only the freshly allocated, validated workspace path at script scope.
+  CERTBOTBOT_ACTIVE_WORKSPACE="$workspace"
+  trap 'rm -rf -- "$CERTBOTBOT_ACTIVE_WORKSPACE"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  if [[ "$CERTBOTBOT_ARCHIVE_ENCRYPTION" == gpg-ocb ]]; then
+    certbotbot_crypto_require "$workspace" || return $?
+  fi
+  certbotbot_s3_fetch "$workspace" "$CERTBOTBOT_S3_BUCKET" \
+    "$CERTBOTBOT_S3_KEY" || return $?
+  certbotbot_crypto_unwrap "$workspace" || return $?
+  certbotbot_archive_restore "$workspace/downloaded.tar.gz" "$workspace" ||
+    return $?
+  config="$workspace/config"
+  certbotbot_state_preflight "$config" "$CERTBOTBOT_CERT_NAME" ||
+    return $?
+  certbotbot_state_canonical_all "$config" "$CERTBOTBOT_CERT_NAME" ||
+    return $?
+  unselected_before="$(certbotbot_state_unselected_fingerprint \
+    "$config" "$CERTBOTBOT_CERT_NAME")" || {
+    printf '%s\n' 'certbotbot: cannot snapshot unselected certificate state' >&2
+    return 65
+  }
+
+  account_dir="$config/accounts/$CERTBOTBOT_CA_HOST/directory"
+  for entry in "$account_dir/"*; do
+    [[ -d "$entry" && ! -L "$entry" ]] || continue
+    account_before="${entry##*/}"
+    break
+  done
+  [[ -n "$account_before" ]] || {
+    printf '%s\n' 'certbotbot: restored ACME account is unavailable' >&2
+    return 65
+  }
+
+  case "$CERTBOTBOT_LINEAGE_STATE" in
+    absent)
+      certbotbot_provider_issue "$workspace" "$CERTBOTBOT_CERT_NAME" \
+        "${CERTBOTBOT_SANS[@]}" || return $?
+      certbotbot_state_preflight "$config" "$CERTBOTBOT_CERT_NAME" ||
+        return $?
+      [[ "$CERTBOTBOT_LINEAGE_STATE" == present ]] || {
+        printf '%s\n' 'certbotbot: newly issued lineage is incomplete' >&2
+        return 65
+      }
+      certbotbot_renewal_map "$config" "$CERTBOTBOT_CERT_NAME" finalize ||
+        return $?
+      changed=true
+      outcome=issued
+      ;;
+    present)
+      certbotbot_provider_existing "$workspace" "$CERTBOTBOT_CERT_NAME" \
+        "${CERTBOTBOT_SANS[@]}" || return $?
+      changed="$CERTBOTBOT_DURABLE_CHANGED"
+      outcome=checked
+      ;;
+    *)
+      printf '%s\n' 'certbotbot: selected lineage is ambiguous' >&2
+      return 65
+      ;;
+  esac
+
+  if [[ ! -d "$account_dir/$account_before" ||
+    -L "$account_dir/$account_before" ]]; then
+    printf '%s\n' 'certbotbot: restored ACME account identity changed' >&2
+    return 65
+  fi
+  # Validate every lineage before publication and reject any accidental
+  # mutation of unselected certificate keys, metadata or version history.
+  certbotbot_state_canonical_all "$config" "$CERTBOTBOT_CERT_NAME" ||
+    return $?
+  unselected_after="$(certbotbot_state_unselected_fingerprint \
+    "$config" "$CERTBOTBOT_CERT_NAME")" || {
+    printf '%s\n' 'certbotbot: cannot verify unselected certificate state' >&2
+    return 65
+  }
+  if [[ "$unselected_before" != "$unselected_after" ]]; then
+    printf '%s\n' 'certbotbot: unselected certificate state changed' >&2
+    return 65
+  fi
+  certbotbot_verify_material "$workspace" "$CERTBOTBOT_CERT_NAME" \
+    "${CERTBOTBOT_SANS[@]}" || return $?
+  certbotbot_s3_publish "$workspace" "$CERTBOTBOT_CERT_NAME" \
+    "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" \
+    "$changed" "$CERTBOTBOT_UPLOAD_NO_RENEWAL" || return $?
+
+  if [[ "$CERTBOTBOT_BACKUP_RETENTION_COUNT" != 0 ]]; then
+    printf 'certbotbot: %s %s; s3://%s/%s; published=%s; backup=%s; retention=%s; deleted=%s\n' \
+      "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
+      "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED" \
+      "$CERTBOTBOT_S3_BACKUP_STATUS" "$CERTBOTBOT_RETENTION_STATUS" \
+      "$CERTBOTBOT_RETENTION_DELETED"
+  elif [[ "$CERTBOTBOT_DATED_BACKUP_ENABLED" == true ]]; then
+    printf 'certbotbot: %s %s; s3://%s/%s; published=%s; backup=%s\n' \
+      "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
+      "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED" \
+      "$CERTBOTBOT_S3_BACKUP_STATUS"
+  else
+    printf 'certbotbot: %s %s; s3://%s/%s; published=%s\n' \
+      "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
+      "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED"
+  fi
+  return 0
+}
+
+## @fn certbotbot_main()
+## @brief Validates the public invocation and dispatches the MVP lifecycle.
+## @param ... Public command arguments.
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## Help, version or completed operation status.
+## @par STDERR
+## Non-sensitive diagnostics for invalid or unsuccessful operations.
+## @returns Public command status for help, version or one selected certificate.
+## @retval 0 Successful operation or explicitly requested help/version.
+## @retval 64 Invalid invocation.
+## @note Nonzero lifecycle stage statuses propagate unchanged.
+certbotbot_main() {
+  # Do not inherit an exported secret into *any* child, including help's
+  # external formatter. Shell tracing must be disabled before reading it.
+  set +x
+  local CERTBOTBOT_GPG_SECRET="${GPG_SYMMETRIC_KEY-}"
+  export -n CERTBOTBOT_GPG_SECRET
+  unset GPG_SYMMETRIC_KEY
+  case "${1:-}" in
+    --help|-h|help) certbotbot_usage; return 0 ;;
+    --version|-V|version) certbotbot_version; return 0 ;;
+    register) shift; certbotbot_register_main "$@"; return $? ;;
+  esac
+  certbotbot_config_resolve "$@" || return $?
+  certbotbot_identity_resolve || return $?
+  certbotbot_filename_resolve || return $?
+  certbotbot_retention_preflight || return $?
+  certbotbot_lifecycle_execute
+}
+
+certbotbot_main "$@"
+\n'*}"
+      case "$san_header" in
+        'X509v3 Subject Alternative Name: critical')
+          printf '%s\n' 'certbotbot: private SAN header=critical' >&2 ;;
+        'X509v3 Subject Alternative Name:'|'X509v3 Subject Alternative Name: ')
+          printf '%s\n' 'certbotbot: private SAN header=ordinary' >&2 ;;
+        *)
+          printf '%s\n' 'certbotbot: private SAN header=other' >&2 ;;
+      esac
       printf '%s\n' 'certbotbot: private SAN diagnostic=read' >&2
     elif (( ${#CERTBOTBOT_EXISTING_SANS[@]} != $# )); then
       printf '%s\n' 'certbotbot: private SAN diagnostic=count' >&2

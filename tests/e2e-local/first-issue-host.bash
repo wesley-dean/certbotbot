@@ -305,6 +305,13 @@ run_lifecycle() (
     fi
     problem "route53-checkpoint=$route_stage"
     problem "route53-refusal=$route_refusal"
+    local header
+    for header in critical ordinary other; do
+      if grep -Fqx "local-first-issue: san_header=$header" "$log"; then
+        problem "san-header=$header"
+        break
+      fi
+    done
     local detail
     for detail in arguments read count identity; do
       if grep -Fqx "local-first-issue: san_substage=$detail" "$log"; then

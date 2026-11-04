@@ -290,6 +290,13 @@ ISSUE_REASONS
     # Emit the more specific category last so the host's sequential
     # allowlist classifier cannot overwrite it with this generic marker.
     error "issuance_stage=$issue_reason"
+    local header
+    for header in critical ordinary other; do
+      if grep -Fqx "certbotbot: private SAN header=$header" "$workspace/issue.log"; then
+        error "san_header=$header"
+        break
+      fi
+    done
     local detail
     for detail in arguments read count identity; do
       if grep -Fqx "certbotbot: private SAN diagnostic=$detail" "$workspace/issue.log"; then
