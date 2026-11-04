@@ -305,6 +305,14 @@ run_lifecycle() (
     fi
     problem "route53-checkpoint=$route_stage"
     problem "route53-refusal=$route_refusal"
+    # Cross the runner/host boundary using the same closed fixed enum.
+    local gate
+    for gate in sans expiry chain; do
+      if grep -Fqx "local-first-issue: certificate_gate=$gate" "$log"; then
+        problem "certificate-gate=$gate"
+        break
+      fi
+    done
     problem "bootstrap-failure=$reason"
     return 74
   fi
