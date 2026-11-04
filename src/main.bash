@@ -47,6 +47,7 @@ Options:
   --backup-key-template TEMPLATE   Optional dated backup key template
   --dated-backup-enabled true|false  Publish an additional date-named copy
   --backup-retention-count N        Keep newest N managed copies (default 0)
+  --renew-all true|false          Check all verified archived lineages once
   --upload-no-renewal true|false   Republish successful unchanged archive\n  --archive-encryption MODE        auto | none | gpg-ocb\n  --archive-migration MODE         none | plaintext-to-gpg-ocb\n  --archive-migration-backup-confirmed true|false
   --help                           Show help
   --version                        Show build provenance
@@ -356,10 +357,20 @@ certbotbot_main() {
   # shellcheck disable=SC2034
   CERTBOTBOT_COMMAND=issue
   certbotbot_config_resolve "$@" || return $?
-  certbotbot_identity_resolve || return $?
+  if [[ "$CERTBOTBOT_SELECTED_REQUEST" == true ]]; then
+    certbotbot_identity_resolve || return $?
+  else
+    # ADR-058 domainless maintenance has no synthetic selected identity.
+    CERTBOTBOT_CERT_NAME=''
+    CERTBOTBOT_SANS=()
+  fi
   certbotbot_filename_resolve || return $?
   certbotbot_retention_preflight || return $?
-  certbotbot_lifecycle_execute
+  if [[ "$CERTBOTBOT_RENEW_ALL" == true ]]; then
+    certbotbot_lifecycle_renew_all
+  else
+    certbotbot_lifecycle_execute
+  fi
 }
 
 certbotbot_main "$@"
