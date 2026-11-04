@@ -373,8 +373,33 @@ run_lifecycle() (
       done
       problem "noop-checkpoint=$noop_checkpoint"
       problem "noop-producer=$noop_producer"
+      local object_delta=not-reported renewal_delta=not-reported \
+        order_delta=unavailable current_orders='' observation
+      for observation in changed unchanged unreadable; do
+        if grep -Fqx -- "local-first-issue: noop-object=$observation" \
+          "$tmp/noop-$flavor.log"; then
+          object_delta="$observation"
+        fi
+        if grep -Fqx -- "local-first-issue: noop-renewal=$observation" \
+          "$tmp/noop-$flavor.log"; then
+          renewal_delta="$observation"
+        fi
+      done
+      current_orders="$(pebble_order_count 2>/dev/null)" || current_orders=''
+      if [[ "$current_orders" =~ ^[0-9]+$ && "$count_before" =~ ^[0-9]+$ ]]; then
+        if [[ "$current_orders" == "$count_before" ]]; then
+          order_delta=unchanged
+        elif (( current_orders > count_before )); then
+          order_delta=increased
+        fi
+      fi
+      problem "noop-checkpoint=$noop_checkpoint"
+      problem "noop-producer=$noop_producer"
       problem "noop-receipt-status=$receipt_status"
       problem "noop-receipt-publication=$receipt_publish"
+      problem "noop-object=$object_delta"
+      problem "noop-renewal=$renewal_delta"
+      problem "noop-orders=$order_delta"
       problem 'fresh-runner selected renewal/no-op failed'
       return 74
     fi
