@@ -356,32 +356,73 @@ noop() {
   local workspace="$1" flavor="$2" expected="$3" actual=''
   [[ "$expected" =~ ^[a-f0-9]{64}$ ]] ||
     { error 'invalid archive digest for no-op'; return 64; }
+  error 'noop-checkpoint=fetch-before'
   fetch_archive "$workspace/before.tar.gz" || return $?
+  error 'noop-checkpoint=digest-before'
   actual="$(sha256sum "$workspace/before.tar.gz" | awk '{print $1}')" || return 74
   [[ "$actual" == "$expected" ]] ||
     { error 'fresh-runner input archive differs'; return 65; }
+  error 'noop-checkpoint=account-before'
   verify_account "$workspace/before.tar.gz" || return $?
+  error 'noop-checkpoint=cert-before'
   verify_certificate "$workspace/before.tar.gz" "$workspace" || return $?
+  error 'noop-checkpoint=metadata-before'
   object_metadata "$workspace/before.meta" || return $?
 
   # A real producer invocation (not a Certbot mock) fetches and restores
   # account, lineage, renewal paths and keys from SeaweedFS itself.
+  error 'noop-checkpoint=producer'
   if ! issuer "$flavor" >"$workspace/noop.log" 2>&1; then
+    # Inspect a closed list of producer-owned literal refusals only.
+    # Never forward an untrusted provider line, path, SAN, or PEM content.
+    local producer_reason=unclassified known=''
+    while IFS='|' read -r known producer_reason; do
+      if grep -Fqx -- "$known" "$workspace/noop.log"; then
+        error "noop-producer=$producer_reason"
+        break
+      fi
+      producer_reason=unclassified
+    done <<'NOOP_PRODUCER_REFUSALS'
+certbotbot: selected lineage is unsuitable|lineage-preflight
+certbotbot: selected certificate SAN extension is unsafe|san-extension
+certbotbot: selected certificate SANs differ or are unsafe|san-identity
+certbotbot: existing selected lineage is unsuitable|renewal-preflight
+certbotbot: selected certificate renewal failed|certbot-renew
+certbotbot: private renewal path preparation failed|renewal-prepare
+certbotbot: unsupported renewal configuration|renewal-dialect
+certbotbot: account is not recognized by Certbot|certbot-account
+certbotbot: Certbot authenticator probe failed|certbot-plugin
+certbotbot: selected certificate state is unsuitable|post-state
+certbotbot: selected certificate or chain is unusable|material-verification
+certbotbot: selected publication state is unsuitable|publish-preflight
+certbotbot: unsupported archived renewal metadata|archive-renewal
+certbotbot: S3 archive download failed|s3-fetch
+certbotbot: selected certificate SAN extension is unsafe|san-extension
+certbotbot: canonical renewal path restoration failed|renewal-finalize
+certbotbot: restored account or lineage is unsuitable|restore
+NOOP_PRODUCER_REFUSALS
     error 'fresh-runner selected renewal/no-op failed'
     return 74
   fi
+  error 'noop-checkpoint=producer-receipt'
   grep -Fq 'certbotbot: checked ' "$workspace/noop.log" &&
     grep -Fq '; published=false' "$workspace/noop.log" ||
     { error 'selected no-op unexpectedly changed or published state'; return 65; }
 
+  error 'noop-checkpoint=metadata-after'
   object_metadata "$workspace/after.meta" || return $?
+  error 'noop-checkpoint=metadata-match'
   cmp -s "$workspace/before.meta" "$workspace/after.meta" ||
     { error 'S3 object identity changed during no-op'; return 65; }
+  error 'noop-checkpoint=fetch-after'
   fetch_archive "$workspace/after.tar.gz" || return $?
+  error 'noop-checkpoint=digest-after'
   actual="$(sha256sum "$workspace/after.tar.gz" | awk '{print $1}')" || return 74
   [[ "$actual" == "$expected" ]] ||
     { error 'S3 archive bytes changed during no-op'; return 65; }
+  error 'noop-checkpoint=account-after'
   verify_account "$workspace/after.tar.gz" || return $?
+  error 'noop-checkpoint=cert-after'
   verify_certificate "$workspace/after.tar.gz" "$workspace" || return $?
   printf 'local-first-issue: fresh_runner_noop=%s; archive_sha256=%s\n' "$flavor" "$expected"
 }

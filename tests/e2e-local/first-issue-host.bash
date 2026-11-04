@@ -339,6 +339,27 @@ run_lifecycle() (
     problem "lifecycle-phase=noop-$flavor"
     if ! run_phase "$image" "$cert_ca" noop "$flavor" "$digest" \
       >"$tmp/noop-$flavor.log" 2>&1; then
+      # Only literal checkpoints from our own runner may cross the boundary.
+      local noop_checkpoint=not-reported noop_producer=not-reported code
+      for code in fetch-before digest-before account-before cert-before \
+        metadata-before producer producer-receipt metadata-after \
+        metadata-match fetch-after digest-after account-after cert-after; do
+        if grep -Fqx -- "local-first-issue: noop-checkpoint=$code" \
+          "$tmp/noop-$flavor.log"; then
+          noop_checkpoint="$code"
+        fi
+      done
+      for code in unclassified lineage-preflight san-extension san-identity \
+        renewal-preflight certbot-renew renewal-prepare renewal-dialect \
+        certbot-account certbot-plugin post-state material-verification \
+        publish-preflight archive-renewal s3-fetch renewal-finalize restore; do
+        if grep -Fqx -- "local-first-issue: noop-producer=$code" \
+          "$tmp/noop-$flavor.log"; then
+          noop_producer="$code"
+        fi
+      done
+      problem "noop-checkpoint=$noop_checkpoint"
+      problem "noop-producer=$noop_producer"
       problem 'fresh-runner selected renewal/no-op failed'
       return 74
     fi

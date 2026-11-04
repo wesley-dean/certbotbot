@@ -488,6 +488,17 @@ allowlisted test double. Genuine Let's Encrypt staging, AWS Route53 DNS
 propagation and Amazon S3 IAM/interoperability remain the separate
 milestone #4 manual staging acceptance, under ADR-043.
 
+For a first no-op failure, the same confidentiality boundary applies at the
+runner's individual subchecks: an exact finite checkpoint identifies before-
+and after-archive readback, private account and leaf validation, producer
+invocation and its success receipt, remote object metadata, and digest
+comparisons. When the unchanged producer exits unsuccessfully, only a short
+allowlisted category corresponding to a literal self-authored product error
+may be relayed, never Certbot stdout/stderr, actual SAN values, private paths,
+account material or complete logs. An unknown error remains
+`noop-producer=unclassified`. These receipts describe the last attempted
+operation and never turn an otherwise failing no-op into acceptance.
+
 The local E2E failure reporter also recognizes literal, host-owned lifecycle
 checkpoints covering first issuance, independent first readback, each of the
 three producer no-ops, the second ACME order, renewed archive readback, and

@@ -276,6 +276,25 @@ run_positive() {
     done <"$logfile"
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
     error "bounded local lifecycle stage=$lifecycle_stage"
+    # Fixed test-runner classifications. Neither private runner logs nor
+    # extracted account/certificate content is relayed.
+    local noop_checkpoint=not-reported noop_producer=not-reported code
+    for code in fetch-before digest-before account-before cert-before \
+      metadata-before producer producer-receipt metadata-after \
+      metadata-match fetch-after digest-after account-after cert-after; do
+      if grep -Fqx -- "local-first-issue-host: noop-checkpoint=$code" "$logfile"; then
+        noop_checkpoint="$code"
+      fi
+    done
+    for code in unclassified lineage-preflight san-extension san-identity \
+      renewal-preflight certbot-renew renewal-prepare renewal-dialect \
+      certbot-account certbot-plugin post-state material-verification \
+      publish-preflight archive-renewal s3-fetch renewal-finalize restore; do
+      if grep -Fqx -- "local-first-issue-host: noop-producer=$code" "$logfile"; then
+        noop_producer="$code"
+      fi
+    done
+    error "bounded noop checkpoint=$noop_checkpoint; producer=$noop_producer"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
     return 74
   fi
