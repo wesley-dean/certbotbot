@@ -47,7 +47,7 @@ certbotbot_register_usage() {
 ## @retval 0 All selected settings are usable.
 ## @retval 64 Invalid invocation or missing affirmative consent.
 certbotbot_register_config() {
-  local arg key name value file='' explicit=false tier
+  local arg key name value file='' explicit=false tier no_env=false
   local -a args=("$@")
   local -A cli=() defaults=()
   defaults[EMAIL]=''
@@ -61,13 +61,20 @@ certbotbot_register_config() {
   while (( i < ${#args[@]} )); do
     arg="${args[i]}"
     case "$arg" in
-      --email|--agree-tos|--eff-email-signup|--acme-environment|--s3-bucket|--s3-key|--s3-key-template|--archive-encryption|--config)
+      --no-env)
+        [[ "$no_env" == false ]] ||
+          { certbotbot_error 'duplicate no-env option'; return 64; }
+        no_env=true
+        (( i+=1 ))
+        continue
+        ;;
+      --email|--agree-tos|--eff-email-signup|--acme-environment|--s3-bucket|--s3-key|--s3-key-template|--archive-encryption|--config|--aws-args|--gpg-args|--certbot-args)
         (( i + 1 < ${#args[@]} )) ||
           { certbotbot_error 'registration option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --email=*|--agree-tos=*|--eff-email-signup=*|--acme-environment=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--archive-encryption=*|--config=*)
+      --email=*|--agree-tos=*|--eff-email-signup=*|--acme-environment=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--archive-encryption=*|--config=*|--aws-args=*|--gpg-args=*|--certbot-args=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -86,6 +93,9 @@ certbotbot_register_config() {
       --s3-key) key=S3_KEY ;;
       --s3-key-template) key=S3_KEY_TEMPLATE ;;
       --archive-encryption) key=ARCHIVE_ENCRYPTION ;;
+      --aws-args) key=AWS_EXTRA_ARGS ;;
+      --gpg-args) key=GPG_EXTRA_ARGS ;;
+      --certbot-args) key=CERTBOT_EXTRA_ARGS ;;
       --config)
         [[ "$explicit" == false && -n "$value" ]] ||
           { certbotbot_error 'invalid registration config path'; return 64; }
@@ -98,15 +108,21 @@ certbotbot_register_config() {
       { certbotbot_error 'duplicate or empty registration option'; return 64; }
     cli["$key"]="$value"
   done
-  if [[ "$explicit" == false && -f .env ]]; then file=.env; fi
-  if [[ -n "$file" ]]; then
-    certbotbot_read_env_file "$file" || return 64
-    for key in "${!CERTBOTBOT_FILE_VALUES[@]}"; do
-      case "$key" in
-        EMAIL|AGREE_TOS|EFF_EMAIL_SIGNUP|ACME_ENVIRONMENT|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|ARCHIVE_ENCRYPTION) ;;
-        *) certbotbot_error 'issuer-only setting in registration file'; return 64 ;;
-      esac
-    done
+  if [[ "$no_env" == true ]]; then
+    [[ "$explicit" == false ]] ||
+      { certbotbot_error 'no-env conflicts with explicit config'; return 64; }
+    certbotbot_disable_application_environment || return 64
+  else
+    if [[ "$explicit" == false && -f .env ]]; then file=.env; fi
+    if [[ -n "$file" ]]; then
+      certbotbot_read_env_file "$file" || return 64
+      for key in "${!CERTBOTBOT_FILE_VALUES[@]}"; do
+        case "$key" in
+          EMAIL|AGREE_TOS|EFF_EMAIL_SIGNUP|ACME_ENVIRONMENT|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|ARCHIVE_ENCRYPTION) ;;
+          *) certbotbot_error 'issuer-only setting in registration file'; return 64 ;;
+        esac
+      done
+    fi
   fi
   for name in EMAIL AGREE_TOS EFF_EMAIL_SIGNUP ACME_ENVIRONMENT S3_BUCKET ARCHIVE_ENCRYPTION; do
     value="${defaults[$name]}"
@@ -216,4 +232,9 @@ certbotbot_register_config() {
     { certbotbot_error 'invalid encryption key'; return 64; }
   CERTBOTBOT_ARCHIVE_MIGRATION=none
   CERTBOTBOT_ARCHIVE_MIGRATION_BACKUP_CONFIRMED=false
+  certbotbot_extra_args_config \
+    "${cli[AWS_EXTRA_ARGS]-}" "${cli[GPG_EXTRA_ARGS]-}" \
+    "${cli[CERTBOT_EXTRA_ARGS]-}" \
+    "${cli[AWS_EXTRA_ARGS]+true}" "${cli[GPG_EXTRA_ARGS]+true}" \
+    "${cli[CERTBOT_EXTRA_ARGS]+true}" || return $?
 }
