@@ -253,6 +253,13 @@ run_positive() {
     done
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
+    local detail
+    for detail in arguments read count identity; do
+      if grep -Fqx "local-first-issue-host: san-substage=$detail" "$logfile"; then
+        error "bounded san substage=$detail"
+        break
+      fi
+    done
     return 74
   fi
   for flavor in development ordinary minified; do
