@@ -63,7 +63,8 @@ S3 buckets, IAM roles, hosted zones, or an initial archive.  The separate,
 explicit `register` command is the only path permitted to create a native
 account-only archive at a positively missing S3 key.  The tool does not
 provision a web server, install or reload target certificates, implicitly
-renew every stored lineage, delete orphaned lineages, provide distributed
+renew every stored lineage, delete orphaned lineages **without an explicitly
+complete desired-lineage set and destructive opt-in**, provide distributed
 locking, or implicitly migrate encrypted/plaintext formats. Other storage backends,
 DNS providers and archive formats are not supported by the current
 producer. A container image is a distribution choice, not additional
@@ -77,6 +78,17 @@ Explicit selected issuance remains possible, while unrelated SANs are not
 reconciled. Only a fully verified complete result may publish to the existing
 current key. See [ADR-058](doc/adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md)
 and the [bulk renewal scope matrix](doc/renew-all-contract.md).
+
+Opt-in `--remove-orphans true` reconciles the shared archive against a
+**separate, complete, explicitly supplied** set of stable certificate
+lineage names. Use repeatable `--desired-cert-name NAME` inputs (or the
+literal `DESIRED_CERT_NAMES` collection); selecting a domain or SAN does
+not implicitly authorize deletion. An invalid, missing, or partially
+specified desired set fails before mutation, and `RENEW_ALL=true`
+cannot be combined with removal. Only already validated orphan paths
+inside the isolated workspace are pruned after the ordinary selected
+operation succeeds. See [ADR-059](doc/adr/ADR-059-explicit-desired-lineage-orphan-removal.md)
+and the [orphan removal contract](doc/orphan-removal-contract.md).
 
 See [How certbotbot works](doc/how-it-works.md) for the complete lifecycle
 and [the threat model](doc/mvp-certificate-state-threat-model.md) for
