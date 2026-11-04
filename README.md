@@ -272,10 +272,11 @@ literal selected `.env` > built-in defaults**. The presence-only
 `--no-env` flag disables producer application environment and file
 configuration while preserving explicit CLI settings and external AWS
 credential mechanisms. It also suppresses environment-only GPG secrets;
-use it only when the selected archive and encryption mode are compatible. Without an
-explicit `--config FILE`, the optional `./.env` file is read
+use it only when the selected archive and encryption mode are compatible.
+Without an explicit `--config FILE`, the optional `./.env` file is read
 as strict **data**, never sourced as shell code. Unknown or
-duplicate entries and shell expansion are rejected. The
+duplicate entries and shell expansion are rejected.
+
 Optional `--aws-args`, `--gpg-args` and `--certbot-args` flags accept
 bounded JSON argument arrays; the same collections can come from the
 exported `AWS_EXTRA_ARGS`, `GPG_EXTRA_ARGS` and `CERTBOT_EXTRA_ARGS`
