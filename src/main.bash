@@ -360,11 +360,23 @@ certbotbot_main() {
 
 certbotbot_main "$@"
 \n'*}"
+      # Classify only fixed presentation families, not the certificate text.
+      # OpenSSL may indent or add extension attributes. Do not print them.
       case "$san_header" in
         'X509v3 Subject Alternative Name: critical')
           printf '%s\n' 'certbotbot: private SAN header=critical' >&2 ;;
         'X509v3 Subject Alternative Name:'|'X509v3 Subject Alternative Name: ')
           printf '%s\n' 'certbotbot: private SAN header=ordinary' >&2 ;;
+        'X509v3 Subject Alternative Name: critical'*)
+          printf '%s\n' 'certbotbot: private SAN header=critical-extra' >&2 ;;
+        'X509v3 Subject Alternative Name:'*)
+          printf '%s\n' 'certbotbot: private SAN header=extension-extra' >&2 ;;
+        *'X509v3 Subject Alternative Name:'*)
+          printf '%s\n' 'certbotbot: private SAN header=prefix' >&2 ;;
+        'No extensions in certificate')
+          printf '%s\n' 'certbotbot: private SAN header=no-extensions' >&2 ;;
+        '')
+          printf '%s\n' 'certbotbot: private SAN header=empty' >&2 ;;
         *)
           printf '%s\n' 'certbotbot: private SAN header=other' >&2 ;;
       esac
