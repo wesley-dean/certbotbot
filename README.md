@@ -463,6 +463,34 @@ make test
 `make deps` can access the network; `make deps-check`
 and `make build` are network-free once dependencies
 are prepared. `make test-report` writes JUnit output.
+
+### Testing regimen
+
+Our testing regimen combines fast source checks with behavior and integration
+acceptance. `make check` validates maintained Bash syntax and ShellCheck;
+`make test` runs the full Bats behavior inventory against each of the three
+checksum-verified producer flavors (development, ordinary, and minified),
+including fixture-based positive and fail-closed negative cases. CI also
+verifies artifact integrity, compatibility, OCI runtime behavior, and
+security and lint findings. The independent shipped certificate client has
+its own behavior and authenticated-decryption qualification gates.
+
+The separate [local protocol E2E workflow](.github/workflows/local-protocol-e2e.yml)
+uses real Certbot, Pebble ACME, and SeaweedFS on an isolated Docker network.
+It requires initial issuance, independent archive readback, one verified
+post-issuance renewal-metadata stabilization, strict no-republish no-ops
+across all three producer flavors, a second real ACME order and replacement,
+seven negative scenarios, isolation probes, and cleanup. Pebble bypasses
+DNS challenge validation and Route53 is stubbed, so this is **not** proof
+of interoperability with live Route53, Amazon S3, or Let's Encrypt.
+That remains the separate, manually authorized milestone 4 staging gate.
+
+The broad Test, OCI, and local protocol E2E workflows run on branch pushes;
+MegaLinter runs on pull-request events, while other security and release
+workflows follow their configured triggers. A green individual job does not
+replace the complete required check set for the exact candidate commit.
+See [testing guidance](doc/testing.md) and the
+[local E2E harness guide](doc/local-protocol-e2e-harness.md) for details.
 `make format` applies the repository's shfmt profile,
 `make adr-index` generates temporary ADR navigation,
 and `make docs` generates Doxygen reference output
