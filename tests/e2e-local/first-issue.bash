@@ -290,6 +290,14 @@ ISSUE_REASONS
     # Emit the more specific category last so the host's sequential
     # allowlist classifier cannot overwrite it with this generic marker.
     error "issuance_stage=$issue_reason"
+    # Export no Certbot output: exact static labels only.
+    local gate
+    for gate in sans expiry chain; do
+      if grep -Fqx "certbotbot: certificate verification stage=$gate" "$workspace/issue.log"; then
+        error "certificate_gate=$gate"
+        break
+      fi
+    done
     return 74
   fi
   grep -Fq 'published=true' "$workspace/issue.log" &&
