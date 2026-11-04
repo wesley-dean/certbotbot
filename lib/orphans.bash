@@ -111,6 +111,57 @@ certbotbot_orphans_account_fingerprint() {
     2>/dev/null | sha256sum | cut -d' ' -f1)
 }
 
+## @fn certbotbot_orphans_material_preflight()
+## @brief Checks an original archived certificate without requiring nonexpiry.
+## @details
+## Expired but structurally authentic certificates remain eligible for an
+## explicitly selected due-renewal or deliberate orphan removal. This
+## read-only preflight validates X.509 PEM syntax, leaf/public-key identity,
+## syntactic chain, and the fullchain's leaf without requiring current
+## validity. Canonical archive state and persisted DNS SANs are checked
+## separately before this call. Temporary comparison files live under the
+## invocation-owned workspace and are removed on every result.
+## @param workspace Fresh private mode-0700 workspace.
+## @param name One original validated non-wildcard archived lineage name.
+## @par STDIN
+## Nothing is read from STDIN.
+## @par STDOUT
+## Nothing is written to STDOUT.
+## @par STDERR
+## Fixed nonsecret stage diagnostic on failure.
+## @retval 0 All original archived certificate material is structurally valid.
+## @retval 65 Malformed or inconsistent leaf, key or chain.
+## @retval 69 OpenSSL or compare command is unavailable.
+certbotbot_orphans_material_preflight() {
+  local workspace="$1" name="$2" root part file status=0
+  local pub_cert pub_key leaf_der full_der
+  root="$workspace/config/live/$name"
+  command -v openssl >/dev/null 2>&1 &&
+    command -v cmp >/dev/null 2>&1 || return 69
+  pub_cert="$workspace/.orphan-preflight-cert.pem"
+  pub_key="$workspace/.orphan-preflight-key.pem"
+  leaf_der="$workspace/.orphan-preflight-leaf.der"
+  full_der="$workspace/.orphan-preflight-full.der"
+  for file in "$pub_cert" "$pub_key" "$leaf_der" "$full_der"; do
+    [[ ! -e "$file" && ! -L "$file" ]] || return 65
+  done
+  if ! (umask 077
+    openssl x509 -in "$root/cert.pem" -pubkey -noout >"$pub_cert" 2>/dev/null &&
+    openssl pkey -in "$root/privkey.pem" -pubout >"$pub_key" 2>/dev/null &&
+    openssl x509 -in "$root/cert.pem" -outform DER >"$leaf_der" 2>/dev/null &&
+    openssl x509 -in "$root/fullchain.pem" -outform DER >"$full_der" 2>/dev/null &&
+    openssl x509 -in "$root/chain.pem" -noout >/dev/null 2>&1
+  ) || ! cmp -s -- "$pub_cert" "$pub_key" ||
+    ! cmp -s -- "$leaf_der" "$full_der"; then
+    status=65
+  fi
+  rm -f -- "$pub_cert" "$pub_key" "$leaf_der" "$full_der"
+  if (( status != 0 )); then
+    printf '%s\n' 'certbotbot: original certificate material is unsafe' >&2
+  fi
+  return "$status"
+}
+
 ## @fn certbotbot_orphans_plan()
 ## @brief Establishes immutable authorized prune targets before provider work.
 ## @details
@@ -135,7 +186,7 @@ certbotbot_orphans_account_fingerprint() {
 ## @retval 65 Missing desired identity or invalid original lineage material.
 ## @note Lower-level state or OpenSSL statuses may propagate.
 certbotbot_orphans_plan() {
-  local workspace="$1" config="$2" selected="$3" name found
+  local workspace="$1" config="$2" selected="$3" name found wanted
   local -a sans=()
   local -A original=()
   CERTBOTBOT_ORPHANS_TO_REMOVE=()
@@ -157,7 +208,7 @@ certbotbot_orphans_plan() {
       return 65
     }
     sans=("${CERTBOTBOT_EXISTING_SANS[@]}")
-    certbotbot_verify_material "$workspace" "$name" "${sans[@]}" ||
+    certbotbot_orphans_material_preflight "$workspace" "$name" ||
       return $?
     found=false
     for wanted in "${CERTBOTBOT_DESIRED_NAMES[@]}"; do
