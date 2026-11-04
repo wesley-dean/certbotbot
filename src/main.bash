@@ -120,10 +120,29 @@ certbotbot_verify_material() {
     if ! certbotbot_provider_sans "$@"; then
       printf '%s\n' 'certbotbot: private SAN diagnostic=arguments' >&2
     elif ! certbotbot_renew_sans_read "$root/cert.pem"; then
-      # Identify only the OpenSSL extension header category; do not print it.
+      # Test-only classification: only constant labels leave the runner.
       local san_header=''
       san_header="$(openssl x509 -in "$root/cert.pem" -noout -ext subjectAltName 2>/dev/null)" || san_header=''
-      san_header="${san_header%%
+      IFS= read -r san_header <<< "$san_header"
+      case "$san_header" in
+        'X509v3 Subject Alternative Name: critical')
+          printf '%s\n' 'certbotbot: private SAN header=critical' >&2 ;;
+        'X509v3 Subject Alternative Name:'|'X509v3 Subject Alternative Name: ')
+          printf '%s\n' 'certbotbot: private SAN header=ordinary' >&2 ;;
+        'X509v3 Subject Alternative Name: critical'*)
+          printf '%s\n' 'certbotbot: private SAN header=critical-extra' >&2 ;;
+        'X509v3 Subject Alternative Name:'*)
+          printf '%s\n' 'certbotbot: private SAN header=extension-extra' >&2 ;;
+        *'X509v3 Subject Alternative Name:'*)
+          printf '%s\n' 'certbotbot: private SAN header=prefix' >&2 ;;
+        'No extensions in certificate')
+          printf '%s\n' 'certbotbot: private SAN header=no-extensions' >&2 ;;
+        '')
+          printf '%s\n' 'certbotbot: private SAN header=empty' >&2 ;;
+        *)
+          printf '%s\n' 'certbotbot: private SAN header=other' >&2 ;;
+      esac
+      printf '%s\n' 'certbotbot: private SAN diagnostic=read' >&2
     elif (( ${#CERTBOTBOT_EXISTING_SANS[@]} != $# )); then
       printf '%s\n' 'certbotbot: private SAN diagnostic=count' >&2
     else
