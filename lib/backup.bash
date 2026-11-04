@@ -88,7 +88,7 @@ certbotbot_backup_head() {
     ! -e "$workspace/.backup-error" && ! -L "$workspace/.backup-error" ]] || return 2
   if ! (umask 077; : >"$workspace/.backup-head" &&
     : >"$workspace/.backup-error"); then return 2; fi
-  if ! aws --no-cli-pager s3api head-object --bucket "$bucket" --key "$key" \
+  if ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api head-object --bucket "$bucket" --key "$key" \
     --query '[ETag,ContentLength,Metadata."certbotbot-backup-schema",Metadata."certbotbot-utc-date",Metadata."certbotbot-current-key-sha256",Metadata."certbotbot-archive-format",Metadata."certbotbot-encryption"]' \
     --output text >"$workspace/.backup-head" 2>"$workspace/.backup-error"; then
     return 1
@@ -154,7 +154,7 @@ certbotbot_backup_prepare() {
     "$current" != "$backup" ]] ||
     { certbotbot_backup_error 'invalid dated backup destination' 64; return 64; }
   certbotbot_backup_scope "$current" || return $?
-  skeleton="$(aws --no-cli-pager s3api put-object \
+  skeleton="$(aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api put-object \
     --generate-cli-skeleton input 2>/dev/null)" || {
     certbotbot_backup_error 'conditional backup PUT unsupported by AWS CLI' 69
     return 69
@@ -177,7 +177,7 @@ certbotbot_backup_prepare() {
     if (( head_status != 1 )) ||
       [[ ! -f "$workspace/.backup-error" ]] ||
       ! grep -Eq '\((404|NoSuchKey)\)' "$workspace/.backup-error" ||
-      ! aws --no-cli-pager s3api head-bucket --bucket "$bucket" \
+      ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api head-bucket --bucket "$bucket" \
         --output json >/dev/null 2>/dev/null; then
       rm -f -- "$workspace/.backup-head" "$workspace/.backup-error"
       certbotbot_backup_error 'dated backup object cannot be inspected' 69
@@ -217,7 +217,7 @@ certbotbot_backup_publish() {
     *) certbotbot_backup_error 'current accepted; backup precondition unavailable' 74; return 74 ;;
   esac
   size="$(stat -c %s -- "$candidate" 2>/dev/null)" || return 74
-  if ! aws --no-cli-pager s3api put-object --bucket "$bucket" --key "$backup" \
+  if ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api put-object --bucket "$bucket" --key "$backup" \
     --body "$candidate" --checksum-algorithm SHA256 \
     --content-type "$content_type" --metadata "$CERTBOTBOT_BACKUP_METADATA" \
     "${condition[@]}" --output json >/dev/null 2>&1; then
