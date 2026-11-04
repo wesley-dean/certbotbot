@@ -397,9 +397,38 @@ run_lifecycle() (
       problem "noop-producer=$noop_producer"
       problem "noop-receipt-status=$receipt_status"
       problem "noop-receipt-publication=$receipt_publish"
+      # Only the fixed replay categories created by the disposable runner.
+      local replay_status=not-reported replay_publish=not-reported
+      local replay_object=not-reported replay_renewal=not-reported
+      for observation in failed checked issued other; do
+        if grep -Fqx -- "local-first-issue: noop-replay-status=$observation" \
+          "$tmp/noop-$flavor.log"; then
+          replay_status="$observation"
+        fi
+      done
+      for observation in true false absent; do
+        if grep -Fqx -- "local-first-issue: noop-replay-published=$observation" \
+          "$tmp/noop-$flavor.log"; then
+          replay_publish="$observation"
+        fi
+      done
+      for observation in changed unchanged unreadable; do
+        if grep -Fqx -- "local-first-issue: noop-replay-object=$observation" \
+          "$tmp/noop-$flavor.log"; then
+          replay_object="$observation"
+        fi
+        if grep -Fqx -- "local-first-issue: noop-replay-renewal=$observation" \
+          "$tmp/noop-$flavor.log"; then
+          replay_renewal="$observation"
+        fi
+      done
       problem "noop-object=$object_delta"
       problem "noop-renewal=$renewal_delta"
       problem "noop-orders=$order_delta"
+      problem "noop-replay-status=$replay_status"
+      problem "noop-replay-published=$replay_publish"
+      problem "noop-replay-object=$replay_object"
+      problem "noop-replay-renewal=$replay_renewal"
       problem 'fresh-runner selected renewal/no-op failed'
       return 74
     fi

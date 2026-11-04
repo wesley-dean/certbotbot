@@ -328,6 +328,32 @@ run_positive() {
       fi
     done
     error "bounded no-op readback=object-$object_delta; renewal-$renewal_delta; orders-$order_delta"
+    # Disposable issue #272 stability probe, never public provider output.
+    local replay_status=not-reported replay_publish=not-reported
+    local replay_object=not-reported replay_renewal=not-reported
+    for observation in failed checked issued other; do
+      if grep -Fqx -- "local-first-issue-host: noop-replay-status=$observation" \
+        "$logfile"; then
+        replay_status="$observation"
+      fi
+    done
+    for observation in true false absent; do
+      if grep -Fqx -- "local-first-issue-host: noop-replay-published=$observation" \
+        "$logfile"; then
+        replay_publish="$observation"
+      fi
+    done
+    for observation in changed unchanged unreadable; do
+      if grep -Fqx -- "local-first-issue-host: noop-replay-object=$observation" \
+        "$logfile"; then
+        replay_object="$observation"
+      fi
+      if grep -Fqx -- "local-first-issue-host: noop-replay-renewal=$observation" \
+        "$logfile"; then
+        replay_renewal="$observation"
+      fi
+    done
+    error "bounded replay=status-$replay_status; published-$replay_publish; object-$replay_object; renewal-$replay_renewal"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
     return 74
   fi
