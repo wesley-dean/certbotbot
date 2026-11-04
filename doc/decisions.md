@@ -614,6 +614,19 @@ satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
 
+### ADR-056: Bounded Provider Arguments and No-Environment Mode
+
+The producer supports independent, bounded JSON argument vectors for AWS CLI,
+GnuPG and Certbot through CLI-over-environment replacement. An explicit
+`--no-env` skips application environment and literal file settings, including
+the GPG secret, while retaining external AWS credential mechanisms. Only
+reviewed non-authority-changing provider options are permitted; unsafe flags,
+malformed arrays and conflicting configuration fail before remote work.
+Existing encryption, CA, selected-lineage and S3 publication contracts remain
+authoritative. The separate read-only client is unchanged.
+
+See [ADR-056](adr/ADR-056-extra-provider-argv-and-no-env.md).
+
 ### ADR-055: Explicit ID-First Synthetic Route53 Zone Selection
 
 The isolated Route53 test stub requires an explicitly selected local synthetic

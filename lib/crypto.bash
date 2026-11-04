@@ -55,7 +55,8 @@ certbotbot_crypto_encrypt_packet() {
     --batch --yes --no-tty --pinentry-mode loopback --no-symkey-cache \
     --passphrase-fd 3 --symmetric --force-ocb --cipher-algo AES256 \
     --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 16777216 \
-    --output "$target" "$source" 3<<<"$CERTBOTBOT_GPG_SECRET" \
+    --output "$target" "${CERTBOTBOT_GPG_ARGS[@]}" "$source" \
+    3<<<"$CERTBOTBOT_GPG_SECRET" \
     >/dev/null 2>&1) ||
     ! certbotbot_crypto_packet_valid "$workspace" "$target"; then
     rm -f -- "$target"

@@ -30,11 +30,11 @@ certbotbot_register_fetch() {
   CERTBOTBOT_REG_ETAG=''
   command -v aws >/dev/null 2>&1 ||
     { certbotbot_error 'AWS CLI unavailable'; return 69; }
-  if ! observed="$(aws --no-cli-pager s3api head-object \
+  if ! observed="$(aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api head-object \
     --bucket "$bucket" --key "$key" --query ETag --output text \
     2>"$error_file")"; then
     if grep -Eq '\((404|NoSuchKey)\)' "$error_file" &&
-      aws --no-cli-pager s3api head-bucket --bucket "$bucket" \
+      aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api head-bucket --bucket "$bucket" \
         --output json >/dev/null 2>"$error_file"; then
       CERTBOTBOT_REG_MISSING=true
       rm -f -- "$error_file"
@@ -52,7 +52,7 @@ certbotbot_register_fetch() {
   observed="${observed#\"}"
   observed="${observed%\"}"
   CERTBOTBOT_REG_ETAG="$observed"
-  if ! (umask 077; aws --no-cli-pager s3api get-object \
+  if ! (umask 077; aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api get-object \
     --bucket "$bucket" --key "$key" --if-match "$observed" \
     --output json "$target" >/dev/null 2>"$error_file") ||
     [[ ! -s "$target" || -L "$target" ]]; then
@@ -129,7 +129,8 @@ certbotbot_register_account_check() {
   account_details="$(certbot --config-dir "$config" \
     --work-dir "$CERTBOTBOT_REG_WORK" --logs-dir "$CERTBOTBOT_REG_LOGS" \
     --server "$CERTBOTBOT_REG_SERVER" --non-interactive \
-    --no-directory-hooks show_account --account "${account##*/}" 2>/dev/null)" ||
+    --no-directory-hooks show_account --account "${account##*/}" \
+    "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" 2>/dev/null)" ||
     return 65
   # Reject multiple contact lines even if one line exactly matches.
   # A plural/missing contact is never equivalent to one verified address.
@@ -290,7 +291,7 @@ certbotbot_register_execute() {
     --logs-dir "$CERTBOTBOT_REG_LOGS" \
     --server "$CERTBOTBOT_REG_SERVER" \
     --email "$CERTBOTBOT_EMAIL" --agree-tos "$eff" \
-    >/dev/null 2>&1; then
+    "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" >/dev/null 2>&1; then
     certbotbot_error 'ACME registration failed'
     return 74
   fi
@@ -303,7 +304,7 @@ certbotbot_register_execute() {
     content=application/octet-stream
   fi
   if [[ "$CERTBOTBOT_REG_MISSING" == true ]]; then
-    if ! aws --no-cli-pager s3api put-object \
+    if ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api put-object \
       --bucket "$CERTBOTBOT_S3_BUCKET" --key "$CERTBOTBOT_S3_KEY" \
       --body "$body" --checksum-algorithm SHA256 \
       --content-type "$content" --if-none-match '*' \
@@ -312,7 +313,7 @@ certbotbot_register_execute() {
       return 74
     fi
   else
-    if ! aws --no-cli-pager s3api put-object \
+    if ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api put-object \
       --bucket "$CERTBOTBOT_S3_BUCKET" --key "$CERTBOTBOT_S3_KEY" \
       --body "$body" --checksum-algorithm SHA256 \
       --content-type "$content" --if-match "$CERTBOTBOT_REG_ETAG" \

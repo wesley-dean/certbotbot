@@ -117,7 +117,7 @@ certbotbot_retention_preflight() {
     certbotbot_retention_error 64 'retention requires compatible AWS CLI'
     return 64
   fi
-  skeleton="$(aws --no-cli-pager s3api delete-object \
+  skeleton="$(aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api delete-object \
     --generate-cli-skeleton input 2>/dev/null)" || {
     certbotbot_retention_error 64 'conditional S3 deletion unavailable'
     return 64
@@ -126,7 +126,7 @@ certbotbot_retention_preflight() {
     certbotbot_retention_error 64 'conditional S3 deletion unavailable'
     return 64
   }
-  skeleton="$(aws --no-cli-pager s3api list-objects-v2 \
+  skeleton="$(aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api list-objects-v2 \
     --generate-cli-skeleton input 2>/dev/null)" || {
     certbotbot_retention_error 64 'scoped S3 listing unavailable'
     return 64
@@ -215,7 +215,7 @@ certbotbot_retention_apply() {
     (( pages+=1 ))
     args=()
     if [[ -n "$token" ]]; then args=(--continuation-token "$token"); fi
-    if ! row="$(aws --no-cli-pager s3api list-objects-v2 \
+    if ! row="$(aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api list-objects-v2 \
       --bucket "$bucket" --prefix "$CERTBOTBOT_RETENTION_PREFIX" \
       --encoding-type url --max-keys 1000 --no-paginate \
       "${args[@]}" \
@@ -364,7 +364,7 @@ certbotbot_retention_apply() {
       certbotbot_retention_error 74 'current accepted; backup confirmed; retention target unsafe'
       return 74
     fi
-    if ! aws --no-cli-pager s3api delete-object --bucket "$bucket" \
+    if ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api delete-object --bucket "$bucket" \
       --key "$key" --if-match "$etag" --output json \
       >/dev/null 2>/dev/null; then
       certbotbot_retention_error 74 'current accepted; backup confirmed; retention delete failed or uncertain'
@@ -377,7 +377,7 @@ certbotbot_retention_apply() {
     fi
     if [[ ! -f "$workspace/.backup-error" ]] ||
       ! grep -Eq '\((404|NoSuchKey)\)' "$workspace/.backup-error" ||
-      ! aws --no-cli-pager s3api head-bucket --bucket "$bucket" \
+      ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api head-bucket --bucket "$bucket" \
         --output json >/dev/null 2>/dev/null; then
       rm -f -- "$workspace/.backup-head" "$workspace/.backup-error"
       certbotbot_retention_error 74 'current accepted; backup confirmed; retention deletion uncertain'

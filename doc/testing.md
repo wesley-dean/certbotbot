@@ -306,6 +306,24 @@ synthetic `ListHostedZonesByName`, multi-value TXT compatibility and refusals.
 They do not replace the complete real Pebble/SeaweedFS CI gate or prove live
 Route53/DNS-01 interoperability. See ADR-055 and the local harness guide.
 
+## Provider extra-argument and no-env regression coverage (milestone #17)
+
+`tests/provider-extra-args.bats` exercises both shipped producer CLI
+paths and their shared configuration parser: JSON-array decoding,
+whole-collection CLI precedence, empty override, repeated approved
+flags, lossless space/quote handling for permitted user-agent comments,
+provider-specific allowlists, suppressed invalid input,
+mocked AWS, GnuPG and Certbot argument forwarding, skipped malformed `.env` under
+`--no-env`, explicit `--config` conflict, disabled environment-only
+GPG secret, and unaffected external AWS authentication environment.
+
+The narrow extra-provider options cannot alter CA selection, restored
+lineage identity, S3 conditional publication, authenticated GPG packet
+requirements or the read-only standalone client. The existing full
+three-flavor Bats matrix and isolated Pebble/SeaweedFS lifecycle
+remain required. A local mock cannot prove live provider compatibility.
+See ADR-056 and the public configuration reference.
+
 ## Mandatory local protocol E2E CI gate (milestone #16)
 
 The separate workflow

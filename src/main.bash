@@ -32,6 +32,10 @@ Usage: certbotbot [options] DNS_NAME
        certbotbot register [registration options]
 Options:
   --config FILE                    Read selected literal .env file
+  --no-env                         Ignore application env and .env inputs
+  --aws-args JSON                  Bounded extra AWS CLI argv collection
+  --gpg-args JSON                  Bounded extra GnuPG argv collection
+  --certbot-args JSON              Bounded extra Certbot argv collection
   --domain NAME                    Supply primary DNS name
   --acme-environment production|staging  Select CA (default production)
   --san NAME                       Add one SAN (repeatable; unrelated zones OK)
@@ -330,14 +334,27 @@ certbotbot_main() {
   # Do not inherit an exported secret into *any* child, including help's
   # external formatter. Shell tracing must be disabled before reading it.
   set +x
-  local CERTBOTBOT_GPG_SECRET="${GPG_SYMMETRIC_KEY-}"
+  local CERTBOTBOT_GPG_SECRET=''
+  if certbotbot_no_env_requested "$@"; then
+    certbotbot_disable_application_environment || return 64
+  else
+    CERTBOTBOT_GPG_SECRET="${GPG_SYMMETRIC_KEY-}"
+  fi
   export -n CERTBOTBOT_GPG_SECRET
   unset GPG_SYMMETRIC_KEY
   case "${1:-}" in
     --help|-h|help) certbotbot_usage; return 0 ;;
     --version|-V|version) certbotbot_version; return 0 ;;
-    register) shift; certbotbot_register_main "$@"; return $? ;;
+    register)
+      # shellcheck disable=SC2034
+      CERTBOTBOT_COMMAND=register
+      shift
+      certbotbot_register_main "$@"
+      return $?
+      ;;
   esac
+  # shellcheck disable=SC2034
+  CERTBOTBOT_COMMAND=issue
   certbotbot_config_resolve "$@" || return $?
   certbotbot_identity_resolve || return $?
   certbotbot_filename_resolve || return $?
