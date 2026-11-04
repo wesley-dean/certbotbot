@@ -614,6 +614,12 @@ satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
 
+### ADR-052: Retain Certbot's Exact Single DNS-01 Challenge Tuple
+
+Certbot may serialize the single requested DNS-01 challenge as `pref_challs = dns-01,` in renewal metadata.  The verified renewal adapter accepts exactly `dns-01` or `dns-01,` for that field, preserving bytes during the five-path mapping; it does not infer permission for multiple challenges, HTTP-01, alternative serialization or arbitrary comma-delimited settings.  The separate `preferred_challenges` field remains restricted to `dns-01`, and all ADR-022/ADR-051 path and hook security requirements remain in force.  The milestone-16 challenge-validation-bypassed Pebble/SeaweedFS test must independently prove compatibility before this behavior is considered integration-verified.
+
+See [ADR-052](adr/ADR-052-singleton-dns01-renewal-challenge-tuple.md).
+
 ### ADR-051: Strip Verified Ephemeral Certbot Directory Options on Finalize
 
 Certbot 5.8 can persist explicit `config_dir`, `work_dir`, and `logs_dir` options in renewal metadata, even though those directories are invocation-private and must never survive in portable S3 archives.  Only renewal `finalize` may consume them, and only after exact validation against the selected owned workspace's `config`, `work`, and `logs` paths.  Valid matches are omitted atomically while the original five certificate paths are canonicalized; `prepare` and `verify` continue rejecting the transient keys in stored archives.  This narrowly clarifies ADR-022 without permitting arbitrary paths, changing account/CA/hook validation, or modifying public interfaces.

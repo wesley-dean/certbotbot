@@ -19,7 +19,9 @@
 ## those fields, and only if each equals the exact current workspace path.
 ## prepare and read-only verify reject the three ephemeral fields in archives.
 ## The entire input is parsed before a same-directory replacement, so
-## validation failures preserve the original bytes. Other Route53 metadata
+## validation failures preserve the original bytes. The exact Certbot
+## pref_challs one-element value dns-01, is accepted under ADR-052;
+## alternate/multiple challenge identities remain forbidden. Other Route53 metadata
 ## remains narrowly allowlisted. No account, host, PEM, or S3 data is mutated.
 ## @param config Absolute canonical owned mode-0700 config directory.
 ## @param name Validated single non-wildcard certificate lineage name.
@@ -240,7 +242,16 @@ certbotbot_renewal_map() {
         reuse_key)
           case "$value" in True|False|true|false) ;; *) valid=false; break ;; esac
           ;;
-        pref_challs|preferred_challenges)
+        pref_challs)
+          # Certbot serializes a one-element challenge tuple with a
+          # trailing comma. Both spellings mean only DNS-01. Never accept
+          # a second challenge or a generalized comma-delimited value.
+          case "$value" in
+            dns-01|dns-01,) ;;
+            *) valid=false; break ;;
+          esac
+          ;;
+        preferred_challenges)
           [[ "$value" == dns-01 ]] || { valid=false; break; }
           ;;
         *) valid=false; break ;;

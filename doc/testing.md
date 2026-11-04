@@ -219,6 +219,21 @@ cleanup, and refusal cases. They are **not** a substitute for an engine-backed
 negative run. A separate CI runtime gate remains task #247; the manually
 authorized real-provider staging gate remains milestone #4.
 
+## Certbot One-Element Challenge Tuple Compatibility
+
+The native milestone-16 Pebble run on PR #260, using the merged ADR-051
+adapter, reported a bounded `renewal-pref_challs` rejection after genuine
+Certbot issuance. Public Certbot renewal-file examples document
+`pref_challs = dns-01,` for one preferred DNS-01 challenge; the run did
+not expose the actual value, so the trailing-comma explanation remains an
+integration hypothesis until rerun. ADR-052 permits only the two exact
+single-DNS-01 values for `pref_challs`. Tests require reversible
+prepare/finalize, read-only verify, rejection of HTTP/multiple/malformed
+challenges, unchanged bytes on failure, and no accidental widening of
+`preferred_challenges`. The E2E test must still prove genuine ACME order,
+publication, restore, negative isolation, and cleanup. This is not proof
+of real Route53 propagation or AWS/Let's Encrypt interoperability.
+
 ## Bounded Renewal-Parser Diagnostics (Milestone 16)
 
 A real Certbot 5.8 issuance can be rejected by the selected renewal
