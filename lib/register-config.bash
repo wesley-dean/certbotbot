@@ -27,7 +27,11 @@ certbotbot_register_usage() {
     '  --s3-key KEY                      Current archive key (latest.tar.gz)' \
     '  --s3-key-template TEMPLATE        Optional current key template' \
     '  --archive-encryption MODE         auto | none | gpg-ocb' \
-    '  --config FILE                     Literal configuration file'
+    '  --config FILE                     Literal configuration file' \
+    '  --no-env                          Ignore application env and .env inputs' \
+    '  --aws-args JSON                   Bounded extra AWS CLI argv collection' \
+    '  --gpg-args JSON                   Bounded extra GnuPG argv collection' \
+    '  --certbot-args JSON               Bounded extra Certbot argv collection'
 }
 
 ## @fn certbotbot_register_config()
