@@ -496,9 +496,14 @@ comparisons. When the unchanged producer exits unsuccessfully, only a short
 allowlisted category corresponding to a literal self-authored product error
 may be relayed. If the producer exits successfully but its no-op receipt fails,
 the harness classifies the public status as `checked`, `issued`, or `other`,
-and publication as `true`, `false`, or `absent`. It reports only those
-fixed categories, never Certbot stdout/stderr, actual SAN values, private paths,
-account material or complete logs. An unknown error remains
+and publication as `true`, `false`, or `absent`. On a rejected
+completion it may independently reread the selected remote object and compare
+only opaque bytes and the selected renewal configuration, reporting
+`changed`, `unchanged`, or `unreadable`. The host also compares Pebble's
+nonsecret order counter to its previous value, reporting `unchanged`,
+`increased`, or `unavailable`. No diagnostic makes a previously failing
+no-op successful, and none reports Certbot stdout/stderr, actual SAN values,
+private paths, account material or complete logs. An unknown error remains
 `noop-producer=unclassified`. These receipts describe the last attempted
 operation and never turn an otherwise failing no-op into acceptance.
 

@@ -420,8 +420,31 @@ NOOP_PRODUCER_REFUSALS
     elif grep -Fq '; published=true' "$workspace/noop.log"; then
       receipt_publish=true
     fi
+    # Diagnostic-only readback after an already rejected no-op. Do not
+    # expose archive bytes, renewal metadata, key material, or S3 responses.
+    local object_delta=unreadable renewal_delta=unreadable
+    if fetch_archive "$workspace/failed-noop-after.tar.gz" >/dev/null 2>&1; then
+      if cmp -s "$workspace/before.tar.gz" "$workspace/failed-noop-after.tar.gz"; then
+        object_delta=unchanged
+      else
+        object_delta=changed
+      fi
+      if tar -xOzf "$workspace/before.tar.gz" "./renewal/$NAME.conf" \
+        >"$workspace/failed-noop-before.conf" 2>/dev/null &&
+        tar -xOzf "$workspace/failed-noop-after.tar.gz" "./renewal/$NAME.conf" \
+          >"$workspace/failed-noop-after.conf" 2>/dev/null; then
+        if cmp -s "$workspace/failed-noop-before.conf" \
+          "$workspace/failed-noop-after.conf"; then
+          renewal_delta=unchanged
+        else
+          renewal_delta=changed
+        fi
+      fi
+    fi
     error "noop-receipt-status=$receipt_status"
     error "noop-receipt-publication=$receipt_publish"
+    error "noop-object=$object_delta"
+    error "noop-renewal=$renewal_delta"
     error 'selected no-op unexpectedly changed or published state'
     return 65
   fi
