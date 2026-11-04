@@ -31,8 +31,9 @@ producer; neither is required.
 - **Explicit, bounded certificate selection:** One invocation targets **one
   named certificate lineage** with a validated set of DNS Subject Alternative
   Names (SANs), including unrelated domains. The same archive may preserve
-  multiple independent lineages, but other lineages are not implicitly
-  renewed or removed.
+  multiple independent lineages; unrelated lineages are never modified
+  by default. `RENEW_ALL=true` is a separate opt-in to check every
+  *existing* complete archived lineage, without implicit issuance or deletion.
 - **Verification before publication:** Downloaded archives, restored account
   state, selected certificate material, canonical renewal metadata, and
   candidate output pass separate checks. A verified unchanged no-op does
@@ -61,13 +62,21 @@ The ordinary certificate lifecycle does **not** create Let's Encrypt accounts,
 S3 buckets, IAM roles, hosted zones, or an initial archive.  The separate,
 explicit `register` command is the only path permitted to create a native
 account-only archive at a positively missing S3 key.  The tool does not
-provision a web server, install or reload target certificates, automatically
-renew all stored
-lineages; delete orphaned lineages; provide distributed locking; or
-implicitly migrate encrypted/plaintext formats. Other storage backends,
+provision a web server, install or reload target certificates, implicitly
+renew every stored lineage, delete orphaned lineages, provide distributed
+locking, or implicitly migrate encrypted/plaintext formats. Other storage backends,
 DNS providers and archive formats are not supported by the current
 producer. A container image is a distribution choice, not additional
 account-provisioning or certificate-serving functionality.
+
+Opt-in bulk maintenance is deliberately bounded: `--renew-all true` checks
+all validated **existing** archived lineages once, using their stored
+renewal configurations and a preexisting account. A domainless run is
+permitted only with a nonempty complete restored lineage inventory.
+Explicit selected issuance remains possible, while unrelated SANs are not
+reconciled. Only a fully verified complete result may publish to the existing
+current key. See [ADR-058](doc/adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md)
+and the [bulk renewal scope matrix](doc/renew-all-contract.md).
 
 See [How certbotbot works](doc/how-it-works.md) for the complete lifecycle
 and [the threat model](doc/mvp-certificate-state-threat-model.md) for
