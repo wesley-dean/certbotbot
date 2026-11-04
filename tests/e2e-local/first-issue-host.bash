@@ -178,7 +178,7 @@ pebble_order_count() {
 run_lifecycle() (
   local image="$1" mode="${2-full}" tmp='' cert_ca='' cid='' log='' digest='' result=''
   local flavor count_before count_after renewed_digest='' renewed_cert='' old_cert=''
-  case "$mode" in full|debug-second-order) ;; *)
+  case "$mode" in full|debug-second-order|debug-seed) ;; *)
     problem 'invalid local lifecycle mode'
     return 64 ;;
   esac
@@ -375,6 +375,12 @@ run_lifecycle() (
   printf '%s\n' \
     'local-first-issue-host: native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true'
 
+  if [[ "$mode" == debug-seed ]]; then
+    problem 'partial-development=true; target=negative-fixture; full-acceptance=false'
+    printf '%s\n' 'local-first-issue-host: focused_seed=passed; full_acceptance=false'
+    return 0
+  fi
+
   # The pinned Pebble server records a nonsecret counter for every new order.
   # A no-op succeeds only when this count remains unchanged for each exact
   # producer flavor, proving no new order was added to Pebble's DB.
@@ -543,8 +549,12 @@ run_lifecycle() (
 ## No raw Certbot/AWS/ACME logs or private state are reported.
 ## @param image Already cached runner from the verified public producer.
 run_faults() (
-  local image="$1" tmp='' cert_ca='' cid='' pebble_id='' scenario=''
+  local image="$1" selected="${2-all}" tmp='' cert_ca='' cid='' pebble_id='' scenario=''
   local digest='' observed='' stdout_file=''
+  case "$selected" in
+    all|ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable) ;;
+    *) problem 'invalid focused negative scenario'; return 64 ;;
+  esac
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'negative runner image missing; build before entering isolation'; return 69; }
   bash "$HARNESS" status >/dev/null ||
@@ -572,6 +582,7 @@ run_faults() (
     { problem 'baseline did not establish exact remote object digest'; return 65; }
 
   for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected route53-unavailable s3-put-reject; do
+    [[ "$selected" == all || "$selected" == "$scenario" ]] || continue
     stdout_file="$tmp/fault-$scenario.log"
     if ! run_phase "$image" "$cert_ca" fault "$scenario" "$digest" \
       >"$stdout_file" 2>&1; then
@@ -592,6 +603,7 @@ run_faults() (
     printf 'local-first-issue-host: negative=%s; remote_unchanged=true\n' "$scenario"
   done
 
+  if [[ "$selected" == all || "$selected" == acme-unavailable ]]; then
   # ACME availability is a local service outage, not an ACME order refusal.
   # Do not interfere with the pinned synthetic S3 object or the gateway PKI.
   pebble_id="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
@@ -620,7 +632,13 @@ run_faults() (
   [[ "$observed" == "$digest" ]] ||
     { problem 'remote object changed during ACME outage'; return 65; }
   printf '%s\n' 'local-first-issue-host: negative=acme-unavailable; remote_unchanged=true'
-  printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
+  fi
+  if [[ "$selected" == all ]]; then
+    printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
+  else
+    problem "partial-development=true; target=negative-$selected; full-acceptance=false"
+    printf 'local-first-issue-host: focused_negative=%s; full_acceptance=false\n' "$selected"
+  fi
 )
 
 ## @fn run_isolation_probe()
@@ -727,10 +745,19 @@ run_isolation_probe() (
 ## @brief Dispatches explicit dependency-fetch and sealed-test phases only.
 main() {
   local action="${1-}" image=''
-  (( $# == 1 )) ||
-    { problem 'usage: first-issue-host.bash build|run'; return 64; }
+  if [[ "$action" == run-debug-fault ]]; then
+    (( $# == 2 )) ||
+      { problem 'focused fault requires one named scenario'; return 64; }
+    case "$2" in
+      ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable) ;;
+      *) problem 'invalid focused negative scenario'; return 64 ;;
+    esac
+  else
+    (( $# == 1 )) ||
+      { problem 'usage: first-issue-host.bash build|probe|run|run-faults'; return 64; }
+  fi
   case "$action" in
-    build|probe|run|run-debug-second-order|run-faults) ;;
+    build|probe|run|run-debug-second-order|run-debug-seed|run-faults|run-debug-fault) ;;
     *) problem 'usage: first-issue-host.bash build|probe|run|run-debug-second-order|run-faults'; return 64 ;;
   esac
   reject_cloud_env || return $?
@@ -747,7 +774,9 @@ main() {
     probe) run_isolation_probe "$image" ;;
     run) run_lifecycle "$image" full ;;
     run-debug-second-order) run_lifecycle "$image" debug-second-order ;;
-    run-faults) run_faults "$image" ;;
+    run-debug-seed) run_lifecycle "$image" debug-seed ;;
+    run-faults) run_faults "$image" all ;;
+    run-debug-fault) run_faults "$image" "$2" ;;
   esac
 }
 
