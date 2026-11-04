@@ -2,8 +2,8 @@
 
 This is the producer's **public input contract**, based on the checked-in
 `src/main.bash`, `lib/config.bash`, `lib/identity.bash`,
-`lib/filename.bash`, `lib/crypto.bash`, related Bats tests, and
-Accepted ADR-020–034. It documents the ordinary standalone producer,
+`lib/filename.bash`, `lib/crypto.bash`, `lib/bulk.bash`, related Bats
+ tests, and Accepted ADR-020–034 plus ADR-058. It documents the ordinary standalone producer,
 including its development and minified representations. The **separate**
 read-only `certbotbot-client.bash` has a different CLI; see the
 [client settings reference](client-settings.md).
@@ -17,9 +17,13 @@ positively missing object.  It does not issue a certificate. The ordinary
 issuer independently supports explicit staging selection under ADR-042;
 production remains the compatibility default.
 
-The ordinary command manages **one selected certificate lineage per invocation**,
-within one **existing, authoritative S3 archive**. That archive may contain
-other complete lineages, which are validated and preserved. No option
+By default, the ordinary command manages **one selected certificate lineage
+per invocation**, within one **existing, authoritative S3 archive**. That
+archive may contain other complete lineages, which are validated and preserved.
+An explicit `RENEW_ALL=true` checks all validated existing archived lineages
+once in that same private run; see the separate [bulk contract](renew-all-contract.md).
+It does not authorize account registration, unselected SAN reconciliation,
+or pruning. No option
 creates an initial ACME account, bucket, hosted zone, IAM role, or
 missing current archive. A successful invocation does not install or
 reload certificates on another host.
@@ -42,14 +46,17 @@ live AWS, Route53, or Let's Encrypt.
 ```text
 certbotbot [options] DNS_NAME
 certbotbot [options] --domain DNS_NAME
+certbotbot --renew-all true [options]  # no DNS_NAME only with existing lineages
 certbotbot --help
 certbotbot --version
 ```
 
 For value-taking named options, both `--option VALUE` and
 `--option=VALUE` are recognized. Exactly one primary DNS name is
-required for ordinary operation, supplied as a positional argument
+required for selected-only operation, supplied as a positional argument
 or `--domain` (or at a higher-priority non-CLI configuration tier).
+The **sole exception** is `RENEW_ALL=true` with no selected inputs and a
+fully validated nonempty restored certificate inventory.
 Supplying both CLI primary forms, or multiple positional primary
 arguments, is an error. `--` terminates option parsing; everything
 following it is treated as a positional operand, so only one such
@@ -92,7 +99,7 @@ must exist at execution time; inputs can be inherited from a lower tier.
 | CLI option | Environment / `.env` key | Default | Accepted value / effect |
 | --- | --- | --- | --- |
 | `--acme-environment` | `ACME_ENVIRONMENT` | `production` | `production` or `staging`; one bounded CA per archive, no implicit registration or endpoint fallback |
-| Primary positional `DNS_NAME` or `--domain` | `DOMAIN` | **Required** | One canonicalizable primary DNS name |
+| Primary positional `DNS_NAME` or `--domain` | `DOMAIN` | Required unless domainless `RENEW_ALL=true` | One canonicalizable primary DNS name; no partial selected inputs in domainless mode |
 | `--san` (repeatable) | `ADDITIONAL_SANS` | Empty collection | Additional DNS names; CLI: one per flag; environment/file: comma-separated collection |
 | `--include-subdomains` | `INCLUDE_SUBDOMAINS` | `true` | Literal `true` or `false`; adds apex/wildcard complement to each explicit name |
 | `--cert-name` | `CERT_NAME` | Derived from shortest requested SAN | Existing or new **non-wildcard** stable Certbot lineage name |
@@ -103,6 +110,7 @@ must exist at execution time; inputs can be inherited from a lower tier.
 | `--dated-backup-enabled` | `DATED_BACKUP_ENABLED` | `false` | `true` or `false`; opt in to guarded additional publication |
 | `--backup-retention-count` | `BACKUP_RETENTION_COUNT` | `0` | `0` disables cleanup; canonical decimal `1`–`10000` requires dated backups |
 | `--upload-no-renewal` | `UPLOAD_NO_RENEWAL` | `false` | `true` or `false`; allow republish after a fully validated unchanged no-op |
+| `--renew-all` | `RENEW_ALL` | `false` | `true` or `false`; check every verified archived lineage once, without implicit issuance |
 | `--archive-encryption` | `ARCHIVE_ENCRYPTION` | `auto` | `auto`, `none`, or `gpg-ocb` |
 | `--archive-migration` | `ARCHIVE_MIGRATION` | `none` | `none` or `plaintext-to-gpg-ocb` |
 | `--archive-migration-backup-confirmed` | `ARCHIVE_MIGRATION_BACKUP_CONFIRMED` | `false` | `true` or `false`; explicit operator acknowledgment required for migration |
@@ -120,7 +128,7 @@ variable only**; it has **no CLI or `.env` equivalent**, and its
 default is unset. Extra-argument collections are nonsecret JSON arrays
 from CLI or environment and must not contain credentials.
 External AWS CLI/Certbot configuration is a separate dependency, not an additional certbotbot parser key. Do not invent
-`--gpg-key`, `--renew-all`, `--remove-orphans`, `--backend`,
+`--gpg-key`, `--remove-orphans`, `--backend`,
 `--dns-provider`, or `--archive-format`: none is supported here.
 
 ## No-environment mode and additional provider arguments
@@ -408,6 +416,40 @@ there is no automatic rollback or deletion of historical S3 object
 versions. See [managed retention policy](managed-backup-retention-policy.md)
 and [retention safety evidence](retention-safety-verification.md).
 
+## Explicit bulk renewal (`RENEW_ALL`)
+
+`RENEW_ALL` defaults to literal `false` and retains the established single
+selected-lineage behavior. The exact CLI option `--renew-all true` (or
+`--renew-all=true`), exported `RENEW_ALL=true`, or literal file
+`RENEW_ALL=true` opts into **one due-renewal check for each originally
+archived complete lineage**, sorted by exact name. The existing account,
+CA, portable paths and restored renewal metadata must all validate first.
+Without a selected DNS identity, bulk mode requires an archive with at
+least one complete lineage; account-only is not a successful empty check.
+`--cert-name` or additional SANs alone do not constitute a domainless
+bulk request.
+
+The caller may also explicitly select one existing or new certificate.
+An existing selected lineage follows ordinary renewal/SAN reconciliation
+exactly once and is not scanned again. A newly explicitly issued lineage
+is *not* added to the original bulk worklist. For unselected archived
+lineages the tool runs only bounded `certbot renew --cert-name NAME`
+operations, with each lineage's own existing validated SAN set. It never
+runs a global renew, changes unselected SAN membership, implicitly issues
+an unnamed lineage, or registers an account.
+
+Every step revalidates complete inventory and limits changes to the current
+authorized lineage. **Any local failure prevents publication** of partial
+state. A complete success computes aggregate durable-state change and
+uses the unchanged `UPLOAD_NO_RENEWAL` policy below. On success, a bounded
+`bulk checked=N; renewed=N; metadata-only=N; unchanged=N; issued=N;
+published=true|false` summary is emitted (plus backup/retention outcome
+when enabled); private identities are not listed. The new option does
+not remove orphans, and concurrent `REMOVE_ORPHANS=true` is not supported:
+any unsupported orphan-removal input or a conflicting exported opt-in
+is rejected before remote mutation. Refer to [ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md)
+and [the bulk scope matrix](renew-all-contract.md).
+
 ## Publication and encryption controls
 
 ### `UPLOAD_NO_RENEWAL`
@@ -573,9 +615,10 @@ runtime secret-mount and role strategies in depth.
 
 ## Status, failures, and recovery expectations
 
-A successful operation prints a **nonsecret** outcome identifying
-the selected lineage and current `s3://bucket/key` with
-`published=true|false`. Dated backup and retention fields
+A successful selected-only operation prints a **nonsecret** outcome
+identifying the selected lineage and current `s3://bucket/key` with
+`published=true|false`. Explicit bulk mode instead reports bounded
+aggregate counts and `published=true|false`, without listing identities. Dated backup and retention fields
 are added when those features are enabled, for example
 `backup=confirmed|skipped` and
 `retention=completed|skipped; deleted=N`.
@@ -584,7 +627,7 @@ consumer host installed or reloaded a certificate.
 
 | Exit code | Interpretation |
 | --- | --- |
-| `0` | Help/version or completed selected lifecycle, including a verified no-op |
+| `0` | Help/version or completed selected/bulk lifecycle, including a verified no-op |
 | `64` | Invalid CLI, config, DNS identity, filename, mode, or private workspace |
 | `65` | Unsafe archive/lineage/certificate/cryptographic state |
 | `66` | Mandatory seeded S3 object positively confirmed missing |
