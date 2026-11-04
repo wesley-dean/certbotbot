@@ -285,8 +285,7 @@ certbotbot_provider_renew() {
     return 65
   fi
   if ! command certbot renew --cert-name "$selected" --account "$account" \
-    "${common[@]}" "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" \
-    "${CERTBOTBOT_CERTBOT_CHALLENGE_ARGS[@]}" >/dev/null 2>&1; then
+    "${common[@]}" "${CERTBOTBOT_CERTBOT_ARGS[@]}" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected certificate renewal failed' >&2
     return 74
   fi
