@@ -232,8 +232,8 @@ teardown() {
     export CERTBOT_LOG
     cat >"$3/certbot" <<EOF
 #!/usr/bin/env bash
-printf "%s\\n" "\\$*" >> "\\$CERTBOT_LOG"
-if [[ "\\$1" == plugins ]]; then printf "  * dns-route53\\n"; fi
+printf "%s\\n" "\$*" >> "\$CERTBOT_LOG"
+if [[ "\$1" == plugins ]]; then printf "  * dns-route53\\n"; fi
 exit 0
 EOF
     chmod 700 "$3/certbot" || exit $?
