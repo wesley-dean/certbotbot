@@ -13,6 +13,7 @@ This module is test-only, never part of the shipped certbotbot artifact.
 from __future__ import annotations
 
 import http.server
+import os
 import re
 import threading
 import urllib.parse
@@ -22,6 +23,9 @@ VERSION = "2013-04-01"
 NS = "https://route53.amazonaws.com/doc/2013-04-01/"
 ZONE = "e2e.test."
 ZONE_ID = "ZLOCALONLY123456"
+UNSET = "__LOCAL_E2E_UNSET__"
+ZONE_ID_RE = re.compile(r"^Z[A-Z0-9]{8,32}$")
+ZONE_NAME_RE = re.compile(r"^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.?$", re.IGNORECASE)
 ACCESS_KEY = "CBOTBOT_LOCAL_TEST_ACCESS_ONLY"
 VALUE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 NAME_RE = re.compile(r"^_acme-challenge(?:\.[a-z0-9-]+)*\.e2e\.test\.?$")
@@ -50,6 +54,30 @@ def child(parent: ET.Element, name: str, value: str | None = None) -> ET.Element
 def xml_bytes(root: ET.Element) -> bytes:
     """Encode one protocol response without emitting credentials."""
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def select_zone(settings: dict[str, str]) -> tuple[str, str]:
+    """Resolve only the approved synthetic fixture, preferring a supplied ID.
+
+    The deliberately limited lookup cannot discover actual AWS hosted zones.
+    An explicit malformed name is refused even when the ID takes precedence.
+    """
+    raw_id = settings.get("LOCAL_E2E_ROUTE53_HOSTED_ZONE_ID", UNSET)
+    raw_name = settings.get("LOCAL_E2E_ROUTE53_HOSTED_ZONE_NAME", UNSET)
+    supplied_id = raw_id != UNSET
+    supplied_name = raw_name != UNSET
+    if not supplied_id and not supplied_name:
+        raise ValueError("missing synthetic hosted-zone selection")
+    if supplied_id and (not ZONE_ID_RE.fullmatch(raw_id) or raw_id != ZONE_ID):
+        raise ValueError("invalid synthetic hosted-zone identifier")
+    if supplied_name:
+        if not ZONE_NAME_RE.fullmatch(raw_name):
+            raise ValueError("invalid synthetic hosted-zone name")
+        normalized_name = raw_name.lower().rstrip(".") + "."
+        if not supplied_id and normalized_name != ZONE:
+            raise ValueError("unknown or ambiguous synthetic hosted-zone name")
+    # No name lookup may replace an explicitly selected authorized zone ID.
+    return ZONE_ID, ZONE
 
 
 class ApiError(Exception):
@@ -141,14 +169,33 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
             root = element("ListHostedZonesResponse")
             zones = child(root, "HostedZones")
             zone = child(zones, "HostedZone")
-            child(zone, "Id", f"/hostedzone/{ZONE_ID}")
-            child(zone, "Name", ZONE)
+            child(zone, "Id", f"/hostedzone/{self.server.zone_id}")
+            child(zone, "Name", self.server.zone_name)
             child(zone, "CallerReference", "certbotbot-local-e2e")
             config = child(zone, "Config")
             child(config, "PrivateZone", "false")
             child(root, "IsTruncated", "false")
             child(root, "MaxItems", "1")
             self.receipt("hosted-zones=accepted")
+            self.reply(200, xml_bytes(root))
+            return
+        if path == f"/{VERSION}/hostedzonesbyname":
+            arguments = urllib.parse.parse_qs(request.query, keep_blank_values=True)
+            if set(arguments) != {"dnsname"} or len(arguments["dnsname"]) != 1:
+                raise ApiError("InvalidInput")
+            name = arguments["dnsname"][0]
+            if not ZONE_NAME_RE.fullmatch(name):
+                raise ApiError("InvalidInput")
+            if name.lower().rstrip(".") + "." != self.server.zone_name:
+                raise ApiError("AccessDenied", 403)
+            root = element("ListHostedZonesByNameResponse")
+            zones = child(root, "HostedZones")
+            zone = child(zones, "HostedZone")
+            child(zone, "Id", f"/hostedzone/{self.server.zone_id}")
+            child(zone, "Name", self.server.zone_name)
+            child(zone, "CallerReference", "certbotbot-local-e2e")
+            child(root, "IsTruncated", "false")
+            child(root, "MaxItems", "1")
             self.reply(200, xml_bytes(root))
             return
         if path.startswith(f"/{VERSION}/change/") and not request.query:
@@ -228,8 +275,8 @@ class Route53Stub(http.server.BaseHTTPRequestHandler):
         # ListHostedZones Id into the {Id} URI parameter. Permit exactly
         # the expected bare-ID and encoded native-ID resource paths.
         allowed_paths = (
-            f"/{VERSION}/hostedzone/{ZONE_ID}/rrset/",
-            f"/{VERSION}/hostedzone/%2Fhostedzone%2F{ZONE_ID}/rrset/",
+            f"/{VERSION}/hostedzone/{self.server.zone_id}/rrset/", 
+            f"/{VERSION}/hostedzone/%2Fhostedzone%2F{self.server.zone_id}/rrset/", 
         )
         if request.path not in allowed_paths or request.query:
             raise ApiError("AccessDenied", 403)
@@ -258,7 +305,8 @@ class ScopedServer(http.server.ThreadingHTTPServer):
 
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int]):
+    def __init__(self, address: tuple[str, int], zone: tuple[str, str]):
+        self.zone_id, self.zone_name = zone
         self.records: dict[str, tuple[str, ...]] = {}
         self.changes: set[str] = set()
         self.lock = threading.Lock()
@@ -266,4 +314,9 @@ class ScopedServer(http.server.ThreadingHTTPServer):
 
 
 if __name__ == "__main__":
-    ScopedServer(("0.0.0.0", 8056)).serve_forever(poll_interval=0.25)
+    # Configuration errors fail before opening the HTTP listener.
+    try:
+        selected = select_zone(dict(os.environ))
+    except ValueError:
+        raise SystemExit("local-route53-stub: refused synthetic hosted-zone configuration") from None
+    ScopedServer(("0.0.0.0", 8056), selected).serve_forever(poll_interval=0.25)
