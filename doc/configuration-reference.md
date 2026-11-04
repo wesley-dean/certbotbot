@@ -107,13 +107,18 @@ must exist at execution time; inputs can be inherited from a lower tier.
 | `--archive-migration` | `ARCHIVE_MIGRATION` | `none` | `none` or `plaintext-to-gpg-ocb` |
 | `--archive-migration-backup-confirmed` | `ARCHIVE_MIGRATION_BACKUP_CONFIRMED` | `false` | `true` or `false`; explicit operator acknowledgment required for migration |
 | `--config FILE` | **None** | Optional `./.env` | Override file source; a chosen file must be readable |
+| `--no-env` | **None** | `false` | Ignore producer application environment and all literal config files; conflicts with `--config` |
+| `--aws-args JSON` | `AWS_EXTRA_ARGS` | `[]` | Bounded AWS global options; CLI collection replaces env |
+| `--gpg-args JSON` | `GPG_EXTRA_ARGS` | `[]` | Bounded GPG encryption tuning; CLI collection replaces env |
+| `--certbot-args JSON` | `CERTBOT_EXTRA_ARGS` | `[]` | Bounded Certbot logging and selected DNS-01 wait settings |
 | `--help` | **None** | Not applicable | First-argument fast path; print usage |
 | `--version` | **None** | Not applicable | First-argument fast path; print version, build date, build commit |
 
-The **only additional application-controlled input** is the secret
+The **only secret application-controlled input** is
 `GPG_SYMMETRIC_KEY`, accepted as an **explicitly exported environment
 variable only**; it has **no CLI or `.env` equivalent**, and its
-default is unset. External AWS CLI/Certbot configuration is a separate
+default is unset. Extra-argument collections are nonsecret JSON arrays
+from CLI or environment and must not contain credentials. External AWS CLI/Certbot configuration is a separate
 dependency, not an additional certbotbot parser key. Do not invent
 `--gpg-key`, `--renew-all`, `--remove-orphans`, `--backend`,
 `--dns-provider`, or `--archive-format`: none is supported here.
@@ -183,9 +188,10 @@ Use native credential mechanisms instead. See
 ## Literal configuration-file grammar
 
 The selected `.env` file is a **restricted data format**, not a Bash
-script. Its accepted key names are exactly the 14 named application
-environment/file keys listed in the inventory; `GPG_SYMMETRIC_KEY`,
-`AWS_PROFILE`, and other external inputs are **not accepted keys**.
+script. Its accepted keys are the named literal-file settings supported
+by the ordinary and explicit registration parsers; `GPG_SYMMETRIC_KEY`,
+`AWS_EXTRA_ARGS`, `GPG_EXTRA_ARGS`, `CERTBOT_EXTRA_ARGS`, `AWS_PROFILE`,
+and other external inputs are **not accepted file keys**.
 
 - Blank lines and lines whose first nonwhitespace character is `#`
   are ignored.
