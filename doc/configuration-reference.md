@@ -111,6 +111,8 @@ must exist at execution time; inputs can be inherited from a lower tier.
 | `--backup-retention-count` | `BACKUP_RETENTION_COUNT` | `0` | `0` disables cleanup; canonical decimal `1`–`10000` requires dated backups |
 | `--upload-no-renewal` | `UPLOAD_NO_RENEWAL` | `false` | `true` or `false`; allow republish after a fully validated unchanged no-op |
 | `--renew-all` | `RENEW_ALL` | `false` | `true` or `false`; check every verified archived lineage once, without implicit issuance |
+| `--remove-orphans` | `REMOVE_ORPHANS` | `false` | `true` or `false`; opt in to deletion of validated lineages excluded from separately supplied desired set |
+| `--desired-cert-name` (repeatable) | `DESIRED_CERT_NAMES` | No collection | Explicit complete nonempty desired lineage identities; CLI occurrences or comma-separated environment/file entries |
 | `--archive-encryption` | `ARCHIVE_ENCRYPTION` | `auto` | `auto`, `none`, or `gpg-ocb` |
 | `--archive-migration` | `ARCHIVE_MIGRATION` | `none` | `none` or `plaintext-to-gpg-ocb` |
 | `--archive-migration-backup-confirmed` | `ARCHIVE_MIGRATION_BACKUP_CONFIRMED` | `false` | `true` or `false`; explicit operator acknowledgment required for migration |
@@ -128,7 +130,7 @@ variable only**; it has **no CLI or `.env` equivalent**, and its
 default is unset. Extra-argument collections are nonsecret JSON arrays
 from CLI or environment and must not contain credentials.
 External AWS CLI/Certbot configuration is a separate dependency, not an additional certbotbot parser key. Do not invent
-`--gpg-key`, `--remove-orphans`, `--backend`,
+`--gpg-key`, `--backend`, 
 `--dns-provider`, or `--archive-format`: none is supported here.
 
 ## No-environment mode and additional provider arguments
@@ -445,10 +447,61 @@ uses the unchanged `UPLOAD_NO_RENEWAL` policy below. On success, a bounded
 `bulk checked=N; renewed=N; metadata-only=N; unchanged=N; issued=N;
 published=true|false` summary is emitted (plus backup/retention outcome
 when enabled); private identities are not listed. The new option does
-not remove orphans, and concurrent `REMOVE_ORPHANS=true` is not supported:
-any unsupported orphan-removal input or a conflicting exported opt-in
-is rejected before remote mutation. Refer to [ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md)
+not remove orphans, and concurrent `REMOVE_ORPHANS=true` is not supported: both
+resolved true options are rejected before remote mutation. Refer to [ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md)
 and [the bulk scope matrix](renew-all-contract.md).
+
+## Explicit orphan pruning (`REMOVE_ORPHANS`)
+
+`REMOVE_ORPHANS` defaults to the exact literal `false` and leaves
+ordinary selected-only behavior unchanged. `--remove-orphans true`,
+exported `REMOVE_ORPHANS=true`, or a literal file setting grants
+**bounded destructive reconciliation only when a complete desired-lineage
+set has separately been supplied**. It never infers that set from the
+selected certificate's `DOMAIN`, `CERT_NAME`, or SAN collection.
+
+Specify `--desired-cert-name NAME` once for **every** lineage to retain,
+or use a complete comma-separated `DESIRED_CERT_NAMES` string in the
+exported application environment or restricted literal configuration file.
+These inputs have **whole-collection precedence**: any CLI occurrences
+win, otherwise an exported value wins over a file value, with no merging
+across sources. `--no-env` suppresses both environment and file values.
+Names must be exact lowercase non-wildcard stable identifiers; duplicates,
+empty components, unknown retained members, an absent selected member,
+and a missing effective `DOMAIN` fail closed.
+
+For example, suppose the archive contains independently named
+`example.com`, `other.org`, and `alias.net`. To retain
+`example.com` and `alias.net` while removing only `other.org`:
+
+```bash
+# Illustrative; requires an operator-owned existing S3 bucket and
+# already registered account archive. This action is destructive.
+certbotbot --s3-bucket existing-private-bucket \
+  --remove-orphans true \
+  --desired-cert-name example.com \
+  --desired-cert-name alias.net \
+  --cert-name example.com example.com
+```
+
+The selected certificate receives its ordinary single-lineage action.
+Only complete, canonical original lineages missing from the desired
+set are removed from their own `renewal/N.conf`, `live/N/`, and
+`archive/N/` paths **inside the private restored workspace**. Valid
+survivors and the ACME account remain. Every original certificate is
+preflighted, and an incomplete or malformed lineage is an error, not
+a reason to delete it. Full post-prune membership and material validation
+precede one-key publication; a verified positive removal count is a
+durable change. A selected failure prevents pruning; a later failure
+prevents intentional publication of partial state. The current S3
+PutObject outcome can remain uncertain on error; this operation does
+not revoke certificates or erase prior backups, versions or deployed keys.
+
+Successful runs append a bounded `orphan desired=N; removed=N;
+published=true|false` status. Simultaneous `REMOVE_ORPHANS=true`
+and `RENEW_ALL=true` are incompatible and fail before S3 access.
+See [ADR-059](adr/ADR-059-explicit-desired-lineage-orphan-removal.md)
+and the [full scope matrix](orphan-removal-contract.md).
 
 ## Publication and encryption controls
 
