@@ -219,6 +219,30 @@ cleanup, and refusal cases. They are **not** a substitute for an engine-backed
 negative run. A separate CI runtime gate remains task #247; the manually
 authorized real-provider staging gate remains milestone #4.
 
+## Bounded Renewal-Parser Diagnostics (Milestone 16)
+
+A real Certbot 5.8 issuance can be rejected by the selected renewal
+metadata adapter with the generic `unsupported renewal configuration` error.
+The adapter now also emits a bounded, fixed-category
+`renewal rejection category=...` diagnostic. Categories identify the
+parser check (for example, `renewal-config_dir`,
+`renewal-unknown-field`, or `canonical-path-cert`) without displaying
+any field value, unknown field name, renewal line, account identifier,
+or private filesystem path. Recognized field names come exclusively from
+the adapter's literal allowlist; unknown field names receive one generic
+category. This is **diagnostic evidence**, not permission to accept
+previously unsupported metadata.
+
+All refused metadata remains unchanged, and the existing generic error
+and nonzero exit status remain authoritative. Tests check confidentiality
+and byte preservation under rejected cases in all three shipped producer
+flavors. A green mocked Bats run does not identify the actual reason
+for the failed Pebble E2E invocation or establish real-provider compatibility.
+The isolated real-protocol test must classify the generated renewal
+configuration *without* exporting raw Certbot or archive contents and
+still require every positive, negative, isolation, and cleanup acceptance
+condition before merging the parent E2E PR.
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful
