@@ -1,10 +1,10 @@
 # REMOVE_ORPHANS: Explicit Desired-Lineage Reconciliation Contract
 
-**Status:** Design-only deliverable for approved task #95; authoritative on
-review and merge of [ADR-059](adr/ADR-059-explicit-desired-lineage-orphan-removal.md).
-The ordinary producer **does not yet support** `--remove-orphans`,
-`--desired-cert-name` or `DESIRED_CERT_NAMES`. Task #96 implements the
-approved public interface, and task #97 tests it independently.
+**Status:** ADR-059 accepted through merged PR #287. The public
+`--remove-orphans`, `--desired-cert-name`, and
+`DESIRED_CERT_NAMES` inputs are implemented by task #96;
+review, CI and merge must complete before claiming released support.
+Task #97 remains responsible for independent acceptance testing.
 
 ## Why an extra desired-set input is mandatory
 
@@ -74,7 +74,7 @@ An operator wants to retain both `example.com` and `alias.net`, and
 deliberately remove only `other.org`.
 
 ```bash
-# FUTURE CLI CONTRACT -- does not run with current producer:
+# Illustrative CLI contract: requires a build containing task #96:
 certbotbot --s3-bucket existing-private-bucket \
   --remove-orphans true \
   --desired-cert-name example.com \

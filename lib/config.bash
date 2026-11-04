@@ -22,6 +22,10 @@
 ## @brief Associative literal values parsed from the selected configuration.
 declare -A CERTBOTBOT_FILE_VALUES=()
 
+## @var CERTBOTBOT_DESIRED_NAMES
+## @brief Complete operator-explicit desired lineage list (ADR-059).
+declare -a CERTBOTBOT_DESIRED_NAMES=()
+
 # shellcheck disable=SC2034
 ## @var CERTBOTBOT_AWS_ARGS
 ## @brief Bounded AWS CLI global argument vector, defaulting empty.
@@ -54,7 +58,7 @@ certbotbot_no_env_requested() {
     case "${args[i]}" in
       --) break ;;
       --no-env) return 0 ;;
-      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--renew-all|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--email|--agree-tos|--eff-email-signup|--aws-args|--gpg-args|--certbot-args)
+      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--renew-all|--remove-orphans|--desired-cert-name|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--email|--agree-tos|--eff-email-signup|--aws-args|--gpg-args|--certbot-args)
         (( i+=1 ))
         ;;
     esac
@@ -69,7 +73,7 @@ certbotbot_no_env_requested() {
 certbotbot_disable_application_environment() {
   unset ACME_ENVIRONMENT DOMAIN ADDITIONAL_SANS INCLUDE_SUBDOMAINS CERT_NAME \
     S3_BUCKET S3_KEY S3_KEY_TEMPLATE BACKUP_KEY_TEMPLATE \
-    DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL RENEW_ALL REMOVE_ORPHANS \
+    DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL RENEW_ALL REMOVE_ORPHANS DESIRED_CERT_NAMES \
     ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED \
     EMAIL AGREE_TOS EFF_EMAIL_SIGNUP GPG_SYMMETRIC_KEY \
     AWS_EXTRA_ARGS GPG_EXTRA_ARGS CERTBOT_EXTRA_ARGS
@@ -257,7 +261,7 @@ certbotbot_read_env_file() {
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
     case "$key" in
-      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|BACKUP_KEY_TEMPLATE|DATED_BACKUP_ENABLED|BACKUP_RETENTION_COUNT|UPLOAD_NO_RENEWAL|RENEW_ALL|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED|EMAIL|AGREE_TOS|EFF_EMAIL_SIGNUP|ACME_ENVIRONMENT) ;;
+      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|BACKUP_KEY_TEMPLATE|DATED_BACKUP_ENABLED|BACKUP_RETENTION_COUNT|UPLOAD_NO_RENEWAL|RENEW_ALL|REMOVE_ORPHANS|DESIRED_CERT_NAMES|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED|EMAIL|AGREE_TOS|EFF_EMAIL_SIGNUP|ACME_ENVIRONMENT) ;;
       *) certbotbot_error 'unknown configuration key'; return 64 ;;
     esac
     if [[ -n "${seen[$key]+x}" ]]; then
@@ -301,8 +305,8 @@ certbotbot_read_env_file() {
 ## @retval 64 Invalid settings or arguments.
 certbotbot_config_resolve() {
   local name key value arg config_file='' explicit_config=false no_env=false
-  local -a args=("$@") san_cli=()
-  local -A cli=()
+  local -a args=("$@") san_cli=() desired_cli=()
+  local -A cli=() desired_seen=()
   CERTBOTBOT_FILE_VALUES=()
   local -i i=0
   while (( i < ${#args[@]} )); do
@@ -315,12 +319,12 @@ certbotbot_config_resolve() {
         (( i+=1 ))
         continue
         ;;
-      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--renew-all|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--aws-args|--gpg-args|--certbot-args)
+      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--renew-all|--remove-orphans|--desired-cert-name|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--aws-args|--gpg-args|--certbot-args)
         (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --config=*|--domain=*|--san=*|--acme-environment=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--renew-all=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*|--aws-args=*|--gpg-args=*|--certbot-args=*)
+      --config=*|--domain=*|--san=*|--acme-environment=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--renew-all=*|--remove-orphans=*|--desired-cert-name=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*|--aws-args=*|--gpg-args=*|--certbot-args=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -345,6 +349,18 @@ certbotbot_config_resolve() {
         continue
         ;;
     esac
+    if [[ "$arg" == --desired-cert-name ]]; then
+      [[ -n "$value" ]] || {
+        certbotbot_error 'empty desired certificate identity'
+        return 64
+      }
+      desired_cli+=("$value")
+      (( ${#desired_cli[@]} <= 100 )) || {
+        certbotbot_error 'too many desired certificate lineages'
+        return 64
+      }
+      continue
+    fi
     if [[ "$arg" == --san ]]; then
       [[ -n "$value" ]] || { certbotbot_error 'invalid additional DNS identity'; return 64; }
       san_cli+=("$value")
@@ -369,6 +385,7 @@ certbotbot_config_resolve() {
       --backup-retention-count) key=BACKUP_RETENTION_COUNT ;;
       --upload-no-renewal) key=UPLOAD_NO_RENEWAL ;;
       --renew-all) key=RENEW_ALL ;;
+      --remove-orphans) key=REMOVE_ORPHANS ;;
       --archive-encryption) key=ARCHIVE_ENCRYPTION ;;
       --archive-migration) key=ARCHIVE_MIGRATION ;;
       --archive-migration-backup-confirmed) key=ARCHIVE_MIGRATION_BACKUP_CONFIRMED ;;
@@ -394,8 +411,8 @@ certbotbot_config_resolve() {
       return 64
     fi
   fi
-  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [BACKUP_RETENTION_COUNT]=0 [UPLOAD_NO_RENEWAL]=false [RENEW_ALL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false [ACME_ENVIRONMENT]=production)
-  for name in ACME_ENVIRONMENT DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL RENEW_ALL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
+  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [BACKUP_RETENTION_COUNT]=0 [UPLOAD_NO_RENEWAL]=false [RENEW_ALL]=false [REMOVE_ORPHANS]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false [ACME_ENVIRONMENT]=production)
+  for name in ACME_ENVIRONMENT DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL RENEW_ALL REMOVE_ORPHANS ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     value="${defaults[$name]}"
     if [[ -n "${CERTBOTBOT_FILE_VALUES[$name]+x}" ]]; then value="${CERTBOTBOT_FILE_VALUES[$name]}"; fi
     if [[ -n "${!name+x}" ]]; then value="${!name}"; fi
@@ -484,11 +501,56 @@ certbotbot_config_resolve() {
       IFS=, read -r -a CERTBOTBOT_ADDITIONAL_SANS <<< "$value"
     fi
   fi
+  # Desired certificate names form a single independent whole-collection
+  # source. Presence, not truthiness, selects environment over literal file.
+  # Bash 4.3 under nounset cannot safely expand the length of an empty
+  # explicitly declared global array. Track the count separately when empty.
+  local -i desired_count=0
+  CERTBOTBOT_DESIRED_NAMES=()
+  if [[ -n "${desired_cli[0]+x}" ]]; then
+    CERTBOTBOT_DESIRED_NAMES=("${desired_cli[@]}")
+  elif [[ -n "${DESIRED_CERT_NAMES+x}" ||
+    -n "${CERTBOTBOT_FILE_VALUES[DESIRED_CERT_NAMES]+x}" ]]; then
+    if [[ -n "${DESIRED_CERT_NAMES+x}" ]]; then
+      value="$DESIRED_CERT_NAMES"
+    else
+      value="${CERTBOTBOT_FILE_VALUES[DESIRED_CERT_NAMES]}"
+    fi
+    if [[ -z "$value" || "$value" == ,* || "$value" == *, ||
+      "$value" == *,,* || "$value" == *[[:space:]]* ||
+      "$value" == *[[:cntrl:]]* ]]; then
+      certbotbot_error 'invalid desired certificate identity collection'
+      return 64
+    fi
+    IFS=, read -r -a CERTBOTBOT_DESIRED_NAMES <<< "$value"
+  fi
+  desired_seen=()
+  if [[ -n "${CERTBOTBOT_DESIRED_NAMES[0]+x}" ]]; then
+    desired_count=${#CERTBOTBOT_DESIRED_NAMES[@]}
+    (( desired_count <= 100 )) || {
+      certbotbot_error 'too many desired certificate lineages'
+      return 64
+    }
+    for name in "${CERTBOTBOT_DESIRED_NAMES[@]}"; do
+      if [[ -z "$name" || "$name" == *'*'* ]] ||
+        ! certbotbot_dns_valid "$name" ||
+        [[ -n "${desired_seen[$name]+x}" ]]; then
+        certbotbot_error 'invalid or duplicate desired certificate identity'
+        return 64
+      fi
+      desired_seen["$name"]=1
+    done
+  fi
+  if [[ "$CERTBOTBOT_REMOVE_ORPHANS" == true &&
+    "$desired_count" -eq 0 ]]; then
+    certbotbot_error 'orphan removal requires an explicit desired set'
+    return 64
+  fi
   if (( ${#CERTBOTBOT_ADDITIONAL_SANS[@]} > 99 )); then
     certbotbot_error 'too many additional DNS identities'
     return 64
   fi
-  for name in INCLUDE_SUBDOMAINS DATED_BACKUP_ENABLED UPLOAD_NO_RENEWAL RENEW_ALL ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
+  for name in INCLUDE_SUBDOMAINS DATED_BACKUP_ENABLED UPLOAD_NO_RENEWAL RENEW_ALL REMOVE_ORPHANS ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     key="CERTBOTBOT_$name"
     case "${!key}" in true|false) ;; *) certbotbot_error 'invalid boolean setting'; return 64 ;; esac
   done
@@ -578,10 +640,9 @@ certbotbot_config_resolve() {
     # shellcheck disable=SC2034
     CERTBOTBOT_SELECTED_REQUEST=false
   fi
-  # REMOVE_ORPHANS is not yet a supported option. Never allow an
-  # exported opt-in to compose with bulk renewal by accident.
+  # ADRs 058/059: destructive orphan removal never composes with bulk renew.
   if [[ "$CERTBOTBOT_RENEW_ALL" == true &&
-    "${REMOVE_ORPHANS-false}" == true ]]; then
+    "$CERTBOTBOT_REMOVE_ORPHANS" == true ]]; then
     certbotbot_error 'bulk renewal conflicts with orphan removal'
     return 64
   fi

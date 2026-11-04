@@ -50,6 +50,8 @@ Options:
   --dated-backup-enabled true|false  Publish an additional date-named copy
   --backup-retention-count N        Keep newest N managed copies (default 0)
   --renew-all true|false          Check all verified archived lineages once
+  --remove-orphans true|false     Prune only names omitted from explicit desired set
+  --desired-cert-name NAME        Repeat to declare every lineage to retain
   --upload-no-renewal true|false   Republish successful unchanged archive\n  --archive-encryption MODE        auto | none | gpg-ocb\n  --archive-migration MODE         none | plaintext-to-gpg-ocb\n  --archive-migration-backup-confirmed true|false
   --help                           Show help
   --version                        Show build provenance
@@ -233,6 +235,10 @@ certbotbot_lifecycle_execute() {
     return $?
   certbotbot_state_canonical_all "$config" "$CERTBOTBOT_CERT_NAME" ||
     return $?
+  if [[ "$CERTBOTBOT_REMOVE_ORPHANS" == true ]]; then
+    certbotbot_orphans_plan "$workspace" "$config" "$CERTBOTBOT_CERT_NAME" ||
+      return $?
+  fi
   unselected_before="$(certbotbot_state_unselected_fingerprint \
     "$config" "$CERTBOTBOT_CERT_NAME")" || {
     printf '%s\n' 'certbotbot: cannot snapshot unselected certificate state' >&2
@@ -297,6 +303,13 @@ certbotbot_lifecycle_execute() {
   fi
   certbotbot_verify_material "$workspace" "$CERTBOTBOT_CERT_NAME" \
     "${CERTBOTBOT_SANS[@]}" || return $?
+  if [[ "$CERTBOTBOT_REMOVE_ORPHANS" == true ]]; then
+    certbotbot_orphans_apply "$workspace" "$config" "$CERTBOTBOT_CERT_NAME" ||
+      return $?
+    if (( CERTBOTBOT_ORPHANS_REMOVED > 0 )); then
+      changed=true
+    fi
+  fi
   certbotbot_s3_publish "$workspace" "$CERTBOTBOT_CERT_NAME" \
     "$CERTBOTBOT_S3_BUCKET" "$CERTBOTBOT_S3_KEY" \
     "$changed" "$CERTBOTBOT_UPLOAD_NO_RENEWAL" || return $?
@@ -316,6 +329,11 @@ certbotbot_lifecycle_execute() {
     printf 'certbotbot: %s %s; s3://%s/%s; published=%s\n' \
       "$outcome" "$CERTBOTBOT_CERT_NAME" "$CERTBOTBOT_S3_BUCKET" \
       "$CERTBOTBOT_S3_KEY" "$CERTBOTBOT_S3_PUBLISHED"
+  fi
+  if [[ "$CERTBOTBOT_REMOVE_ORPHANS" == true ]]; then
+    printf 'certbotbot: orphan desired=%d; removed=%d; published=%s\n' \
+      "${#CERTBOTBOT_DESIRED_NAMES[@]}" "$CERTBOTBOT_ORPHANS_REMOVED" \
+      "$CERTBOTBOT_S3_PUBLISHED"
   fi
   return 0
 }
@@ -365,6 +383,14 @@ certbotbot_main() {
     # ADR-058 domainless maintenance has no synthetic selected identity.
     CERTBOTBOT_CERT_NAME=''
     CERTBOTBOT_SANS=()
+  fi
+  if [[ "$CERTBOTBOT_REMOVE_ORPHANS" == true ]]; then
+    [[ "$CERTBOTBOT_SELECTED_REQUEST" == true ]] || {
+      certbotbot_error 'orphan removal requires a selected DNS identity'
+      return 64
+    }
+    certbotbot_orphans_selected_validate "$CERTBOTBOT_CERT_NAME" ||
+      return $?
   fi
   certbotbot_filename_resolve || return $?
   certbotbot_retention_preflight || return $?
