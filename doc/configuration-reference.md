@@ -118,8 +118,8 @@ The **only secret application-controlled input** is
 `GPG_SYMMETRIC_KEY`, accepted as an **explicitly exported environment
 variable only**; it has **no CLI or `.env` equivalent**, and its
 default is unset. Extra-argument collections are nonsecret JSON arrays
-from CLI or environment and must not contain credentials. External AWS CLI/Certbot configuration is a separate
-dependency, not an additional certbotbot parser key. Do not invent
+from CLI or environment and must not contain credentials.
+External AWS CLI/Certbot configuration is a separate dependency, not an additional certbotbot parser key. Do not invent
 `--gpg-key`, `--renew-all`, `--remove-orphans`, `--backend`,
 `--dns-provider`, or `--archive-format`: none is supported here.
 
