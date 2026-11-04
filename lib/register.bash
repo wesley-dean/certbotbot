@@ -129,7 +129,8 @@ certbotbot_register_account_check() {
   account_details="$(certbot --config-dir "$config" \
     --work-dir "$CERTBOTBOT_REG_WORK" --logs-dir "$CERTBOTBOT_REG_LOGS" \
     --server "$CERTBOTBOT_REG_SERVER" --non-interactive \
-    --no-directory-hooks show_account --account "${account##*/}" 2>/dev/null)" ||
+    --no-directory-hooks show_account --account "${account##*/}" \
+    "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" 2>/dev/null)" ||
     return 65
   # Reject multiple contact lines even if one line exactly matches.
   # A plural/missing contact is never equivalent to one verified address.
@@ -290,7 +291,7 @@ certbotbot_register_execute() {
     --logs-dir "$CERTBOTBOT_REG_LOGS" \
     --server "$CERTBOTBOT_REG_SERVER" \
     --email "$CERTBOTBOT_EMAIL" --agree-tos "$eff" \
-    >/dev/null 2>&1; then
+    "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" >/dev/null 2>&1; then
     certbotbot_error 'ACME registration failed'
     return 74
   fi
