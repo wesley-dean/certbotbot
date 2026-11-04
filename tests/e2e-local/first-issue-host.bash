@@ -305,6 +305,13 @@ run_lifecycle() (
     fi
     problem "route53-checkpoint=$route_stage"
     problem "route53-refusal=$route_refusal"
+    local detail
+    for detail in arguments read count identity; do
+      if grep -Fqx "local-first-issue: san_substage=$detail" "$log"; then
+        problem "san-substage=$detail"
+        break
+      fi
+    done
     problem "bootstrap-failure=$reason"
     return 74
   fi
