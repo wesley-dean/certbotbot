@@ -237,6 +237,20 @@ ADRs 046, 047, 048 and 049. A merged test workflow without at least one
 successful engine-backed run must **not** be reported as validated E2E
 behavior.
 
+## Certbot 5.8 Renewal Directory Metadata
+
+The selected Certbot provider supplies explicit private `--config-dir`,
+`--work-dir`, and `--logs-dir` arguments.  Certbot 5.8 may persist
+corresponding `config_dir`, `work_dir`, and `logs_dir` fields under
+`[renewalparams]`.  ADR-051 permits only `finalize` to recognize them,
+verify exact invocation-private workspace values, and omit them before
+archiving.  Canonical `verify` and private `prepare` refuse those keys.
+Mapping tests must check optional exact matches, mixed subsets, duplicate
+and foreign path refusals, no input mutation on failure, and normal
+reversible five-field path translation.  A mocked native renewal fixture
+cannot replace independent full real Certbot/Pebble/SeaweedFS acceptance in
+milestone 16 PR #260.
+
 ## Build and Compatibility Evidence
 
 CI plants legacy `.256` companions before a rebuild and verifies that a successful
