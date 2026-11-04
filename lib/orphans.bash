@@ -133,7 +133,7 @@ certbotbot_orphans_account_fingerprint() {
 ## @retval 65 Malformed or inconsistent leaf, key or chain.
 ## @retval 69 OpenSSL or compare command is unavailable.
 certbotbot_orphans_material_preflight() {
-  local workspace="$1" name="$2" root part file status=0
+  local workspace="$1" name="$2" root file status=0
   local pub_cert pub_key leaf_der full_der
   root="$workspace/config/live/$name"
   command -v openssl >/dev/null 2>&1 &&
@@ -187,7 +187,6 @@ certbotbot_orphans_material_preflight() {
 ## @note Lower-level state or OpenSSL statuses may propagate.
 certbotbot_orphans_plan() {
   local workspace="$1" config="$2" selected="$3" name found wanted
-  local -a sans=()
   local -A original=()
   CERTBOTBOT_ORPHANS_TO_REMOVE=()
   certbotbot_orphans_selected_validate "$selected" || return $?
@@ -207,7 +206,6 @@ certbotbot_orphans_plan() {
       printf '%s\n' 'certbotbot: unsafe original archived certificate' >&2
       return 65
     }
-    sans=("${CERTBOTBOT_EXISTING_SANS[@]}")
     certbotbot_orphans_material_preflight "$workspace" "$name" ||
       return $?
     found=false
