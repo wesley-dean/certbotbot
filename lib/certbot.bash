@@ -191,8 +191,7 @@ certbotbot_provider_issue() {
   done
   if ! command certbot certonly --dns-route53 --preferred-challenges dns-01 \
     --account "$account" --cert-name "$selected" "${common[@]}" \
-    "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" \
-    "${CERTBOTBOT_CERTBOT_CHALLENGE_ARGS[@]}" \
+    "${CERTBOTBOT_CERTBOT_ARGS[@]}" \
     "${domains[@]}" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected certificate issuance failed' >&2
     return 74
