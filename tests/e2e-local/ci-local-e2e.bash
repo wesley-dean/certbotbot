@@ -294,7 +294,21 @@ run_positive() {
         noop_producer="$code"
       fi
     done
+    local receipt_status=not-reported receipt_publish=not-reported value
+    for value in checked issued other; do
+      if grep -Fqx -- "local-first-issue-host: noop-receipt-status=$value" \
+        "$logfile"; then
+        receipt_status="$value"
+      fi
+    done
+    for value in true false absent; do
+      if grep -Fqx -- "local-first-issue-host: noop-receipt-publication=$value" \
+        "$logfile"; then
+        receipt_publish="$value"
+      fi
+    done
     error "bounded noop checkpoint=$noop_checkpoint; producer=$noop_producer"
+    error "bounded noop receipt=status-$receipt_status; published-$receipt_publish"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
     return 74
   fi

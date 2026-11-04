@@ -494,7 +494,10 @@ and after-archive readback, private account and leaf validation, producer
 invocation and its success receipt, remote object metadata, and digest
 comparisons. When the unchanged producer exits unsuccessfully, only a short
 allowlisted category corresponding to a literal self-authored product error
-may be relayed, never Certbot stdout/stderr, actual SAN values, private paths,
+may be relayed. If the producer exits successfully but its no-op receipt fails,
+the harness classifies the public status as `checked`, `issued`, or `other`,
+and publication as `true`, `false`, or `absent`. It reports only those
+fixed categories, never Certbot stdout/stderr, actual SAN values, private paths,
 account material or complete logs. An unknown error remains
 `noop-producer=unclassified`. These receipts describe the last attempted
 operation and never turn an otherwise failing no-op into acceptance.
