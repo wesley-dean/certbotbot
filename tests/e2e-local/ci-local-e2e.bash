@@ -309,6 +309,25 @@ run_positive() {
     done
     error "bounded noop checkpoint=$noop_checkpoint; producer=$noop_producer"
     error "bounded noop receipt=status-$receipt_status; published-$receipt_publish"
+    local object_delta=not-reported renewal_delta=not-reported \
+      order_delta=not-reported observation
+    for observation in changed unchanged unreadable; do
+      if grep -Fqx -- "local-first-issue-host: noop-object=$observation" \
+        "$logfile"; then
+        object_delta="$observation"
+      fi
+      if grep -Fqx -- "local-first-issue-host: noop-renewal=$observation" \
+        "$logfile"; then
+        renewal_delta="$observation"
+      fi
+    done
+    for observation in unchanged increased unavailable; do
+      if grep -Fqx -- "local-first-issue-host: noop-orders=$observation" \
+        "$logfile"; then
+        order_delta="$observation"
+      fi
+    done
+    error "bounded no-op readback=object-$object_delta; renewal-$renewal_delta; orders-$order_delta"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
     return 74
   fi
