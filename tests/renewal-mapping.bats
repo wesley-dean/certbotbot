@@ -54,6 +54,162 @@ map_renewal() {
   ' _ "$BASH_STARTER_ARTIFACT" "$CONFIG" "$NAME" "$1"
 }
 
+# Certbot 5.8 can persist explicit invocation-private directory arguments in
+# renewalparams. Model that independently of the older portable fixture.
+add_runtime_options() {
+  local option
+  for option in "$@"; do
+    sed -i "/^\\[acme_renewal_info\\]/i $option" "$RENEWAL"
+  done
+}
+
+map_private_certificate_paths() {
+  sed -i "s|/etc/letsencrypt/|$CONFIG/|g" "$RENEWAL"
+}
+
+@test "finalize strips exactly matching private Certbot runtime options" {
+  map_private_certificate_paths
+  add_runtime_options \
+    "config_dir = $CONFIG" \
+    "work_dir = ${CONFIG%/*}/work" \
+    "logs_dir = ${CONFIG%/*}/logs"
+  map_renewal finalize
+  [ "$status" -eq 0 ]
+  ! grep -Eq '^(config_dir|work_dir|logs_dir) =' "$RENEWAL"
+  grep -Fxq 'archive_dir = /etc/letsencrypt/archive/example.com' "$RENEWAL"
+  grep -Fxq 'account = account-id' "$RENEWAL"
+  grep -Fxq 'server = https://acme-v02.api.letsencrypt.org/directory' "$RENEWAL"
+  map_renewal verify
+  [ "$status" -eq 0 ]
+  map_renewal prepare
+  [ "$status" -eq 0 ]
+  grep -Fxq "archive_dir = $CONFIG/archive/example.com" "$RENEWAL"
+}
+
+@test "finalize accepts each optional exact private runtime option" {
+  local field value
+  for field in config_dir work_dir logs_dir; do
+    case "$field" in
+      config_dir) value="$CONFIG" ;;
+      work_dir) value="${CONFIG%/*}/work" ;;
+      logs_dir) value="${CONFIG%/*}/logs" ;;
+    esac
+    cp "$RENEWAL" "$TEST_ROOT/base"
+    map_private_certificate_paths
+    add_runtime_options "$field = $value"
+    map_renewal finalize
+    [ "$status" -eq 0 ]
+    ! grep -Eq "^[[:space:]]*$field[[:space:]]*=" "$RENEWAL"
+    cp "$TEST_ROOT/base" "$RENEWAL"
+  done
+}
+
+@test "prepare and verify refuse transient options in stored archives" {
+  local direction
+  for direction in prepare verify; do
+    cp "$RENEWAL" "$TEST_ROOT/base"
+    add_runtime_options "config_dir = $CONFIG"
+    cp "$RENEWAL" "$TEST_ROOT/previous"
+    map_renewal "$direction"
+    [ "$status" -eq 65 ]
+    cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+    cp "$TEST_ROOT/base" "$RENEWAL"
+  done
+}
+
+@test "finalize rejects foreign, relative, and spoofed private runtime paths" {
+  local value
+  for value in \
+    '/etc/letsencrypt' \
+    '/tmp/foreign/config' \
+    '../config' \
+    "${CONFIG}extra" \
+    "${CONFIG%/*}/other"; do
+    cp "$RENEWAL" "$TEST_ROOT/base"
+    map_private_certificate_paths
+    add_runtime_options "config_dir = $value"
+    cp "$RENEWAL" "$TEST_ROOT/previous"
+    map_renewal finalize
+    [ "$status" -eq 65 ]
+    cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+    cp "$TEST_ROOT/base" "$RENEWAL"
+  done
+}
+
+@test "finalize rejects wrong workspace work and log directories" {
+  local field expected
+  for field in work_dir logs_dir; do
+    case "$field" in
+      work_dir) expected="${CONFIG%/*}/logs" ;;
+      logs_dir) expected="${CONFIG%/*}/work" ;;
+    esac
+    cp "$RENEWAL" "$TEST_ROOT/base"
+    map_private_certificate_paths
+    add_runtime_options "$field = $expected"
+    cp "$RENEWAL" "$TEST_ROOT/previous"
+    map_renewal finalize
+    [ "$status" -eq 65 ]
+    cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+    cp "$TEST_ROOT/base" "$RENEWAL"
+  done
+}
+
+@test "finalize refuses duplicate and misplaced transient metadata" {
+  map_private_certificate_paths
+  add_runtime_options "config_dir = $CONFIG" "config_dir = $CONFIG"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+
+  sed -i '/^config_dir = /d' "$RENEWAL"
+  sed -i "/^version = /i config_dir = $CONFIG" "$RENEWAL"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
+@test "unsupported renewal keys and hooks remain refused in finalize" {
+  map_private_certificate_paths
+  add_runtime_options "config_dir = $CONFIG" \
+    'custom_runtime_path = /tmp/malicious'
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+  sed -i '/^custom_runtime_path = /d' "$RENEWAL"
+  add_runtime_options 'post_hook = /bin/true'
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+  [[ "$output" != *malicious* ]]
+}
+
+@test "private directory options require a config-named workspace child" {
+  mv "$CONFIG" "$TEST_ROOT/other"
+  CONFIG="$TEST_ROOT/other"
+  RENEWAL="$CONFIG/renewal/$NAME.conf"
+  map_private_certificate_paths
+  add_runtime_options "config_dir = $CONFIG"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
+@test "only validated runtime options may be omitted from a mixed native file" {
+  map_private_certificate_paths
+  add_runtime_options "config_dir = $CONFIG" \
+    "logs_dir = ${CONFIG%/*}/logs" \
+    "preferred_profile = trial"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
 @test "prepare maps exactly five paths into a private root" {
   map_renewal prepare
   [ "$status" -eq 0 ]
