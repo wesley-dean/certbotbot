@@ -503,8 +503,11 @@ certbotbot_config_resolve() {
   fi
   # Desired certificate names form a single independent whole-collection
   # source. Presence, not truthiness, selects environment over literal file.
+  # Bash 4.3 under nounset cannot safely expand the length of an empty
+  # explicitly declared global array. Track the count separately when empty.
+  local -i desired_count=0
   CERTBOTBOT_DESIRED_NAMES=()
-  if (( ${#desired_cli[@]} > 0 )); then
+  if [[ -n "${desired_cli[0]+x}" ]]; then
     CERTBOTBOT_DESIRED_NAMES=("${desired_cli[@]}")
   elif [[ -n "${DESIRED_CERT_NAMES+x}" ||
     -n "${CERTBOTBOT_FILE_VALUES[DESIRED_CERT_NAMES]+x}" ]]; then
@@ -522,21 +525,24 @@ certbotbot_config_resolve() {
     IFS=, read -r -a CERTBOTBOT_DESIRED_NAMES <<< "$value"
   fi
   desired_seen=()
-  (( ${#CERTBOTBOT_DESIRED_NAMES[@]} <= 100 )) || {
-    certbotbot_error 'too many desired certificate lineages'
-    return 64
-  }
-  for name in "${CERTBOTBOT_DESIRED_NAMES[@]}"; do
-    if [[ -z "$name" || "$name" == *'*'* ]] ||
-      ! certbotbot_dns_valid "$name" ||
-      [[ -n "${desired_seen[$name]+x}" ]]; then
-      certbotbot_error 'invalid or duplicate desired certificate identity'
+  if [[ -n "${CERTBOTBOT_DESIRED_NAMES[0]+x}" ]]; then
+    desired_count=${#CERTBOTBOT_DESIRED_NAMES[@]}
+    (( desired_count <= 100 )) || {
+      certbotbot_error 'too many desired certificate lineages'
       return 64
-    fi
-    desired_seen["$name"]=1
-  done
+    }
+    for name in "${CERTBOTBOT_DESIRED_NAMES[@]}"; do
+      if [[ -z "$name" || "$name" == *'*'* ]] ||
+        ! certbotbot_dns_valid "$name" ||
+        [[ -n "${desired_seen[$name]+x}" ]]; then
+        certbotbot_error 'invalid or duplicate desired certificate identity'
+        return 64
+      fi
+      desired_seen["$name"]=1
+    done
+  fi
   if [[ "$CERTBOTBOT_REMOVE_ORPHANS" == true &&
-    ${#CERTBOTBOT_DESIRED_NAMES[@]} -eq 0 ]]; then
+    "$desired_count" -eq 0 ]]; then
     certbotbot_error 'orphan removal requires an explicit desired set'
     return 64
   fi
