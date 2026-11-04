@@ -306,7 +306,7 @@ run_lifecycle() (
     problem "route53-checkpoint=$route_stage"
     problem "route53-refusal=$route_refusal"
     local header
-    for header in critical ordinary other; do
+    for header in critical ordinary critical-extra extension-extra prefix no-extensions empty other; do
       if grep -Fqx "local-first-issue: san_header=$header" "$log"; then
         problem "san-header=$header"
         break

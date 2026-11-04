@@ -254,7 +254,7 @@ run_positive() {
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
     local header
-    for header in critical ordinary other; do
+    for header in critical ordinary critical-extra extension-extra prefix no-extensions empty other; do
       if grep -Fqx "local-first-issue-host: san-header=$header" "$logfile"; then
         error "bounded san header=$header"
         break

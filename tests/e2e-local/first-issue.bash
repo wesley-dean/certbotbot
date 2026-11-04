@@ -291,7 +291,7 @@ ISSUE_REASONS
     # allowlist classifier cannot overwrite it with this generic marker.
     error "issuance_stage=$issue_reason"
     local header
-    for header in critical ordinary other; do
+    for header in critical ordinary critical-extra extension-extra prefix no-extensions empty other; do
       if grep -Fqx "certbotbot: private SAN header=$header" "$workspace/issue.log"; then
         error "san_header=$header"
         break
