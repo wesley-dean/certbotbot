@@ -253,6 +253,14 @@ run_positive() {
     done
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
+    # Never print private producer logs or certificate identities.
+    local gate
+    for gate in sans expiry chain; do
+      if grep -Fqx "local-first-issue-host: certificate-gate=$gate" "$logfile"; then
+        error "bounded certificate gate=$gate"
+        break
+      fi
+    done
     return 74
   fi
   for flavor in development ordinary minified; do
