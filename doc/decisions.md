@@ -614,6 +614,12 @@ satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
 
+### ADR-051: Strip Verified Ephemeral Certbot Directory Options on Finalize
+
+Certbot 5.8 can persist explicit `config_dir`, `work_dir`, and `logs_dir` options in renewal metadata, even though those directories are invocation-private and must never survive in portable S3 archives.  Only renewal `finalize` may consume them, and only after exact validation against the selected owned workspace's `config`, `work`, and `logs` paths.  Valid matches are omitted atomically while the original five certificate paths are canonicalized; `prepare` and `verify` continue rejecting the transient keys in stored archives.  This narrowly clarifies ADR-022 without permitting arbitrary paths, changing account/CA/hook validation, or modifying public interfaces.
+
+See [ADR-051](adr/ADR-051-ephemeral-certbot-renewal-directory-options.md).
+
 ### ADR-050: Verify Registration Contact Through Certbot's Authoritative Account Query
 
 Certbot 5.8 stores native ACME account identity with an empty `regr.json` body rather than a durable cached contact. Registration and account reuse therefore retain exact account path, identity, file-permission and native-state checks, but require the installed Certbot's authenticated `show_account` query to return exactly the requested singular contact email from the selected ACME authority. Missing, mismatched, multiple, or unavailable contacts fail before any S3 publication, and raw account/provider output remains private. This narrowly refines ADR-041's contact verification method while preserving explicit consent, CA selection, fail-closed behavior and milestone #16 isolation.
