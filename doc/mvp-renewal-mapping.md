@@ -32,8 +32,21 @@ five keys into the supplied private configuration root:
 to canonical archive values.  A second `prepare` without `finalize`,
 or vice versa, fails without modifying the file.  The file must contain
 exactly one occurrence of each key outside the `[renewalparams]`
-section.  The mappings preserve all non-path lines, comments, whitespace,
+section.  The mappings preserve all supported non-path lines, comments, whitespace,
 and ordering byte-for-byte for supported LF-terminated ASCII files.
+
+Certbot 5.8 may emit three additional invocation-private keys under
+`[renewalparams]`: `config_dir`, `work_dir`, and `logs_dir`.  These are
+**not** durable archive paths.  Only `finalize` accepts them, and then
+only as exact equalities to the selected private `CONFIG_DIR`, its sibling
+`work` directory, and its sibling `logs` directory respectively.
+Each is optional, but duplicates and unknown values fail.  The selected
+`CONFIG_DIR` must be a `config` child of the private workspace.  A
+validated finalize omits these lines atomically while mapping the same
+five canonical certificate paths.  `prepare` and `verify` reject any
+archived occurrence of these transient options.  Other fields and line
+content remain unchanged.  See ADR-051.  Byte-for-byte round-tripping
+remains guaranteed for supported files that lack these ephemeral keys.
 
 The implementation rejects unsupported path references in other settings,
 unrecognized renewal sections, duplicate or misplaced path keys, and hook
