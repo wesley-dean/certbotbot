@@ -255,6 +255,7 @@ certbotbot_provider_renew() {
     return 74
   }
   if ! command certbot plugins --authenticators "${common[@]}" \
+    "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" \
     >"$listing" 2>/dev/null; then
     rm -f -- "$listing"
     printf '%s\n' 'certbotbot: Certbot authenticator probe failed' >&2
@@ -267,7 +268,7 @@ certbotbot_provider_renew() {
   fi
   rm -f -- "$listing"
   if ! command certbot show_account --account "$account" \
-    "${common[@]}" >/dev/null 2>&1; then
+    "${common[@]}" "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: account is not recognized by Certbot' >&2
     return 69
   fi
@@ -284,7 +285,8 @@ certbotbot_provider_renew() {
     return 65
   fi
   if ! command certbot renew --cert-name "$selected" --account "$account" \
-    "${common[@]}" >/dev/null 2>&1; then
+    "${common[@]}" "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[@]}" \
+    "${CERTBOTBOT_CERTBOT_CHALLENGE_ARGS[@]}" >/dev/null 2>&1; then
     printf '%s\n' 'certbotbot: selected certificate renewal failed' >&2
     return 74
   fi
