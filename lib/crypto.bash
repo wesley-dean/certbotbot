@@ -51,7 +51,8 @@ certbotbot_crypto_encrypt_packet() {
   local workspace="$1" source="$2" target="$3"
   [[ -f "$source" && ! -L "$source" &&
     ! -e "$target" && ! -L "$target" ]] || return 65
-  if ! (umask 077; gpg --no-options --homedir "$workspace/.gnupg" \
+  if ! (umask 077; gpg --no-options "${CERTBOTBOT_GPG_ARGS[@]}" \
+    --homedir "$workspace/.gnupg" \
     --batch --yes --no-tty --pinentry-mode loopback --no-symkey-cache \
     --passphrase-fd 3 --symmetric --force-ocb --cipher-algo AES256 \
     --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 16777216 \
