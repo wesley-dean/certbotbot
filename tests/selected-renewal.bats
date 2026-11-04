@@ -38,6 +38,7 @@ CONF
   export RENEW_MOCK_ACCOUNT="$ACCOUNT"
   export RENEW_MOCK_SCENARIO=noop
   export RENEW_MOCK_SANS='DNS:example.com, DNS:*.example.com'
+  export RENEW_MOCK_SAN_HEADER=ordinary
   cat >"$ROOT/bin/certbot" <<'MOCK'
 #!/usr/bin/env bash
 verb="$1"; shift
@@ -84,7 +85,13 @@ MOCK
 #!/usr/bin/env bash
 [[ "$1" == x509 ]] || exit 98
 [[ "$RENEW_MOCK_SCENARIO" == bad_cert ]] && exit 15
-printf 'X509v3 Subject Alternative Name:\n    %s\n' "$RENEW_MOCK_SANS"
+case "$RENEW_MOCK_SAN_HEADER" in
+  ordinary) printf 'X509v3 Subject Alternative Name:\n    %s\n' "$RENEW_MOCK_SANS" ;;
+  critical) printf 'X509v3 Subject Alternative Name: critical\n    %s\n' "$RENEW_MOCK_SANS" ;;
+  trailing) printf 'X509v3 Subject Alternative Name: critical \n    %s\n' "$RENEW_MOCK_SANS" ;;
+  nonstandard) printf 'X509v3 Subject Alternative Name: unexpected\n    %s\n' "$RENEW_MOCK_SANS" ;;
+  *) exit 16 ;;
+esac
 MOCK
   chmod 755 "$ROOT/bin/certbot" "$ROOT/bin/openssl"
   PATH="$ROOT/bin:$PATH"
@@ -118,6 +125,44 @@ renew() {
   grep -Fq "<--config-dir> <$CONFIG>" "$RENEW_MOCK_LOG"
   grep -Fxq 'archive_dir = /etc/letsencrypt/archive/example.com' \
     "$CONFIG/renewal/example.com.conf"
+}
+
+@test "critical SAN header permits exact DNS-only selected renewal" {
+  export RENEW_MOCK_SAN_HEADER=critical
+  renew example.com '*.example.com'
+  [ "$status" -eq 0 ]
+  [ "$output" = 'renewed=false durable=false' ]
+  grep -Fq '[renew]' "$RENEW_MOCK_LOG"
+}
+
+@test "critical SAN header still rejects non-DNS and duplicated identities" {
+  export RENEW_MOCK_SAN_HEADER=critical
+  export RENEW_MOCK_SANS='DNS:example.com, IP Address:127.0.0.1'
+  renew example.com '*.example.com'
+  [ "$status" -eq 65 ]
+  [ ! -e "$RENEW_MOCK_LOG" ]
+  export RENEW_MOCK_SANS='DNS:example.com, DNS:example.com'
+  renew example.com '*.example.com'
+  [ "$status" -eq 65 ]
+  [ ! -e "$RENEW_MOCK_LOG" ]
+}
+
+@test "unknown SAN header attributes are refused before provider calls" {
+  local header
+  for header in trailing nonstandard; do
+    export RENEW_MOCK_SAN_HEADER="$header"
+    renew example.com '*.example.com'
+    [ "$status" -eq 65 ]
+    [ ! -e "$RENEW_MOCK_LOG" ]
+  done
+}
+
+@test "critical SAN header does not bypass requested identity equality" {
+  export RENEW_MOCK_SAN_HEADER=critical
+  export RENEW_MOCK_SANS='DNS:example.com, DNS:unrelated.org'
+  renew example.com '*.example.com'
+  [ "$status" -eq 65 ]
+  [ ! -e "$RENEW_MOCK_LOG" ]
 }
 
 @test "due renewal changes certificate bytes and durable state" {

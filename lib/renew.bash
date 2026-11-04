@@ -20,8 +20,8 @@ declare -a CERTBOTBOT_EXISTING_SANS=()
 ## @fn certbotbot_renew_sans_read()
 ## @brief Reads a certificate's strict DNS-only SAN set without changing state.
 ## @details
-## A supported OpenSSL extension contains a single label and one comma-separated
-## line of DNS entries. Missing, unsupported, duplicated, malformed, excessive
+## A supported OpenSSL extension has an exact ordinary or critical SAN header
+## and one comma-separated line of DNS entries. Missing, unsupported, duplicated, malformed, excessive
 ## or non-DNS entries are rejected before certificate mutation. The parser does
 ## not compare against requested SANs: valid-but-different and invalid-existing
 ## state must remain distinguishable during reconciliation.
@@ -43,8 +43,11 @@ certbotbot_renew_sans_read() {
   command -v openssl >/dev/null 2>&1 || return 1
   output="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null)" ||
     return 1
+  # Accept exact native OpenSSL critical SAN header; preserve DNS checks.
   [[ "$output" == $'X509v3 Subject Alternative Name:\n'* ]] ||
-    [[ "$output" == $'X509v3 Subject Alternative Name: \n'* ]] || return 1
+    [[ "$output" == $'X509v3 Subject Alternative Name: \n'* ]] ||
+    [[ "$output" == $'X509v3 Subject Alternative Name: critical\n'* ]] ||
+    return 1
   line="${output#*$'\n'}"
   [[ -n "$line" && "$line" != *$'\n'* &&
     "$line" != ,* && "$line" != *, && "$line" != *,,* ]] || return 1
