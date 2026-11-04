@@ -122,13 +122,15 @@ claimed. Compromise of the host Docker engine is outside the proof.
    Rejected as unsafe: the Pebble-outage case can break other requests
    and the remaining cases can contend on remote object identity.
 2. **Fan out all seven to fully independent Compose projects.**
-   Deferred pending measured benefit. If each worker repeats the
-   measured 171-second positive lifecycle, even an ideal parallel
-   negative phase cannot improve the currently 128-second serial
-   phase; actual extra startup (24 seconds on the reference run),
-   seed validation, image caching, resource contention and cleanup
-   would worsen that lower bound. This is an **illustrative cost
-   model**, not a measurement of a working seven-project implementation.
+   Deferred pending measured benefit. If each worker must repeat the
+   measured 171-second positive lifecycle **serially after** the main
+   positive stage, setup alone exceeds the currently 128-second
+   negative phase, before additional startup (24 seconds on the
+   reference run), image caching and teardown. Concurrent fixture
+   preparation overlapping the main lifecycle could reduce that
+   setup penalty, but would risk resource contention and has not
+   been measured. This is an **illustrative conditional cost model**,
+   not a measurement of a working seven-project implementation.
 3. **Clone only the current S3 archive into separate object keys on
    one shared project.** Rejected because it does not isolate the
    Pebble outage, CA order state, network topology or Compose cleanup.
