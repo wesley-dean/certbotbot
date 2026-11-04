@@ -547,10 +547,13 @@ run_lifecycle() (
 ## An ACME availability check pauses ONLY this project's Pebble container and
 ## resumes it under an EXIT trap; a stalled gateway aborts before issuer entry.
 ## No raw Certbot/AWS/ACME logs or private state are reported.
+## Each completed case emits an additional bounded elapsed-seconds receipt only
+## after both fault refusal and independent remote-object verification succeed.
+## The receipt records serial baseline cost and cannot authorize parallelism.
 ## @param image Already cached runner from the verified public producer.
 run_faults() (
   local image="$1" selected="${2-all}" tmp='' cert_ca='' cid='' pebble_id='' scenario=''
-  local digest='' observed='' stdout_file=''
+  local digest='' observed='' stdout_file='' phase_start=0
   case "$selected" in
     all|ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable) ;;
     *) problem 'invalid focused negative scenario'; return 64 ;;
@@ -583,6 +586,7 @@ run_faults() (
 
   for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected route53-unavailable s3-put-reject; do
     [[ "$selected" == all || "$selected" == "$scenario" ]] || continue
+    phase_start=$SECONDS
     stdout_file="$tmp/fault-$scenario.log"
     if ! run_phase "$image" "$cert_ca" fault "$scenario" "$digest" \
       >"$stdout_file" 2>&1; then
@@ -601,9 +605,14 @@ run_faults() (
     [[ "$observed" == "$digest" ]] ||
       { problem 'authoritative object changed after negative scenario'; return 65; }
     printf 'local-first-issue-host: negative=%s; remote_unchanged=true\n' "$scenario"
+    # Measure the genuine fault plus its independent current-object readback.
+    # Emit no private provider output, object identifiers or certificate data.
+    printf 'local-first-issue-host: negative_timing=%s; elapsed_seconds=%d; status=pass\n' \
+      "$scenario" "$((SECONDS-phase_start))"
   done
 
   if [[ "$selected" == all || "$selected" == acme-unavailable ]]; then
+  phase_start=$SECONDS
   # ACME availability is a local service outage, not an ACME order refusal.
   # Do not interfere with the pinned synthetic S3 object or the gateway PKI.
   pebble_id="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
@@ -632,6 +641,8 @@ run_faults() (
   [[ "$observed" == "$digest" ]] ||
     { problem 'remote object changed during ACME outage'; return 65; }
   printf '%s\n' 'local-first-issue-host: negative=acme-unavailable; remote_unchanged=true'
+  printf 'local-first-issue-host: negative_timing=acme-unavailable; elapsed_seconds=%d; status=pass\n' \
+    "$((SECONDS-phase_start))"
   fi
   if [[ "$selected" == all ]]; then
     printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
