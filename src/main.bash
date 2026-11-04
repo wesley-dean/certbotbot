@@ -116,6 +116,16 @@ certbotbot_verify_material() {
   # Fixed classifications reveal only which verifier rejected the material.
   # Never relay PEM, SAN content, private paths, or OpenSSL diagnostics.
   if ! certbotbot_renew_sans_match "$root/cert.pem" "$@"; then
+    # Test-only fixed label. No actual SAN or PEM data may cross this boundary.
+    if ! certbotbot_provider_sans "$@"; then
+      printf '%s\n' 'certbotbot: private SAN diagnostic=arguments' >&2
+    elif ! certbotbot_renew_sans_read "$root/cert.pem"; then
+      printf '%s\n' 'certbotbot: private SAN diagnostic=read' >&2
+    elif (( ${#CERTBOTBOT_EXISTING_SANS[@]} != $# )); then
+      printf '%s\n' 'certbotbot: private SAN diagnostic=count' >&2
+    else
+      printf '%s\n' 'certbotbot: private SAN diagnostic=identity' >&2
+    fi
     printf '%s\n' 'certbotbot: certificate verification stage=sans' >&2
     printf '%s\n' 'certbotbot: selected certificate or chain is unusable' >&2
     return 65
