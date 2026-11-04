@@ -614,6 +614,18 @@ satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
 
+### ADR-055: Explicit ID-First Synthetic Route53 Zone Selection
+
+The isolated Route53 test stub requires an explicitly selected local synthetic
+hosted zone. A valid hosted-zone ID takes precedence over a name; invalid IDs
+never fall back, and name-only selection requires an exact normalized match to
+the fixed local zone. Missing or malformed selectors fail before provider
+requests; a bounded synthetic name-lookup response is supported without
+expanding AWS, DNS or production authority. The Compose fixture sets its ID
+explicitly, and the ordinary full local E2E gates remain mandatory.
+
+See [ADR-055](adr/ADR-055-explicit-id-first-local-route53-zone.md).
+
 ### ADR-054: Verify Native Metadata Stabilization Before Strict Local No-Ops
 
 A real isolated Certbot/Pebble run proved that the first ordinary non-due check after initial issuance updates durable selected renewal metadata and republishes the current SeaweedFS archive without creating another ACME order.  A separate repeated invocation against that updated archive returned `checked; published=false`, with no further object or metadata change.  The local E2E harness therefore treats one independently verified metadata-only publication as explicit post-issuance stabilization, *before* its three required no-rewrite no-op checks.  ADR-025's durable-state publication requirement remains unchanged; only the timing of ADR-047's no-rewrite local proof is refined, and certificate/account identity, order counts, subsequent strict no-ops, genuine second renewal, negatives, and isolation remain mandatory.
