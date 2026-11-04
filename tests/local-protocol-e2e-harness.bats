@@ -520,8 +520,8 @@ setup() {
 
 
 @test "failed native E2E reports only a closed host lifecycle stage" {
-  local host="$REPO/tests/e2e-local/first-issue-host.bash"
-  local ci="$REPO/tests/e2e-local/ci-local-e2e.bash"
+  local host="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
+  local ci="$REPO_ROOT/tests/e2e-local/ci-local-e2e.bash"
   local stage
   for stage in first-issuance first-readback noop-development noop-ordinary \
     noop-minified second-order renewed-readback post-renewal-noop; do
