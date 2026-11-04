@@ -305,6 +305,27 @@ run_lifecycle() (
     fi
     problem "route53-checkpoint=$route_stage"
     problem "route53-refusal=$route_refusal"
+    # Diagnose real native renewal refusal without relaying provider logs.
+    local category
+    for category in \
+      line-safety section-order comment-path \
+      assignment-syntax duplicate-field top-level-unknown-field \
+      canonical-path-archive_dir canonical-path-cert canonical-path-privkey \
+      canonical-path-chain canonical-path-fullchain top-level-version \
+      top-level-renew-before-expiry renewal-unknown-field renewal-config_dir \
+      renewal-work_dir renewal-logs_dir renewal-account \
+      renewal-authenticator renewal-server renewal-key_type \
+      renewal-dns_route53_propagation_seconds renewal-rsa_key_size renewal-elliptic_curve \
+      renewal-reuse_key renewal-pref_challs renewal-preferred_challenges \
+      acme-unknown-field acme-ari-retry-after unexpected-section \
+      missing-canonical-archive_dir missing-canonical-cert missing-canonical-privkey \
+      missing-canonical-chain missing-canonical-fullchain required-field-or-byte-count \
+      unclassified; do
+      if grep -Fqx -- "local-first-issue: bounded_renewal_category=$category" "$log"; then
+        problem "bounded-renewal-category=$category"
+        break
+      fi
+    done
     problem "bootstrap-failure=$reason"
     return 74
   fi
