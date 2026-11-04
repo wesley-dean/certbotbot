@@ -173,3 +173,40 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$output" = forwarded ]
 }
+
+@test "GnuPG safe extra argv is forwarded only to encryption" {
+  run bash -c '
+    source "$1" --help >/dev/null || exit $?
+    certbotbot_config_resolve --s3-bucket bucket \
+      --gpg-args "$2" example.com || exit $?
+    CERTBOTBOT_GPG_SECRET=fixture
+    LOGFILE="$3/gpg.log"
+    mkdir -m 700 "$3/private" || exit $?
+    printf "input" >"$3/private/plaintext"
+    gpg() {
+      printf "%s\n" "$*" >>"$LOGFILE"
+      local previous="" item
+      for item in "$@"; do
+        if [[ "$previous" == --output ]]; then
+          printf "mock-packet" >"$item"
+        fi
+        previous="$item"
+      done
+      return 0
+    }
+    certbotbot_crypto_packet_valid() { return 0; }
+    certbotbot_crypto_encrypt_packet "$3/private" \
+      "$3/private/plaintext" "$3/private/encrypted" || exit $?
+    certbotbot_crypto_decrypt_packet "$3/private" \
+      "$3/private/encrypted" "$3/private/restored" || exit $?
+    mapfile -t calls <"$LOGFILE"
+    [[ ${#calls[@]} -eq 2 &&
+       "${calls[0]}" == *--compress-level\ 3* &&
+       "${calls[0]}" == *--symmetric* &&
+       "${calls[1]}" == *--decrypt* &&
+       "${calls[1]}" != *--compress-level* ]] || exit 1
+    printf verified
+  ' _ "$BASH_STARTER_ARTIFACT" '["--compress-level","3"]' "$EXTRA_TEST_DIR"
+  [ "$status" -eq 0 ]
+  [ "$output" = verified ]
+}
