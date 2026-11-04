@@ -488,6 +488,17 @@ allowlisted test double. Genuine Let's Encrypt staging, AWS Route53 DNS
 propagation and Amazon S3 IAM/interoperability remain the separate
 milestone #4 manual staging acceptance, under ADR-043.
 
+The local E2E failure reporter also recognizes literal, host-owned lifecycle
+checkpoints covering first issuance, independent first readback, each of the
+three producer no-ops, the second ACME order, renewed archive readback, and
+the final post-renewal no-op. On failure it reports only the last recognized
+checkpoint as `bounded local lifecycle stage=...`; if none is observed,
+the fixed category is `not-reported`. These labels diagnose where the
+harness last made progress. They do **not** establish that a stage succeeded,
+replace a receipt, disclose untrusted provider or runner output, or relax
+any ACME/S3/no-egress/negative/cleanup acceptance criterion. The previously
+allowlisted bootstrap rejection reasons remain separately reported.
+
 If the Test workflow or static linters pass but this dedicated protocol
 gate fails, milestone #16 does **not** have positive protocol execution
 acceptance. If this workflow's own steps have not run successfully on a
