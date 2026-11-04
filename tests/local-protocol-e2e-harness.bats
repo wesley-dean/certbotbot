@@ -446,7 +446,7 @@ setup() {
   [ "$status" -eq 0 ]
   run bash "$CI_LOCAL_RUNNER" unexpected
   [ "$status" -eq 64 ]
-  [[ "$output" == *'usage: ci-local-e2e.bash (no arguments)'* ]]
+  [[ "$output" == *'usage: ci-local-e2e.bash [--debug-second-order]'* ]]
 }
 
 @test "local protocol acceptance runs only on push or manual dispatch without credentials" {
@@ -594,6 +594,9 @@ setup() {
   grep -Fq 'full_acceptance=false' "$FIRST_HOST"
   grep -Fq 'focused_second_order=passed; full_acceptance=false' "$CI_LOCAL_RUNNER"
   grep -Fq 'full_protocol_gate=not-run' "$CI_LOCAL_RUNNER"
+  grep -Fq 'second-order-failure=timeout' "$FIRST_HOST" || \
+    grep -Fq 'renewal_reason=timeout' "$FIRST_HOST"
+  grep -Fq 'bounded second-order failure=' "$CI_LOCAL_RUNNER"
   grep -Fq 'timed_stage seven-negatives run_negative' "$CI_LOCAL_RUNNER"
   grep -Fq 'timed_stage pre-isolation probe_no_egress before' "$CI_LOCAL_RUNNER"
   grep -Fq 'timed_stage post-isolation probe_no_egress after' "$CI_LOCAL_RUNNER"
