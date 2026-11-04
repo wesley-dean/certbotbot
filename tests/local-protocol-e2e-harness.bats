@@ -539,6 +539,24 @@ setup() {
   bash -n "$ci"
 }
 
+@test "native no-op failure diagnostics are a closed, private-log allowlist" {
+  local runner="$REPO_ROOT/tests/e2e-local/first-issue.bash"
+  local host="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
+  local ci="$REPO_ROOT/tests/e2e-local/ci-local-e2e.bash"
+  grep -Fq 'noop-checkpoint=producer' "$runner"
+  grep -Fq 'noop-checkpoint=cert-after' "$runner"
+  grep -Fq 'noop-producer=$producer_reason' "$runner"
+  grep -Fq '<<' "$runner"
+  grep -Fq 'noop-checkpoint=$noop_checkpoint' "$host"
+  grep -Fq 'noop-producer=$noop_producer' "$host"
+  grep -Fq 'bounded noop checkpoint=$noop_checkpoint; producer=$noop_producer' "$ci"
+  grep -Fq 'grep -Fqx -- "local-first-issue: noop-checkpoint=$code"' "$host"
+  grep -Fq 'grep -Fqx -- "local-first-issue-host: noop-checkpoint=$code"' "$ci"
+  bash -n "$runner"
+  bash -n "$host"
+  bash -n "$ci"
+}
+
 @test "local E2E evidence stays bounded and its real-provider nonclaim is explicit" {
   run grep -F 'no_egress_probe=%s; challenge_validation=bypassed' "$CI_LOCAL_RUNNER"
   [ "$status" -eq 0 ]
