@@ -259,7 +259,7 @@ certbotbot_renewal_map() {
       valid=false
       break
     fi
-    output+="$line"
+    output+="$line"$'\n'
   done <"$file"
 
   for field in archive_dir cert privkey chain fullchain; do
@@ -279,38 +279,6 @@ certbotbot_renewal_map() {
   if [[ "$valid" != true ]]; then
     # Static category only; never print a value, unknown key, or file line.
     printf 'certbotbot: renewal rejection category=%s\n' "$rejection" >&2
-    printf '%s\n' 'certbotbot: unsupported renewal configuration' >&2
-    return 65
-  fi
-  if [[ "$direction" == verify ]]; then
-    return 0
-  fi
-  temporary="$(umask 077; mktemp "$config/renewal/.mapping.XXXXXXXX")" || {
-    printf '%s\n' 'certbotbot: renewal mapping staging unavailable' >&2
-    return 74
-  }
-  if ! printf '%s' "$output" >"$temporary" ||
-    ! chmod 600 -- "$temporary" || ! mv -fT -- "$temporary" "$file"; then
-    rm -f -- "$temporary"
-    printf '%s\n' 'certbotbot: renewal mapping update failed' >&2
-    return 74
-  fi
-  return 0
-}
-\n'
-  done <"$file"
-
-  for field in archive_dir cert privkey chain fullchain; do
-    [[ -n "${found[$field]+x}" ]] || valid=false
-  done
-  if [[ "$seen_renewal" != true ||
-    -z "${seen['renewalparams:account']+x}" ||
-    -z "${seen['renewalparams:authenticator']+x}" ||
-    -z "${seen['renewalparams:server']+x}" ]] ||
-    (( count_bytes != input_bytes )); then
-    valid=false
-  fi
-  if [[ "$valid" != true ]]; then
     printf '%s\n' 'certbotbot: unsupported renewal configuration' >&2
     return 65
   fi
