@@ -189,9 +189,9 @@ certbotbot_renewal_map() {
       # Unknown keys are never echoed (they may contain private material).
       rejection=renewal-unknown-field
       case "$key" in
-        config_dir|work_dir|logs_dir|account|authenticator|server|key_type|\
-          dns_route53_propagation_seconds|rsa_key_size|elliptic_curve|\
-          reuse_key|pref_challs|preferred_challenges)
+        config_dir|work_dir|logs_dir|account|authenticator|server|\
+        key_type|dns_route53_propagation_seconds|rsa_key_size|\
+        elliptic_curve|reuse_key|pref_challs|preferred_challenges)
           rejection="renewal-$key"
           ;;
       esac
