@@ -464,8 +464,22 @@ run_lifecycle() (
   # force marker, and publishes through the unchanged public producer.
   count_before="$(pebble_order_count)" || return $?
   problem 'lifecycle-phase=second-order'
-  if ! run_phase "$image" "$cert_ca" renew "$digest" \
-    >"$tmp/renew.log" 2>&1; then
+  local renewal_start=$SECONDS renewal_status=0 renewal_reason=unclassified
+  run_phase "$image" "$cert_ca" renew "$digest" \
+    >"$tmp/renew.log" 2>&1 || renewal_status=$?
+  problem "timing-phase=second-order; elapsed-seconds=$((SECONDS-renewal_start))"
+  if (( renewal_status != 0 )); then
+    case "$renewal_status" in
+      124|137) renewal_reason=timeout ;;
+      125) renewal_reason=docker-startup ;;
+      126|127) renewal_reason=runner-executable ;;
+    esac
+    if [[ "$renewal_reason" == unclassified ]] &&
+      grep -Fqx 'local-first-issue: selected real-Certbot renewal or publication failed' \
+        "$tmp/renew.log"; then
+      renewal_reason=producer-rejected
+    fi
+    problem "second-order-failure=$renewal_reason"
     problem 'isolated second real Certbot renewal or S3 republication failed'
     return 74
   fi
