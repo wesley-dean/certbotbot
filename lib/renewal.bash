@@ -19,7 +19,9 @@
 ## those fields, and only if each equals the exact current workspace path.
 ## prepare and read-only verify reject the three ephemeral fields in archives.
 ## The entire input is parsed before a same-directory replacement, so
-## validation failures preserve the original bytes. Other Route53 metadata
+## validation failures preserve the original bytes. The exact Certbot
+## pref_challs one-element value dns-01, is accepted under ADR-052;
+## alternate/multiple challenge identities remain forbidden. Other Route53 metadata
 ## remains narrowly allowlisted. No account, host, PEM, or S3 data is mutated.
 ## @param config Absolute canonical owned mode-0700 config directory.
 ## @param name Validated single non-wildcard certificate lineage name.
@@ -43,6 +45,7 @@ certbotbot_renewal_map() {
   local input_bytes count_bytes=0 line value key prefix separator suffix raw
   local relative replacement section='' output='' temporary='' field
   local seen_renewal=false seen_acme=false valid=true
+  local rejection=unclassified
   local -A seen=() found=()
   local LC_ALL=C
 
@@ -102,12 +105,14 @@ certbotbot_renewal_map() {
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     count_bytes=$((count_bytes + ${#line} + 1))
+    rejection='line-safety'
     if (( ${#line} > 8192 )) ||
       [[ "$line" == *$'\r'* || ! "$line" =~ ^[[:print:][:blank:]]*$ ||
         "${line,,}" == *hook* ]]; then
       valid=false
       break
     fi
+    rejection='section-order'
     if [[ "$line" =~ ^[[:blank:]]*\[([^][]+)\][[:blank:]]*$ ]]; then
       case "${BASH_REMATCH[1]}" in
         renewalparams)
@@ -129,12 +134,14 @@ certbotbot_renewal_map() {
       output+="$line"$'\n'
       continue
     fi
+    rejection=comment-path
     if [[ -z "$line" || "$line" =~ ^[[:blank:]]*# ]]; then
       if [[ "$line" == *'/etc/letsencrypt'* ||
         "$line" == *"$config/"* ]]; then valid=false; break; fi
       output+="$line"$'\n'
       continue
     fi
+    rejection=assignment-syntax
     if [[ ! "$line" =~ ^([[:blank:]]*)([a-z_][a-z0-9_]*)([[:blank:]]*=[[:blank:]]*)(.*)$ ]]; then
       valid=false
       break
@@ -146,12 +153,15 @@ certbotbot_renewal_map() {
     value="$raw"
     while [[ "$value" == *[[:blank:]] ]]; do value="${value%?}"; done
     suffix="${raw:${#value}}"
+    rejection=duplicate-field
     if [[ -n "${seen["$section:$key"]+x}" ]]; then valid=false; break; fi
     seen["$section:$key"]=1
 
     if [[ -z "$section" ]]; then
+      rejection=top-level-unknown-field
       case "$key" in
         archive_dir|cert|privkey|chain|fullchain)
+          rejection="canonical-path-$key"
           found["$key"]=1
           if [[ "$key" == archive_dir ]]; then
             relative="/archive/$name"
@@ -166,15 +176,27 @@ certbotbot_renewal_map() {
           continue
           ;;
         version)
+          rejection=top-level-version
           [[ "$value" =~ ^[0-9]+([.][0-9]+)+$ ]] || { valid=false; break; }
           ;;
         renew_before_expiry)
+          rejection=top-level-renew-before-expiry
           [[ "$value" =~ ^[0-9]+[[:blank:]]+(days?|hours?)$ ]] ||
             { valid=false; break; }
           ;;
         *) valid=false; break ;;
       esac
     elif [[ "$section" == renewalparams ]]; then
+      # Only reviewed, literal field names can appear in diagnostics.
+      # Unknown keys are never echoed (they may contain private material).
+      rejection=renewal-unknown-field
+      case "$key" in
+        config_dir|work_dir|logs_dir|account|authenticator|server|\
+        key_type|dns_route53_propagation_seconds|rsa_key_size|\
+        elliptic_curve|reuse_key|pref_challs|preferred_challenges)
+          rejection="renewal-$key"
+          ;;
+      esac
       case "$key" in
         config_dir|work_dir|logs_dir)
           # Certbot persists explicitly supplied runtime locations.  They
@@ -220,12 +242,23 @@ certbotbot_renewal_map() {
         reuse_key)
           case "$value" in True|False|true|false) ;; *) valid=false; break ;; esac
           ;;
-        pref_challs|preferred_challenges)
+        pref_challs)
+          # Certbot serializes a one-element challenge tuple with a
+          # trailing comma. Both spellings mean only DNS-01. Never accept
+          # a second challenge or a generalized comma-delimited value.
+          case "$value" in
+            dns-01|dns-01,) ;;
+            *) valid=false; break ;;
+          esac
+          ;;
+        preferred_challenges)
           [[ "$value" == dns-01 ]] || { valid=false; break; }
           ;;
         *) valid=false; break ;;
       esac
     elif [[ "$section" == acme_renewal_info ]]; then
+      rejection=acme-unknown-field
+      [[ "$key" != ari_retry_after ]] || rejection=acme-ari-retry-after
       case "$key" in
         ari_retry_after)
           [[ "$value" =~ ^[0-9TZ:+.-]+$ ]] || { valid=false; break; }
@@ -233,6 +266,7 @@ certbotbot_renewal_map() {
         *) valid=false; break ;;
       esac
     else
+      rejection=unexpected-section
       valid=false
       break
     fi
@@ -240,16 +274,22 @@ certbotbot_renewal_map() {
   done <"$file"
 
   for field in archive_dir cert privkey chain fullchain; do
-    [[ -n "${found[$field]+x}" ]] || valid=false
+    if [[ -z "${found[$field]+x}" ]]; then
+      [[ "$valid" != true ]] || rejection="missing-canonical-$field"
+      valid=false
+    fi
   done
   if [[ "$seen_renewal" != true ||
     -z "${seen['renewalparams:account']+x}" ||
     -z "${seen['renewalparams:authenticator']+x}" ||
     -z "${seen['renewalparams:server']+x}" ]] ||
     (( count_bytes != input_bytes )); then
+    [[ "$valid" != true ]] || rejection=required-field-or-byte-count
     valid=false
   fi
   if [[ "$valid" != true ]]; then
+    # Static category only; never print a value, unknown key, or file line.
+    printf 'certbotbot: renewal rejection category=%s\n' "$rejection" >&2
     printf '%s\n' 'certbotbot: unsupported renewal configuration' >&2
     return 65
   fi

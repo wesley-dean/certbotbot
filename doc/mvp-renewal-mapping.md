@@ -95,3 +95,16 @@ renewal configuration parser and requires its five canonical
 zero only for the supported metadata dialect, and is required by the
 candidate archive builder before packaging. See ADR-027. `prepare` and
 `finalize` retain their existing mapping semantics.
+
+## Certbot Singleton DNS-01 Challenge Representation
+
+Certbot's renewal metadata may contain `pref_challs = dns-01,`. The
+terminal comma represents a single-element challenge sequence, not a second
+challenge. Under ADR-052, the renewal mapper accepts only exact `dns-01`
+and `dns-01,` values for `pref_challs` and preserves the original bytes.
+`preferred_challenges` continues to accept only `dns-01`. Any other
+challenge, list, separator, whitespace variant, or malformed value fails
+closed without modification or S3 publication. The exception does not
+change the five canonical paths, invocation-private directory omission,
+ACME account identity, DNS authenticator, or hook refusal.
+
