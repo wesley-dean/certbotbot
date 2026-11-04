@@ -23,7 +23,6 @@ VERSION = "2013-04-01"
 NS = "https://route53.amazonaws.com/doc/2013-04-01/"
 ZONE = "e2e.test."
 ZONE_ID = "ZLOCALONLY123456"
-UNSET = "__LOCAL_E2E_UNSET__"
 ZONE_ID_RE = re.compile(r"^Z[A-Z0-9]{8,32}$")
 ZONE_NAME_RE = re.compile(r"^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.?$", re.IGNORECASE)
 ACCESS_KEY = "CBOTBOT_LOCAL_TEST_ACCESS_ONLY"
@@ -62,10 +61,12 @@ def select_zone(settings: dict[str, str]) -> tuple[str, str]:
     The deliberately limited lookup cannot discover actual AWS hosted zones.
     An explicit malformed name is refused even when the ID takes precedence.
     """
-    raw_id = settings.get("LOCAL_E2E_ROUTE53_HOSTED_ZONE_ID", UNSET)
-    raw_name = settings.get("LOCAL_E2E_ROUTE53_HOSTED_ZONE_NAME", UNSET)
-    supplied_id = raw_id != UNSET
-    supplied_name = raw_name != UNSET
+    id_key = "LOCAL_E2E_ROUTE53_HOSTED_ZONE_ID"
+    name_key = "LOCAL_E2E_ROUTE53_HOSTED_ZONE_NAME"
+    supplied_id = id_key in settings
+    supplied_name = name_key in settings
+    raw_id = settings.get(id_key, "")
+    raw_name = settings.get(name_key, "")
     if not supplied_id and not supplied_name:
         raise ValueError("missing synthetic hosted-zone selection")
     if supplied_id and (not ZONE_ID_RE.fullmatch(raw_id) or raw_id != ZONE_ID):
