@@ -210,6 +210,41 @@ map_private_certificate_paths() {
   cmp -s "$RENEWAL" "$TEST_ROOT/previous"
 }
 
+
+@test "finalize reports a fixed runtime-path rejection without leaking values" {
+  map_private_certificate_paths
+  add_runtime_options "config_dir = /tmp/SECRET_SENTINEL_PRIVATE_PATH"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  [[ "$output" == *'renewal rejection category=renewal-config_dir'* ]]
+  [[ "$output" == *'certbotbot: unsupported renewal configuration'* ]]
+  [[ "$output" != *SECRET_SENTINEL_PRIVATE_PATH* ]]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
+@test "unknown renewal option cannot become part of the diagnostic" {
+  map_private_certificate_paths
+  add_runtime_options "secret_sentinel_unknown_field = value"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal finalize
+  [ "$status" -eq 65 ]
+  [[ "$output" == *'renewal rejection category=renewal-unknown-field'* ]]
+  [[ "$output" != *secret_sentinel_unknown_field* ]]
+  [[ "$output" != *value* ]]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
+@test "invalid canonical path reports only a fixed allowlisted field" {
+  sed -i 's|/etc/letsencrypt/live/example.com/cert.pem|/tmp/SECRET_SENTINEL_PATH|' "$RENEWAL"
+  cp "$RENEWAL" "$TEST_ROOT/previous"
+  map_renewal prepare
+  [ "$status" -eq 65 ]
+  [[ "$output" == *'renewal rejection category=canonical-path-cert'* ]]
+  [[ "$output" != *SECRET_SENTINEL_PATH* ]]
+  cmp -s "$RENEWAL" "$TEST_ROOT/previous"
+}
+
 @test "prepare maps exactly five paths into a private root" {
   map_renewal prepare
   [ "$status" -eq 0 ]
