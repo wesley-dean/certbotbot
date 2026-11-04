@@ -140,7 +140,16 @@ certbotbot_extra_args_resolve() {
         value="${output[i+1]}"
         if [[ -z "$value" || ${#value} -gt 80 ]] ||
           ! printf '%s\n' "$value" |
-            LC_ALL=C grep -Eq '^[A-Za-z0-9][A-Za-z0-9 ._()"-]*
+            LC_ALL=C grep -Eq '^[A-Za-z0-9][A-Za-z0-9 ._()"-]*$'; then
+          certbotbot_error 'invalid Certbot user-agent comment'
+          return 64
+        fi
+        CERTBOTBOT_CERTBOT_GLOBAL_ARGS+=("$token" "$value")
+        (( i+=2 ))
+        continue
+        ;;
+      CERTBOT:--max-log-backups)
+        limit=1000 ;;
       CERTBOT:--dns-route53-propagation-seconds)
         [[ "${CERTBOTBOT_COMMAND:-issue}" != register ]] ||
           { certbotbot_error 'unsupported registration provider argument'; return 64; }
