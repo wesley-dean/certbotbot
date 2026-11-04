@@ -55,7 +55,7 @@ teardown() {
     certbotbot_config_resolve --s3-bucket bucket \
       --certbot-args "$2" example.com || exit $?
     printf "%s" "${CERTBOTBOT_CERTBOT_GLOBAL_ARGS[1]}"
-  ' _ "$BASH_STARTER_ARTIFACT" '["--user-agent-comment","QA Team \\"nightly\\""]'
+  ' _ "$BASH_STARTER_ARTIFACT" '["--user-agent-comment","QA Team \"nightly\""]'
   [ "$status" -eq 0 ]
   [ "$output" = 'QA Team "nightly"' ]
 
