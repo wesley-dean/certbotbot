@@ -380,3 +380,13 @@ unrelated negatives. A partial result never prints the required
 full acceptance. Per-stage elapsed seconds are bounded nonsecret diagnostics;
 provider logs and account material stay private. This debug mode is not a
 performance guarantee; the full CI gate still runs on every candidate push.
+
+A named negative case may be isolated in partial mode using
+`--debug-negative=NAME` with exactly one of `ca-production`,
+`s3-unavailable`, `corrupt-archive`, `acme-order-rejected`,
+`route53-unavailable`, `s3-put-reject`, or `acme-unavailable`.
+This builds a genuine initial certificate fixture and verifies native
+metadata stabilization before the selected rejection. The case still
+performs an independent unchanged-object readback. The temporary Pebble
+outage is unpaused under the existing cleanup trap. Full CI never accepts
+a selective-case success as a replacement for its seven mandatory negatives.
