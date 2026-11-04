@@ -205,19 +205,19 @@ certbotbot_orphans_plan() {
   if [[ -n "${CERTBOTBOT_ARCHIVED_NAMES[0]+x}" ]]; then
     for name in "${CERTBOTBOT_ARCHIVED_NAMES[@]}"; do
       # Every original lineage must be legitimate, including those excluded.
-    certbotbot_renew_sans_read "$config/live/$name/cert.pem" || {
-      printf '%s\n' 'certbotbot: unsafe original archived certificate' >&2
-      return 65
-    }
-    certbotbot_orphans_material_preflight "$workspace" "$name" ||
-      return $?
-    found=false
-    for wanted in "${CERTBOTBOT_DESIRED_NAMES[@]}"; do
-      if [[ "$name" == "$wanted" ]]; then
-        found=true
-        break
-      fi
-    done
+      certbotbot_renew_sans_read "$config/live/$name/cert.pem" || {
+        printf '%s\n' 'certbotbot: unsafe original archived certificate' >&2
+        return 65
+      }
+      certbotbot_orphans_material_preflight "$workspace" "$name" ||
+        return $?
+      found=false
+      for wanted in "${CERTBOTBOT_DESIRED_NAMES[@]}"; do
+        if [[ "$name" == "$wanted" ]]; then
+          found=true
+          break
+        fi
+      done
       if [[ "$found" != true ]]; then
         CERTBOTBOT_ORPHANS_TO_REMOVE+=("$name")
       fi
@@ -273,24 +273,24 @@ certbotbot_orphans_apply() {
   if [[ -n "${CERTBOTBOT_ORPHANS_TO_REMOVE[0]+x}" ]]; then
     for name in "${CERTBOTBOT_ORPHANS_TO_REMOVE[@]}"; do
       if [[ "$name" == "$selected" || "$name" == *'*'* ]] ||
-      ! certbotbot_dns_valid "$name"; then
-      return 65
-    fi
-    certbotbot_state_lineage_one "$config" "$name" || {
-      printf '%s\n' 'certbotbot: unsafe orphan deletion target' >&2
-      return 65
-    }
-    [[ -d "$config/live/$name" && ! -L "$config/live/$name" &&
-      -O "$config/live/$name" &&
-      -d "$config/archive/$name" && ! -L "$config/archive/$name" &&
-      -O "$config/archive/$name" &&
-      -f "$config/renewal/$name.conf" &&
-      ! -L "$config/renewal/$name.conf" ]] || return 65
-    if ! rm -f -- "$config/renewal/$name.conf" ||
-      ! rm -rf -- "$config/live/$name" "$config/archive/$name"; then
-      printf '%s\n' 'certbotbot: scoped orphan deletion failed' >&2
-      return 74
-    fi
+        ! certbotbot_dns_valid "$name"; then
+        return 65
+      fi
+      certbotbot_state_lineage_one "$config" "$name" || {
+        printf '%s\n' 'certbotbot: unsafe orphan deletion target' >&2
+        return 65
+      }
+      [[ -d "$config/live/$name" && ! -L "$config/live/$name" &&
+        -O "$config/live/$name" &&
+        -d "$config/archive/$name" && ! -L "$config/archive/$name" &&
+        -O "$config/archive/$name" &&
+        -f "$config/renewal/$name.conf" &&
+        ! -L "$config/renewal/$name.conf" ]] || return 65
+      if ! rm -f -- "$config/renewal/$name.conf" ||
+        ! rm -rf -- "$config/live/$name" "$config/archive/$name"; then
+        printf '%s\n' 'certbotbot: scoped orphan deletion failed' >&2
+        return 74
+      fi
       total=$((total + 1))
     done
   fi
