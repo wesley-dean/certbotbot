@@ -81,6 +81,10 @@ certbotbot_extra_args_resolve() {
   local -i i=0
   local -n output="CERTBOTBOT_${kind}_ARGS"
   output=()
+  if [[ "$kind" == CERTBOT ]]; then
+    CERTBOTBOT_CERTBOT_GLOBAL_ARGS=()
+    CERTBOTBOT_CERTBOT_CHALLENGE_ARGS=()
+  fi
   [[ -n "$json" && ${#json} -le 4096 ]] ||
     { certbotbot_error 'invalid extra provider arguments'; return 64; }
   # An empty collection is always representable without an optional decoder.
@@ -109,10 +113,6 @@ certbotbot_extra_args_resolve() {
         { certbotbot_error 'invalid provider argument token'; return 64; }
       output+=("$value")
     done <<< "$encoded"
-  fi
-  if [[ "$kind" == CERTBOT ]]; then
-    CERTBOTBOT_CERTBOT_GLOBAL_ARGS=()
-    CERTBOTBOT_CERTBOT_CHALLENGE_ARGS=()
   fi
   while (( i < ${#output[@]} )); do
     token="${output[i]}"
