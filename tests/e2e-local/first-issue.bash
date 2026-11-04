@@ -405,9 +405,26 @@ NOOP_PRODUCER_REFUSALS
     return 74
   fi
   error 'noop-checkpoint=producer-receipt'
-  grep -Fq 'certbotbot: checked ' "$workspace/noop.log" &&
-    grep -Fq '; published=false' "$workspace/noop.log" ||
-    { error 'selected no-op unexpectedly changed or published state'; return 65; }
+  if ! grep -Fq 'certbotbot: checked ' "$workspace/noop.log" ||
+    ! grep -Fq '; published=false' "$workspace/noop.log"; then
+    # No producer line or dynamic field is echoed; report only literal
+    # status and publication categories known to the public contract.
+    local receipt_status=other receipt_publish=absent
+    if grep -Fq 'certbotbot: checked ' "$workspace/noop.log"; then
+      receipt_status=checked
+    elif grep -Fq 'certbotbot: issued ' "$workspace/noop.log"; then
+      receipt_status=issued
+    fi
+    if grep -Fq '; published=false' "$workspace/noop.log"; then
+      receipt_publish=false
+    elif grep -Fq '; published=true' "$workspace/noop.log"; then
+      receipt_publish=true
+    fi
+    error "noop-receipt-status=$receipt_status"
+    error "noop-receipt-publication=$receipt_publish"
+    error 'selected no-op unexpectedly changed or published state'
+    return 65
+  fi
 
   error 'noop-checkpoint=metadata-after'
   object_metadata "$workspace/after.meta" || return $?
