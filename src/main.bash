@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 ## @file src/main.bash
-## @brief Executes the selected-certificate MVP lifecycle from public CLI.
+## @brief Executes the selected or explicitly opted-in bulk certificate lifecycle.
 ## @details
-## This is the only public lifecycle dispatcher.  It resolves an identity once,
-## reads one mandatory seeded S3 object, restores every stored lineage into an
-## ephemeral private workspace, issues or renews only the selected lineage, and
-## verifies certificate material before the existing single-key publisher runs.
+## The public dispatcher selects either the ordinary selected-only lifecycle
+## or ADR-058 opt-in bulk maintenance. Both read the mandatory seeded S3 object,
+## restore and validate every lineage in an ephemeral private workspace, and
+## verify certificate material before the existing one-key publisher runs.
+## A bulk run uses exact original archived identities and never renews a
+## newly issued selected certificate twice.
 ## All remote write authority is conditioned on successful local verification.
 ## Each invocation owns and destroys only its freshly allocated workspace.
 ##
@@ -319,7 +321,7 @@ certbotbot_lifecycle_execute() {
 }
 
 ## @fn certbotbot_main()
-## @brief Validates the public invocation and dispatches the MVP lifecycle.
+## @brief Validates CLI inputs and dispatches selected or bulk producer mode.
 ## @param ... Public command arguments.
 ## @par STDIN
 ## Nothing is read from STDIN.
@@ -327,7 +329,7 @@ certbotbot_lifecycle_execute() {
 ## Help, version or completed operation status.
 ## @par STDERR
 ## Non-sensitive diagnostics for invalid or unsuccessful operations.
-## @returns Public command status for help, version or one selected certificate.
+## @returns Public command status for help, version, selected or bulk work.
 ## @retval 0 Successful operation or explicitly requested help/version.
 ## @retval 64 Invalid invocation.
 ## @note Nonzero lifecycle stage statuses propagate unchanged.
