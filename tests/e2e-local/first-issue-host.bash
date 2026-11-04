@@ -358,8 +358,23 @@ run_lifecycle() (
           noop_producer="$code"
         fi
       done
+      local receipt_status=not-reported receipt_publish=not-reported value
+      for value in checked issued other; do
+        if grep -Fqx -- "local-first-issue: noop-receipt-status=$value" \
+          "$tmp/noop-$flavor.log"; then
+          receipt_status="$value"
+        fi
+      done
+      for value in true false absent; do
+        if grep -Fqx -- "local-first-issue: noop-receipt-publication=$value" \
+          "$tmp/noop-$flavor.log"; then
+          receipt_publish="$value"
+        fi
+      done
       problem "noop-checkpoint=$noop_checkpoint"
       problem "noop-producer=$noop_producer"
+      problem "noop-receipt-status=$receipt_status"
+      problem "noop-receipt-publication=$receipt_publish"
       problem 'fresh-runner selected renewal/no-op failed'
       return 74
     fi
