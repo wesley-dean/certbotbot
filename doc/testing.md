@@ -313,7 +313,7 @@ paths and their shared configuration parser: JSON-array decoding,
 whole-collection CLI precedence, empty override, repeated approved
 flags, lossless space/quote handling for permitted user-agent comments,
 provider-specific allowlists, suppressed invalid input,
-test-only AWS command forwarding, skipped malformed `.env` under
+mocked AWS, GnuPG and Certbot argument forwarding, skipped malformed `.env` under
 `--no-env`, explicit `--config` conflict, disabled environment-only
 GPG secret, and unaffected external AWS authentication environment.
 
