@@ -1,11 +1,10 @@
 # RENEW_ALL: Archived-Lineage Bulk Renewal Design Contract
 
-**Design status:** Task #98, pending PR review and merge.
-**Implementation status:** Not implemented. The current producer rejects
-`--renew-all`, and `RENEW_ALL` is not a recognized application config key.
-This document specifies the future interface governed by
-[ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md), not a command
-that is available in the current release.
+**Design status:** Accepted ADR-058 under merged PR #283 (task #98).
+**Implementation status:** Task #99 implements the opt-in path; its branch
+must pass review and tests before a release can claim this behavior.
+The broader independent clean-runner acceptance matrix remains task #100.
+See [ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md).
 
 ## Intent and ordinary compatibility
 
