@@ -268,11 +268,21 @@ publication. See [failure and recovery details](doc/how-it-works.md).
 ## Common configuration
 
 Settings resolve **CLI > explicitly exported environment >
-literal selected `.env` > built-in defaults**. Without an
+literal selected `.env` > built-in defaults**. The presence-only
+`--no-env` flag disables producer application environment and file
+configuration while preserving explicit CLI settings and external AWS
+credential mechanisms. It also suppresses environment-only GPG secrets;
+use it only when the selected archive and encryption mode are compatible. Without an
 explicit `--config FILE`, the optional `./.env` file is read
 as strict **data**, never sourced as shell code. Unknown or
 duplicate entries and shell expansion are rejected. The
-[full configuration reference](doc/configuration-reference.md)
+Optional `--aws-args`, `--gpg-args` and `--certbot-args` flags accept
+bounded JSON argument arrays; the same collections can come from the
+exported `AWS_EXTRA_ARGS`, `GPG_EXTRA_ARGS` and `CERTBOT_EXTRA_ARGS`
+variables. They are deliberately restricted to the documented safe
+upstream options and require `jq` and `base64` only when configured.
+See [ADR-056](doc/adr/ADR-056-extra-provider-argv-and-no-env.md).
+The [full configuration reference](doc/configuration-reference.md)
 is authoritative for values, edge cases, precedence and all
 public flags.
 
