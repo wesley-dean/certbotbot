@@ -48,7 +48,7 @@ class Route53StubTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.server = bridge.ScopedServer(("127.0.0.1", 0))
+        cls.server = bridge.ScopedServer(("127.0.0.1", 0), (bridge.ZONE_ID, bridge.ZONE))
         cls.worker = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.worker.start()
 
@@ -86,7 +86,7 @@ class Route53StubTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_one_synthetic_zone_and_no_name_lookup(self) -> None:
+    def test_one_synthetic_zone_and_bounded_name_lookup(self) -> None:
         status, root = self.request("GET", "/2013-04-01/hostedzone")
         self.assertEqual(status, 200)
         self.assertEqual(
@@ -95,11 +95,47 @@ class Route53StubTests(unittest.TestCase):
         )
         self.assertEqual(root.findtext(f".//{bridge.tag('Name')}"), bridge.ZONE)
 
-        # Name lookup is a separately requested enhancement (#252).
-        status, _ = self.request(
-            "GET", "/2013-04-01/hostedzonesbyname?dnsname=e2e.test."
+        status, by_name = self.request(
+            "GET", "/2013-04-01/hostedzonesbyname?dnsname=E2E.TEST"
         )
-        self.assertNotEqual(status, 200)
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            by_name.findtext(f".//{bridge.tag('Id')}"),
+            f"/hostedzone/{bridge.ZONE_ID}",
+        )
+        for name in ("foreign.test.", "e2e.test..", ""):
+            with self.subTest(name=name):
+                status, _ = self.request(
+                    "GET", "/2013-04-01/hostedzonesbyname?dnsname=" + name
+                )
+                self.assertNotEqual(status, 200)
+
+    def test_hosted_zone_selection_precedence_and_refusal(self) -> None:
+        id_key = "LOCAL_E2E_ROUTE53_HOSTED_ZONE_ID"
+        name_key = "LOCAL_E2E_ROUTE53_HOSTED_ZONE_NAME"
+        accepted = [
+            {id_key: bridge.ZONE_ID},
+            {name_key: "E2E.TEST"},
+            {name_key: "e2e.test."},
+            {id_key: bridge.ZONE_ID, name_key: "foreign.test."},
+        ]
+        for selection in accepted:
+            with self.subTest(selection=selection):
+                self.assertEqual(bridge.select_zone(selection),
+                                 (bridge.ZONE_ID, bridge.ZONE))
+        rejected = [
+            {}, {id_key: ""}, {name_key: ""},
+            {id_key: "ZOTHER123456"},
+            {id_key: "ZOTHER123456", name_key: "e2e.test."},
+            {name_key: "foreign.test."},
+            {name_key: "e2e.test.."},
+            {name_key: "-e2e.test."},
+            {id_key: bridge.ZONE_ID, name_key: ""},
+        ]
+        for selection in rejected:
+            with self.subTest(selection=selection):
+                with self.assertRaises(ValueError):
+                    bridge.select_zone(selection)
 
     def test_denied_credentials_and_unrecognized_apis(self) -> None:
         attempts = [
