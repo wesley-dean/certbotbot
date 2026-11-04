@@ -176,8 +176,12 @@ pebble_order_count() {
 ## @brief Issues once, verifies, then proves three isolated non-due no-ops.
 ## @param image Already built and locally cached checked runner tag.
 run_lifecycle() (
-  local image="$1" tmp='' cert_ca='' cid='' log='' digest='' result=''
+  local image="$1" mode="${2-full}" tmp='' cert_ca='' cid='' log='' digest='' result=''
   local flavor count_before count_after renewed_digest='' renewed_cert='' old_cert=''
+  case "$mode" in full|debug-second-order) ;; *)
+    problem 'invalid local lifecycle mode'
+    return 64 ;;
+  esac
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'runner image missing; use build before starting sealed services'; return 69; }
   bash "$HARNESS" status >/dev/null ||
@@ -375,6 +379,7 @@ run_lifecycle() (
   # A no-op succeeds only when this count remains unchanged for each exact
   # producer flavor, proving no new order was added to Pebble's DB.
   count_before="$(pebble_order_count)" || return $?
+  if [[ "$mode" == full ]]; then
   for flavor in development ordinary minified; do
     # Flavor is drawn exclusively from the literal fixed loop above.
     problem "lifecycle-phase=noop-$flavor"
@@ -452,6 +457,7 @@ run_lifecycle() (
       { problem 'new Pebble ACME order appeared during supposed no-op'; return 65; }
     printf 'local-first-issue-host: restored_noop=%s; no_new_order=true; no_republish=true\n' "$flavor"
   done
+  fi
 
   # The first runner is long gone; this separate runner restores the current
   # S3 state, requests exactly one selected renewal using a one-shot private
@@ -488,6 +494,12 @@ run_lifecycle() (
     "$tmp/renew-verify.log" ||
     { problem 'independent DER identity did not match renewed certificate'; return 65; }
   printf 'local-first-issue-host: second_real_pebble_order=true; renewed_archive_sha256=%s; renewed_cert_der_sha256=%s\n' "$renewed_digest" "$renewed_cert"
+
+  if [[ "$mode" == debug-second-order ]]; then
+    problem 'partial-development=true; target=second-order; full-acceptance=false'
+    printf '%s\n' 'local-first-issue-host: focused_second_order=passed; full_acceptance=false'
+    return 0
+  fi
 
   # Nothing in the renewed archive may silently force later public renewals.
   # The same normal, unchanged no-op behavior must hold in another fresh
@@ -704,8 +716,8 @@ main() {
   (( $# == 1 )) ||
     { problem 'usage: first-issue-host.bash build|run'; return 64; }
   case "$action" in
-    build|probe|run|run-faults) ;;
-    *) problem 'usage: first-issue-host.bash build|probe|run|run-faults'; return 64 ;;
+    build|probe|run|run-debug-second-order|run-faults) ;;
+    *) problem 'usage: first-issue-host.bash build|probe|run|run-debug-second-order|run-faults'; return 64 ;;
   esac
   reject_cloud_env || return $?
   require_engine || return $?
@@ -719,7 +731,8 @@ main() {
   trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-stabilize certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable certbotbot-local-e2e-isolation >/dev/null 2>&1 || true' EXIT
   case "$action" in
     probe) run_isolation_probe "$image" ;;
-    run) run_lifecycle "$image" ;;
+    run) run_lifecycle "$image" full ;;
+    run-debug-second-order) run_lifecycle "$image" debug-second-order ;;
     run-faults) run_faults "$image" ;;
   esac
 }

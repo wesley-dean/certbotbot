@@ -360,3 +360,23 @@ navigation and rendered reference output rather than relying on ignore rules as
 an undocumented convention.
 
 See ADR-010 and ADR-017 for the generated-documentation ownership model.
+
+
+### Focused local protocol debugging (issue #275)
+
+The required push-triggered `Local protocol E2E` workflow remains full and
+unmodified: its default, argument-free runner proves all positive stages,
+three artifact-flavor no-ops, seven negative cases, isolation, and cleanup.
+For iterative debugging of the genuine second Pebble ACME order, invoke
+`bash tests/e2e-local/ci-local-e2e.bash --debug-second-order` on a native
+Linux Docker host (or through the separate manual debug workflow). This
+**partial development** mode retains real initial registration/issuance,
+independent first readback, native post-issuance stabilization with independent
+readback, the second real ACME order and renewed certificate validation,
+both active no-egress probes, and complete container teardown. It skips the
+three unrelated stable-flavor no-ops, the final post-renewal no-op, and seven
+unrelated negatives. A partial result never prints the required
+`full_protocol_gate=passed` receipt and must never substitute for final-head
+full acceptance. Per-stage elapsed seconds are bounded nonsecret diagnostics;
+provider logs and account material stay private. This debug mode is not a
+performance guarantee; the full CI gate still runs on every candidate push.

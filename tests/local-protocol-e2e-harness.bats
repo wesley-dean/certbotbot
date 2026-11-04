@@ -587,6 +587,20 @@ setup() {
   bash -n "$ci"
 }
 
+@test "focused second-order mode remains partial and full CI stays mandatory" {
+  run bash "$CI_LOCAL_RUNNER" --not-a-real-mode
+  [ "$status" -eq 64 ]
+  grep -Fq 'run-debug-second-order) run_lifecycle "$image" debug-second-order' "$FIRST_HOST"
+  grep -Fq 'full_acceptance=false' "$FIRST_HOST"
+  grep -Fq 'focused_second_order=passed; full_acceptance=false' "$CI_LOCAL_RUNNER"
+  grep -Fq 'full_protocol_gate=not-run' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage seven-negatives run_negative' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage pre-isolation probe_no_egress before' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage post-isolation probe_no_egress after' "$CI_LOCAL_RUNNER"
+  bash -n "$CI_LOCAL_RUNNER"
+  bash -n "$FIRST_HOST"
+}
+
 @test "local E2E evidence stays bounded and its real-provider nonclaim is explicit" {
   run grep -F 'no_egress_probe=%s; challenge_validation=bypassed' "$CI_LOCAL_RUNNER"
   [ "$status" -eq 0 ]

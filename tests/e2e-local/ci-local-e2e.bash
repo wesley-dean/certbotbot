@@ -197,9 +197,10 @@ probe_no_egress() {
 ## @brief Proves first issue, three fresh no-ops, second order and republish.
 ## @retval 74 Real ACME and SeaweedFS acceptance could not be demonstrated.
 run_positive() {
-  local logfile="$WORK/positive.log" flavor
+  local logfile="$WORK/positive.log" flavor action=run
+  [[ "${E2E_MODE-full}" == debug-second-order ]] && action=run-debug-second-order
   if ! timeout --signal=TERM --kill-after=15s 2100s \
-    bash "$HOST" run >"$logfile" 2>&1; then
+    bash "$HOST" "$action" >"$logfile" 2>&1; then
     # Only literal host-owned bounded failure categories may reach CI output.
     # Full private runner logs and provider responses stay in scratch.
     local reason='unclassified' category
@@ -337,6 +338,12 @@ run_positive() {
   fi
   require_receipt "$logfile" \
     'local-first-issue-host: native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true' || return $?
+  if [[ "${E2E_MODE-full}" == debug-second-order ]]; then
+    require_receipt "$logfile" \
+      'local-first-issue-host: focused_second_order=passed; full_acceptance=false' || return $?
+    printf '%s\n' 'local-e2e-ci: partial-development=true; target=second-order; full_acceptance=false'
+    return 0
+  fi
   for flavor in development ordinary minified; do
     require_receipt "$logfile" \
       "local-first-issue-host: restored_noop=$flavor; no_new_order=true; no_republish=true" ||
@@ -408,6 +415,19 @@ cleanup() {
   exit "$original"
 }
 
+## @fn timed_stage()
+## @brief Prints bounded duration for a fixed trusted test phase even on failure.
+## @param label Fixed internal phase identifier (never provider output).
+## @param ... Fixed local function plus internal arguments.
+timed_stage() {
+  local label="$1" start=$SECONDS status=0
+  shift
+  "$@" || status=$?
+  printf 'local-e2e-ci: timing_phase=%s; elapsed_seconds=%d; status=%s\n' \
+    "$label" "$((SECONDS-start))" "$([[ $status -eq 0 ]] && printf pass || printf fail)"
+  return "$status"
+}
+
 ## @fn main()
 ## @brief Runs mandatory prefetch, no-egress, positive, negative and cleanup.
 ## @retval 0 Every genuine protocol acceptance stage and security probe passed.
@@ -416,8 +436,13 @@ cleanup() {
 ## @retval 69 Required native Linux Docker prerequisites are absent.
 ## @retval 74 Real protocol or fixture operations could not be verified.
 main() {
-  (($# == 0)) ||
-    { error 'usage: ci-local-e2e.bash (no arguments)'; return 64; }
+  E2E_MODE=full
+  if (($# == 1)) && [[ "$1" == --debug-second-order ]]; then
+    E2E_MODE=debug-second-order
+  elif (($# != 0)); then
+    error 'usage: ci-local-e2e.bash [--debug-second-order]'
+    return 64
+  fi
   reject_credentials || return $?
   require_host || return $?
   WORK="$(mktemp -d "${TMPDIR:-/tmp}/certbotbot-local-ci.XXXXXXXX")" ||
@@ -426,12 +451,18 @@ main() {
   trap 'exit 129' HUP
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  prepare || return $?
-  start_private_project || return $?
-  probe_no_egress before || return $?
-  run_positive || return $?
-  run_negative || return $?
-  probe_no_egress after || return $?
+  timed_stage prepare prepare || return $?
+  timed_stage private-startup start_private_project || return $?
+  timed_stage pre-isolation probe_no_egress before || return $?
+  timed_stage positive-lifecycle run_positive || return $?
+  if [[ "$E2E_MODE" == full ]]; then
+    timed_stage seven-negatives run_negative || return $?
+  fi
+  timed_stage post-isolation probe_no_egress after || return $?
+  if [[ "$E2E_MODE" == debug-second-order ]]; then
+    printf '%s\n' 'local-e2e-ci: partial-development=passed; full_protocol_gate=not-run'
+    return 0
+  fi
   printf '%s\n' 'local-e2e-ci: full_protocol_gate=passed; mode=challenge-validation-bypassed; aws_route53_dns01_live_ca=not_tested'
 }
 
