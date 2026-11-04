@@ -36,11 +36,11 @@ declare -a CERTBOTBOT_ORPHANS_TO_REMOVE=()
 ## @retval 64 Missing, invalid or contradictory destructive authority.
 certbotbot_orphans_selected_validate() {
   local selected="$1" name
-  [[ -n "$selected" && "$selected" != *'*'* ]] &&
-    certbotbot_dns_valid "$selected" || {
+  if [[ -z "$selected" || "$selected" == *'*'* ]] ||
+    ! certbotbot_dns_valid "$selected"; then
     certbotbot_error 'orphan removal requires a selected certificate'
     return 64
-  }
+  fi
   (( ${#CERTBOTBOT_DESIRED_NAMES[@]} > 0 )) || {
     certbotbot_error 'orphan removal requires an explicit desired set'
     return 64
@@ -267,8 +267,10 @@ certbotbot_orphans_apply() {
     }
   done
   for name in "${CERTBOTBOT_ORPHANS_TO_REMOVE[@]}"; do
-    [[ "$name" != "$selected" && "$name" != *'*'* ]] &&
-      certbotbot_dns_valid "$name" || return 65
+    if [[ "$name" == "$selected" || "$name" == *'*'* ]] ||
+      ! certbotbot_dns_valid "$name"; then
+      return 65
+    fi
     certbotbot_state_lineage_one "$config" "$name" || {
       printf '%s\n' 'certbotbot: unsafe orphan deletion target' >&2
       return 65
