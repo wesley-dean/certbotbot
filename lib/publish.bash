@@ -166,7 +166,7 @@ certbotbot_s3_publish() {
       "$CERTBOTBOT_BACKUP_KEY" || return $?
   fi
 
-  if ! aws --no-cli-pager s3api put-object \
+  if ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api put-object \
     --bucket "$bucket" --key "$key" --body "$candidate" \
     --checksum-algorithm SHA256 --content-type "$content_type" \
     --output json >/dev/null 2>&1; then
