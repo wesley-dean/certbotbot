@@ -498,6 +498,35 @@ allowlisted test double. Genuine Let's Encrypt staging, AWS Route53 DNS
 propagation and Amazon S3 IAM/interoperability remain the separate
 milestone #4 manual staging acceptance, under ADR-043.
 
+## Negative timing evidence and parallelism boundary (ADR-057)
+
+The seven required negative cases continue to run serially against the
+existing one-service, one-authoritative-object fixture. Each completed
+case emits one bounded elapsed-seconds receipt **after** the expected
+refusal and an independent SeaweedFS readback. The CI host accepts exactly
+one properly shaped receipt per case and prints only a fixed scenario name,
+the integer duration, and `status=pass`. Missing, duplicate, malformed or
+oversized receipts fail closed. In partial debug mode, exactly the selected
+case's duration is reported, without a full acceptance claim.
+
+Historical successful [run 41875100822](https://github.com/wesley-dean/certbotbot/actions/runs/41875100822)
+measured 128 seconds across the seven negatives; its positive lifecycle
+alone cost 171 seconds and private startup 24 seconds. Repeating both serially after the main positive lifecycle to
+seed independent Compose workers would exceed the entire serial negative
+stage. Concurrent preparation might overlap but has not been benchmarked.
+This *estimate* does not prove all forms of concurrency unprofitable;
+it establishes that the naive full-fixture-per-worker approach cannot
+justify itself against this run. Running the existing seven cases
+concurrently against one shared Pebble/SeaweedFS project is unsafe,
+especially while the `acme-unavailable` test pauses the shared CA.
+
+The [benchmark report](e2e-negative-parallelism-benchmark.md) separates
+real CI timings from estimates. A later opt-in concurrency mode would
+need a new approved task, isolated project names/networks/Pebble/SeaweedFS
+and object state, cancellation recovery, per-case receipts and a
+measured *full-suite* improvement; mandatory serial fallback and
+push-triggered full coverage must be preserved. See ADR-057.
+
 ## Native Post-Issuance Metadata Stabilization (ADR-054)
 
 The real challenge-validation-bypassed Pebble/Certbot [run

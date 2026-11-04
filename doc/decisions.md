@@ -614,6 +614,21 @@ satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
 
+### ADR-057: Measure and Preserve Safe Serial Negative E2E Acceptance
+
+The isolated Pebble/SeaweedFS negative suite remains serial until a measured,
+fully independent worker architecture proves faster end-to-end execution.
+Historical CI logs place all seven negative scenarios at roughly 128 seconds in
+one successful run; preparing additional full fixtures serially after the positive lifecycle
+would exceed even a theoretical perfect-parallel negative-stage gain;
+overlapping fixture preparation has not been measured.
+Each verified negative now emits one bounded, nonsecret per-case timing receipt,
+and malformed, missing or duplicate timing evidence fails the full acceptance
+gate. The original seven faults, independent SeaweedFS readbacks, shared Pebble
+outage cleanup, before/after no-egress and final full acceptance remain mandatory.
+
+See [ADR-057](adr/ADR-057-measured-serial-negative-e2e.md).
+
 ### ADR-056: Bounded Provider Arguments and No-Environment Mode
 
 The producer supports independent, bounded JSON argument vectors for AWS CLI,

@@ -27,6 +27,10 @@ readonly NETWORK=certbotbot-local-e2e_isolated
 WORK=''
 PROJECT_STARTED=false
 
+# Host-side evidence parser only; it is never included in the private runner.
+# shellcheck source=tests/e2e-local/negative-timing.bash
+source "$E2E/negative-timing.bash"
+
 ## @fn error()
 ## @brief Prints a fixed nonsecret failure classification.
 ## @param message Nonsecret diagnostic string.
@@ -379,6 +383,10 @@ run_positive() {
 
 ## @fn run_negative()
 ## @brief Proves all seven external-provider faults preserve remote state.
+## @details
+## Timings are reported only from bounded fixed-name receipts after each
+## independently verified fault. They supplement, and never replace, the exact
+## unchanged-object receipts and mandatory whole-suite completion proof.
 ## @retval 74 A required failure or independent S3 readback was not proven.
 run_negative() {
   local logfile="$WORK/negative.log" scenario
@@ -393,6 +401,9 @@ run_negative() {
     require_receipt "$logfile" \
       "local-first-issue-host: negative=$scenario; remote_unchanged=true" ||
       return $?
+    # Every genuine fault must include its own bounded serial benchmark.
+    # An absent, duplicate or malformed timing receipt fails the full gate.
+    negative_timing_report "$logfile" "$scenario" || return $?
   done
   require_receipt "$logfile" \
     'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed' ||
@@ -413,6 +424,7 @@ run_focused_negative() {
   fi
   require_receipt "$logfile" \
     "local-first-issue-host: negative=$scenario; remote_unchanged=true" || return $?
+  negative_timing_report "$logfile" "$scenario" || return $?
   require_receipt "$logfile" \
     "local-first-issue-host: focused_negative=$scenario; full_acceptance=false" || return $?
   printf 'local-e2e-ci: focused_negative=%s; full_acceptance=false\n' "$scenario"

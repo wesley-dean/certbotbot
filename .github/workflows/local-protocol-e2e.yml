@@ -37,6 +37,7 @@ jobs:
           docker compose version
           for source in \
             tests/e2e-local/ci-local-e2e.bash \
+            tests/e2e-local/negative-timing.bash \
             tests/e2e-local/run.bash \
             tests/e2e-local/first-issue-host.bash \
             tests/e2e-local/first-issue.bash \
