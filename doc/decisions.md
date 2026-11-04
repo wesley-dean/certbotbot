@@ -614,6 +614,12 @@ satisfied by branch-push test results.
 
 See [ADR-048](adr/ADR-048-single-event-ci-workflow-triggers.md).
 
+### ADR-054: Verify Native Metadata Stabilization Before Strict Local No-Ops
+
+A real isolated Certbot/Pebble run proved that the first ordinary non-due check after initial issuance updates durable selected renewal metadata and republishes the current SeaweedFS archive without creating another ACME order.  A separate repeated invocation against that updated archive returned `checked; published=false`, with no further object or metadata change.  The local E2E harness therefore treats one independently verified metadata-only publication as explicit post-issuance stabilization, *before* its three required no-rewrite no-op checks.  ADR-025's durable-state publication requirement remains unchanged; only the timing of ADR-047's no-rewrite local proof is refined, and certificate/account identity, order counts, subsequent strict no-ops, genuine second renewal, negatives, and isolation remain mandatory.
+
+See [ADR-054](adr/ADR-054-post-issuance-metadata-stabilization.md).
+
 ### ADR-053: Admit Exact OpenSSL Critical DNS SAN Extension Header
 
 A native isolated Certbot/Pebble run proved that the issued leaf's SAN extension is marked `critical` in OpenSSL output, a format rejected before the existing DNS-name checks. The selected certificate reader now permits the precise `X509v3 Subject Alternative Name: critical` header alongside its two existing noncritical spellings, retaining one-line DNS-only parsing, distinctness, and exact requested SAN matching. Expiration, chain parsing, fullchain/leaf identity, and private-key checks remain unchanged; acceptance remains contingent on full local E2E verification.

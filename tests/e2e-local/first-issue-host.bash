@@ -176,8 +176,12 @@ pebble_order_count() {
 ## @brief Issues once, verifies, then proves three isolated non-due no-ops.
 ## @param image Already built and locally cached checked runner tag.
 run_lifecycle() (
-  local image="$1" tmp='' cert_ca='' cid='' log='' digest='' result=''
+  local image="$1" mode="${2-full}" tmp='' cert_ca='' cid='' log='' digest='' result=''
   local flavor count_before count_after renewed_digest='' renewed_cert='' old_cert=''
+  case "$mode" in full|debug-second-order|debug-seed) ;; *)
+    problem 'invalid local lifecycle mode'
+    return 64 ;;
+  esac
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'runner image missing; use build before starting sealed services'; return 69; }
   bash "$HARNESS" status >/dev/null ||
@@ -330,10 +334,58 @@ run_lifecycle() (
   printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
   sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
 
+  # A newly issued real Certbot lineage may perform one legitimate,
+  # metadata-only durable update on its first ordinary check (ADR-054).
+  # Treat it as an explicit, independently verified stabilization, never
+  # as one of the three strict non-due no-op acceptance results.
+  count_before="$(pebble_order_count)" || return $?
+  problem 'lifecycle-phase=metadata-stabilization'
+  if ! run_phase "$image" "$cert_ca" stabilize "$digest" \
+    >"$tmp/stabilize.log" 2>&1; then
+    problem 'native metadata-only stabilization failed'
+    return 74
+  fi
+  local stabilized_digest='' stabilized_cert=''
+  stabilized_digest="$(sed -nE \
+    's/^local-first-issue: stabilized_archive_sha256=([0-9a-f]{64})$/\1/p' \
+    "$tmp/stabilize.log")"
+  stabilized_cert="$(sed -nE \
+    's/^local-first-issue: stabilized_cert_der_sha256=([0-9a-f]{64})$/\1/p' \
+    "$tmp/stabilize.log")"
+  [[ "$stabilized_digest" =~ ^[0-9a-f]{64}$ &&
+    "$stabilized_digest" != "$digest" &&
+    "$stabilized_cert" == "$old_cert" ]] ||
+    { problem 'native stabilization did not retain the issued certificate'; return 65; }
+  count_after="$(pebble_order_count)" || return $?
+  [[ "$count_after" == "$count_before" ]] ||
+    { problem 'metadata stabilization unexpectedly added an ACME order'; return 65; }
+
+  # Independent validator starts with no shared private files, and proves
+  # the new S3 object contains the identical real issued leaf certificate.
+  problem 'lifecycle-phase=stabilized-readback'
+  if ! run_phase "$image" "$cert_ca" verify "$stabilized_digest" \
+    >"$tmp/stabilized-verify.log" 2>&1; then
+    problem 'independent native stabilization readback failed'
+    return 74
+  fi
+  grep -Fqx "local-first-issue: independently_verified_cert_der_sha256=$old_cert" \
+    "$tmp/stabilized-verify.log" ||
+    { problem 'stabilized object changed initial certificate identity'; return 65; }
+  digest="$stabilized_digest"
+  printf '%s\n' \
+    'local-first-issue-host: native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true'
+
+  if [[ "$mode" == debug-seed ]]; then
+    problem 'partial-development=true; target=negative-fixture; full-acceptance=false'
+    printf '%s\n' 'local-first-issue-host: focused_seed=passed; full_acceptance=false'
+    return 0
+  fi
+
   # The pinned Pebble server records a nonsecret counter for every new order.
   # A no-op succeeds only when this count remains unchanged for each exact
   # producer flavor, proving no new order was added to Pebble's DB.
   count_before="$(pebble_order_count)" || return $?
+  if [[ "$mode" == full ]]; then
   for flavor in development ordinary minified; do
     # Flavor is drawn exclusively from the literal fixed loop above.
     problem "lifecycle-phase=noop-$flavor"
@@ -411,14 +463,29 @@ run_lifecycle() (
       { problem 'new Pebble ACME order appeared during supposed no-op'; return 65; }
     printf 'local-first-issue-host: restored_noop=%s; no_new_order=true; no_republish=true\n' "$flavor"
   done
+  fi
 
   # The first runner is long gone; this separate runner restores the current
   # S3 state, requests exactly one selected renewal using a one-shot private
   # force marker, and publishes through the unchanged public producer.
   count_before="$(pebble_order_count)" || return $?
   problem 'lifecycle-phase=second-order'
-  if ! run_phase "$image" "$cert_ca" renew "$digest" \
-    >"$tmp/renew.log" 2>&1; then
+  local renewal_start=$SECONDS renewal_status=0 renewal_reason=unclassified
+  run_phase "$image" "$cert_ca" renew "$digest" \
+    >"$tmp/renew.log" 2>&1 || renewal_status=$?
+  problem "timing-phase=second-order; elapsed-seconds=$((SECONDS-renewal_start))"
+  if (( renewal_status != 0 )); then
+    case "$renewal_status" in
+      124|137) renewal_reason=timeout ;;
+      125) renewal_reason=docker-startup ;;
+      126|127) renewal_reason=runner-executable ;;
+    esac
+    if [[ "$renewal_reason" == unclassified ]] &&
+      grep -Fqx 'local-first-issue: selected real-Certbot renewal or publication failed' \
+        "$tmp/renew.log"; then
+      renewal_reason=producer-rejected
+    fi
+    problem "second-order-failure=$renewal_reason"
     problem 'isolated second real Certbot renewal or S3 republication failed'
     return 74
   fi
@@ -448,6 +515,12 @@ run_lifecycle() (
     { problem 'independent DER identity did not match renewed certificate'; return 65; }
   printf 'local-first-issue-host: second_real_pebble_order=true; renewed_archive_sha256=%s; renewed_cert_der_sha256=%s\n' "$renewed_digest" "$renewed_cert"
 
+  if [[ "$mode" == debug-second-order ]]; then
+    problem 'partial-development=true; target=second-order; full-acceptance=false'
+    printf '%s\n' 'local-first-issue-host: focused_second_order=passed; full_acceptance=false'
+    return 0
+  fi
+
   # Nothing in the renewed archive may silently force later public renewals.
   # The same normal, unchanged no-op behavior must hold in another fresh
   # runner even after the deliberate one-shot renewal completed.
@@ -476,8 +549,12 @@ run_lifecycle() (
 ## No raw Certbot/AWS/ACME logs or private state are reported.
 ## @param image Already cached runner from the verified public producer.
 run_faults() (
-  local image="$1" tmp='' cert_ca='' cid='' pebble_id='' scenario=''
+  local image="$1" selected="${2-all}" tmp='' cert_ca='' cid='' pebble_id='' scenario=''
   local digest='' observed='' stdout_file=''
+  case "$selected" in
+    all|ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable) ;;
+    *) problem 'invalid focused negative scenario'; return 64 ;;
+  esac
   docker image inspect "$image" >/dev/null 2>&1 ||
     { problem 'negative runner image missing; build before entering isolation'; return 69; }
   bash "$HARNESS" status >/dev/null ||
@@ -505,6 +582,7 @@ run_faults() (
     { problem 'baseline did not establish exact remote object digest'; return 65; }
 
   for scenario in ca-production s3-unavailable corrupt-archive acme-order-rejected route53-unavailable s3-put-reject; do
+    [[ "$selected" == all || "$selected" == "$scenario" ]] || continue
     stdout_file="$tmp/fault-$scenario.log"
     if ! run_phase "$image" "$cert_ca" fault "$scenario" "$digest" \
       >"$stdout_file" 2>&1; then
@@ -525,6 +603,7 @@ run_faults() (
     printf 'local-first-issue-host: negative=%s; remote_unchanged=true\n' "$scenario"
   done
 
+  if [[ "$selected" == all || "$selected" == acme-unavailable ]]; then
   # ACME availability is a local service outage, not an ACME order refusal.
   # Do not interfere with the pinned synthetic S3 object or the gateway PKI.
   pebble_id="$(docker compose --env-file /dev/null -f "$E2E/compose.yml" \
@@ -553,7 +632,13 @@ run_faults() (
   [[ "$observed" == "$digest" ]] ||
     { problem 'remote object changed during ACME outage'; return 65; }
   printf '%s\n' 'local-first-issue-host: negative=acme-unavailable; remote_unchanged=true'
-  printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
+  fi
+  if [[ "$selected" == all ]]; then
+    printf '%s\n' 'local-first-issue-host: all-negative-scenarios=passed; dns-validation=bypassed'
+  else
+    problem "partial-development=true; target=negative-$selected; full-acceptance=false"
+    printf 'local-first-issue-host: focused_negative=%s; full_acceptance=false\n' "$selected"
+  fi
 )
 
 ## @fn run_isolation_probe()
@@ -660,11 +745,20 @@ run_isolation_probe() (
 ## @brief Dispatches explicit dependency-fetch and sealed-test phases only.
 main() {
   local action="${1-}" image=''
-  (( $# == 1 )) ||
-    { problem 'usage: first-issue-host.bash build|run'; return 64; }
+  if [[ "$action" == run-debug-fault ]]; then
+    (( $# == 2 )) ||
+      { problem 'focused fault requires one named scenario'; return 64; }
+    case "$2" in
+      ca-production|s3-unavailable|corrupt-archive|acme-order-rejected|route53-unavailable|s3-put-reject|acme-unavailable) ;;
+      *) problem 'invalid focused negative scenario'; return 64 ;;
+    esac
+  else
+    (( $# == 1 )) ||
+      { problem 'usage: first-issue-host.bash build|probe|run|run-faults'; return 64; }
+  fi
   case "$action" in
-    build|probe|run|run-faults) ;;
-    *) problem 'usage: first-issue-host.bash build|probe|run|run-faults'; return 64 ;;
+    build|probe|run|run-debug-second-order|run-debug-seed|run-faults|run-debug-fault) ;;
+    *) problem 'usage: first-issue-host.bash build|probe|run|run-debug-second-order|run-faults'; return 64 ;;
   esac
   reject_cloud_env || return $?
   require_engine || return $?
@@ -675,11 +769,14 @@ main() {
   fi
   # No remote image pull, package installation, or source compilation here.
   # Cleanup is deliberately scoped to this project's known ephemeral runner names.
-  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable certbotbot-local-e2e-isolation >/dev/null 2>&1 || true' EXIT
+  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-stabilize certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable certbotbot-local-e2e-isolation >/dev/null 2>&1 || true' EXIT
   case "$action" in
     probe) run_isolation_probe "$image" ;;
-    run) run_lifecycle "$image" ;;
-    run-faults) run_faults "$image" ;;
+    run) run_lifecycle "$image" full ;;
+    run-debug-second-order) run_lifecycle "$image" debug-second-order ;;
+    run-debug-seed) run_lifecycle "$image" debug-seed ;;
+    run-faults) run_faults "$image" all ;;
+    run-debug-fault) run_faults "$image" "$2" ;;
   esac
 }
 

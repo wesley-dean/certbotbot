@@ -446,7 +446,7 @@ setup() {
   [ "$status" -eq 0 ]
   run bash "$CI_LOCAL_RUNNER" unexpected
   [ "$status" -eq 64 ]
-  [[ "$output" == *'usage: ci-local-e2e.bash (no arguments)'* ]]
+  [[ "$output" == *'usage: ci-local-e2e.bash [--debug-second-order|--debug-negative=NAME]'* ]]
 }
 
 @test "local protocol acceptance runs only on push or manual dispatch without credentials" {
@@ -539,6 +539,27 @@ setup() {
   bash -n "$ci"
 }
 
+@test "one-time real metadata stabilization precedes all three strict no-ops" {
+  run bash "$FIRST_ISSUE" stabilize malformed-digest
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'invalid stabilization archive digest'* ]]
+  grep -Fq 'stabilize) stabilize "$workspace" "$2"' "$FIRST_ISSUE"
+  grep -Fq 'stabilized_archive_sha256=' "$FIRST_ISSUE"
+  grep -Fq 'stabilized_cert_der_sha256=' "$FIRST_ISSUE"
+  grep -Fq 'native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true' "$FIRST_HOST"
+  grep -Fq 'lifecycle-phase=metadata-stabilization' "$FIRST_HOST"
+  grep -Fq 'lifecycle-phase=stabilized-readback' "$FIRST_HOST"
+  grep -Fq 'lifecycle_stage=metadata-stabilization' "$CI_LOCAL_RUNNER"
+  grep -Fq 'lifecycle_stage=stabilized-readback' "$CI_LOCAL_RUNNER"
+  grep -Fq "for flavor in development ordinary minified; do" "$FIRST_HOST"
+  grep -Fq 'fresh_runner_noop=$flavor' "$FIRST_HOST" || \
+    grep -Fq 'restored_noop=%s; no_new_order=true; no_republish=true' "$FIRST_HOST"
+  grep -Fq 'certbotbot-local-e2e-stabilize' "$FIRST_HOST"
+  bash -n "$FIRST_ISSUE"
+  bash -n "$FIRST_HOST"
+  bash -n "$CI_LOCAL_RUNNER"
+}
+
 @test "native no-op failure diagnostics are a closed, private-log allowlist" {
   local runner="$REPO_ROOT/tests/e2e-local/first-issue.bash"
   local host="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"
@@ -564,6 +585,30 @@ setup() {
   bash -n "$runner"
   bash -n "$host"
   bash -n "$ci"
+}
+
+@test "focused second-order mode remains partial and full CI stays mandatory" {
+  run bash "$CI_LOCAL_RUNNER" --not-a-real-mode
+  [ "$status" -eq 64 ]
+  grep -Fq 'run-debug-second-order) run_lifecycle "$image" debug-second-order' "$FIRST_HOST"
+  grep -Fq 'full_acceptance=false' "$FIRST_HOST"
+  grep -Fq 'focused_second_order=passed; full_acceptance=false' "$CI_LOCAL_RUNNER"
+  grep -Fq 'full_protocol_gate=not-run' "$CI_LOCAL_RUNNER"
+  run bash "$CI_LOCAL_RUNNER" --debug-negative=not-listed
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'unsupported focused negative scenario'* ]]
+  grep -Fq 'run-debug-seed) run_lifecycle "$image" debug-seed' "$FIRST_HOST"
+  grep -Fq 'run-debug-fault) run_faults "$image" "$2"' "$FIRST_HOST"
+  grep -Fq 'focused_negative=%s; full_acceptance=false' "$FIRST_HOST"
+  grep -Fq 'timed_stage focused-negative run_focused_negative' "$CI_LOCAL_RUNNER"
+  grep -Fq 'second-order-failure=timeout' "$FIRST_HOST" || \
+    grep -Fq 'renewal_reason=timeout' "$FIRST_HOST"
+  grep -Fq 'bounded second-order failure=' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage seven-negatives run_negative' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage pre-isolation probe_no_egress before' "$CI_LOCAL_RUNNER"
+  grep -Fq 'timed_stage post-isolation probe_no_egress after' "$CI_LOCAL_RUNNER"
+  bash -n "$CI_LOCAL_RUNNER"
+  bash -n "$FIRST_HOST"
 }
 
 @test "local E2E evidence stays bounded and its real-provider nonclaim is explicit" {

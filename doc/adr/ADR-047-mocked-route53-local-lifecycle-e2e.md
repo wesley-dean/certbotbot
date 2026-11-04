@@ -13,6 +13,16 @@ account state, real public certbotbot artifacts, real S3-compatible operations,
 fresh-runner isolation, genuine second order, or no-external-egress requirements.
 Acceptance of this ADR follows review and merge of the task #243 PR.
 
+**Supersession notice (ADR-054):** The requirement below for a fresh
+non-due check with *no S3 object rewrite* applies to the three **stable
+no-op acceptance checks after** one separately evidenced, strictly
+bounded, native post-issuance metadata-only stabilization.  The initial
+stabilization may legitimately rewrite the selected renewal configuration
+and SeaweedFS current object only while preserving the verified leaf,
+private-key correspondence, account identity, selected lineage, and Pebble
+order count.  That stabilization is never counted as one of the three
+no-rewrite no-ops.  All other ADR-047 requirements remain operative.
+
 ## Decision
 
 Milestone #16 shall verify **certbotbot's actual register, issue, publish,

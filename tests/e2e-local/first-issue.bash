@@ -341,6 +341,83 @@ object_metadata() {
     { error 'selected S3 identity parsing failed'; return 69; }
 }
 
+## @fn stabilize()
+## @brief Verifies exactly one genuine native metadata-only publication.
+## @details
+## A newly issued Certbot renewal configuration may be updated by its first
+## ordinary non-due check. The checked public producer must publish that
+## durable change as required by ADR-025. This separate, freshly isolated
+## runner proves the current object and selected renewal configuration changed
+## while the leaf DER, actual account identity and selected lineage did not.
+## The host independently checks that Pebble added zero ACME orders and
+## validates the replacement object with a separate verifier runner.
+## This is not one of the three subsequently required strict no-op checks.
+## @param workspace Owned private runner tmpfs directory.
+## @param expected SHA-256 of the independently validated issued archive.
+## @retval 0 One eligible metadata-only publication was proved.
+## @retval 64 Invalid archive identity.
+## @retval 65 Unexpected state, certificate, or publication.
+## @retval 74 Failed genuine provider or S3 operation.
+stabilize() {
+  local workspace="$1" expected="$2" before='' after=''
+  local account_before='' account_after='' cert_before='' cert_after=''
+  [[ "$expected" =~ ^[a-f0-9]{64}$ ]] ||
+    { error 'invalid stabilization archive digest'; return 64; }
+  fetch_archive "$workspace/stabilize-before.tar.gz" || return $?
+  before="$(sha256sum "$workspace/stabilize-before.tar.gz" | awk '{print $1}')" || return 74
+  [[ "$before" == "$expected" ]] ||
+    { error 'stabilization initial object identity differs'; return 65; }
+  verify_account "$workspace/stabilize-before.tar.gz" || return $?
+  verify_selected_only "$workspace/stabilize-before.tar.gz" || return $?
+  verify_certificate "$workspace/stabilize-before.tar.gz" "$workspace" || return $?
+  account_before="$(account_identity "$workspace/stabilize-before.tar.gz")" || return $?
+  cert_before="$(sha256sum "$workspace/leaf.der" | awk '{print $1}')" || return 74
+  [[ "$account_before" =~ ^[a-f0-9]{64}$ &&
+    "$cert_before" =~ ^[a-f0-9]{64}$ ]] || return 65
+  object_metadata "$workspace/stabilize-before.meta" || return $?
+
+  # Installed Certbot and the unchanged public producer perform the one
+  # ordinary check. No mock, force flag, archive rewrite or bypass is used.
+  if ! issuer development >"$workspace/stabilize.log" 2>&1; then
+    error 'native metadata stabilization producer failed'
+    return 74
+  fi
+  if ! grep -Fq 'certbotbot: checked ' "$workspace/stabilize.log" ||
+    ! grep -Fq '; published=true' "$workspace/stabilize.log"; then
+    error 'native metadata stabilization receipt missing'
+    return 65
+  fi
+
+  fetch_archive "$workspace/stabilize-after.tar.gz" || return $?
+  after="$(sha256sum "$workspace/stabilize-after.tar.gz" | awk '{print $1}')" || return 74
+  [[ "$after" =~ ^[a-f0-9]{64}$ && "$after" != "$before" ]] ||
+    { error 'metadata stabilization did not replace object bytes'; return 65; }
+  verify_account "$workspace/stabilize-after.tar.gz" || return $?
+  verify_selected_only "$workspace/stabilize-after.tar.gz" || return $?
+  verify_certificate "$workspace/stabilize-after.tar.gz" "$workspace" || return $?
+  account_after="$(account_identity "$workspace/stabilize-after.tar.gz")" || return $?
+  cert_after="$(sha256sum "$workspace/leaf.der" | awk '{print $1}')" || return 74
+  [[ "$account_after" == "$account_before" && "$cert_after" == "$cert_before" ]] ||
+    { error 'metadata stabilization changed issuer identity or leaf'; return 65; }
+  verify_no_force_persistence "$workspace/stabilize-after.tar.gz" "$workspace" ||
+    return $?
+  tar -xOzf "$workspace/stabilize-before.tar.gz" "./renewal/$NAME.conf" \
+    >"$workspace/stabilize-before.conf" 2>/dev/null ||
+    { error 'initial selected renewal metadata unavailable'; return 65; }
+  tar -xOzf "$workspace/stabilize-after.tar.gz" "./renewal/$NAME.conf" \
+    >"$workspace/stabilize-after.conf" 2>/dev/null ||
+    { error 'updated selected renewal metadata unavailable'; return 65; }
+  ! cmp -s "$workspace/stabilize-before.conf" "$workspace/stabilize-after.conf" ||
+    { error 'native metadata stabilization was not observed'; return 65; }
+  object_metadata "$workspace/stabilize-after.meta" || return $?
+  ! cmp -s "$workspace/stabilize-before.meta" "$workspace/stabilize-after.meta" ||
+    { error 'metadata stabilization did not update S3 object identity'; return 65; }
+
+  # Only the independently checked digest and DER fingerprint leave tmpfs.
+  printf 'local-first-issue: stabilized_archive_sha256=%s\n' "$after"
+  printf 'local-first-issue: stabilized_cert_der_sha256=%s\n' "$cert_after"
+}
+
 ## @fn noop()
 ## @brief Restores one exact public producer flavor and checks a non-due no-op.
 ## @details
@@ -683,6 +760,11 @@ main() {
   case "$mode" in
     bootstrap) (( $# == 1 )) || { error 'unexpected bootstrap arguments'; return 64; } ;;
     verify) (( $# == 2 )) || { error 'expected one digest'; return 64; } ;;
+    stabilize)
+      (( $# == 2 )) || { error 'expected one stabilization archive digest'; return 64; }
+      [[ "$2" =~ ^[a-f0-9]{64}$ ]] ||
+        { error 'invalid stabilization archive digest'; return 64; }
+      ;;
     noop)
       (( $# == 3 )) || { error 'expected flavor and archive digest'; return 64; }
       case "$2" in development|ordinary|minified) ;; *)
@@ -710,7 +792,7 @@ main() {
       [[ "$3" =~ ^[a-f0-9]{64}$ ]] ||
         { error 'invalid fault archive digest'; return 64; }
       ;;
-    *) error 'usage: first-issue.bash bootstrap|verify|noop|renew|isolation|baseline|fault'; return 64 ;;
+    *) error 'usage: first-issue.bash bootstrap|verify|stabilize|noop|renew|isolation|baseline|fault'; return 64 ;;
   esac
   workspace="$(mktemp -d)" ||
     { error 'private test workspace unavailable'; return 74; }
@@ -728,6 +810,7 @@ main() {
   case "$mode" in
     bootstrap) bootstrap "$workspace" ;;
     verify) verify "$workspace" "$2" ;;
+    stabilize) stabilize "$workspace" "$2" ;;
     noop) noop "$workspace" "$2" "$3" ;;
     renew) renew "$workspace" "$2" ;;
     isolation) isolation ;;
