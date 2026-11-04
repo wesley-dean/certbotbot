@@ -294,6 +294,13 @@ ISSUE_REASONS
     for detail in arguments read count identity; do
       if grep -Fqx "certbotbot: private SAN diagnostic=$detail" "$workspace/issue.log"; then
         error "san_substage=$detail"
+        local parser
+        for parser in fixture tool openssl header line count item; do
+          if grep -Fqx "certbotbot: private SAN parser=$parser" "$workspace/issue.log"; then
+            error "san_parser=$parser"
+            break
+          fi
+        done
         break
       fi
     done

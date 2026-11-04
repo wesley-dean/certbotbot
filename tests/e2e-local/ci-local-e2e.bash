@@ -257,6 +257,13 @@ run_positive() {
     for detail in arguments read count identity; do
       if grep -Fqx "local-first-issue-host: san-substage=$detail" "$logfile"; then
         error "bounded san substage=$detail"
+        local parser
+        for parser in fixture tool openssl header line count item; do
+          if grep -Fqx "local-first-issue-host: san-parser=$parser" "$logfile"; then
+            error "bounded san parser=$parser"
+            break
+          fi
+        done
         break
       fi
     done

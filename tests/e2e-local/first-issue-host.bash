@@ -309,6 +309,13 @@ run_lifecycle() (
     for detail in arguments read count identity; do
       if grep -Fqx "local-first-issue: san_substage=$detail" "$log"; then
         problem "san-substage=$detail"
+        local parser
+        for parser in fixture tool openssl header line count item; do
+          if grep -Fqx "local-first-issue: san_parser=$parser" "$log"; then
+            problem "san-parser=$parser"
+            break
+          fi
+        done
         break
       fi
     done
