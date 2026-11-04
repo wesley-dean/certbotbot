@@ -557,6 +557,7 @@ certbotbot_config_resolve() {
   fi
   # ADR-058: a domainless bulk request must be genuinely unselected.
   # Explicit empty DOMAIN never downgrades to the domainless exception.
+  # shellcheck disable=SC2034
   CERTBOTBOT_SELECTED_REQUEST=true
   if [[ -z "$CERTBOTBOT_DOMAIN" ]]; then
     if [[ -n "${cli[DOMAIN]+x}" || -n "${DOMAIN+x}" ||
@@ -574,6 +575,7 @@ certbotbot_config_resolve() {
       certbotbot_error 'bulk renewal cannot use partial selected inputs'
       return 64
     fi
+    # shellcheck disable=SC2034
     CERTBOTBOT_SELECTED_REQUEST=false
   fi
   # REMOVE_ORPHANS is not yet a supported option. Never allow an
