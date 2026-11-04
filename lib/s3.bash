@@ -94,11 +94,11 @@ certbotbot_s3_fetch() {
   error_file="$(umask 077; mktemp "$workspace/s3-error.XXXXXXXX")" ||
     { rm -f -- "$candidate"; certbotbot_s3_report 'cannot stage S3 object locally' 74; return 74; }
 
-  if ! aws --no-cli-pager s3api head-object \
+  if ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api head-object \
     --bucket "$bucket" --key "$key" --output json \
     >/dev/null 2>"$error_file"; then
     if grep -Eq '\((404|NoSuchKey)\)' "$error_file" &&
-      aws --no-cli-pager s3api head-bucket --bucket "$bucket" \
+      aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api head-bucket --bucket "$bucket" \
         --output json >/dev/null 2>"$error_file"; then
       rm -f -- "$candidate" "$error_file"
       certbotbot_s3_report 'existing S3 archive was not found' 66
@@ -109,7 +109,7 @@ certbotbot_s3_fetch() {
     return 69
   fi
 
-  if ! aws --no-cli-pager s3api get-object \
+  if ! aws --no-cli-pager "${CERTBOTBOT_AWS_ARGS[@]}" s3api get-object \
     --bucket "$bucket" --key "$key" --output json "$candidate" \
     >/dev/null 2>"$error_file"; then
     rm -f -- "$candidate" "$error_file"
