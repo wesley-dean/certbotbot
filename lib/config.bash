@@ -54,7 +54,7 @@ certbotbot_no_env_requested() {
     case "${args[i]}" in
       --) break ;;
       --no-env) return 0 ;;
-      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--email|--agree-tos|--eff-email-signup|--aws-args|--gpg-args|--certbot-args)
+      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--renew-all|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--email|--agree-tos|--eff-email-signup|--aws-args|--gpg-args|--certbot-args)
         (( i+=1 ))
         ;;
     esac
@@ -69,7 +69,7 @@ certbotbot_no_env_requested() {
 certbotbot_disable_application_environment() {
   unset ACME_ENVIRONMENT DOMAIN ADDITIONAL_SANS INCLUDE_SUBDOMAINS CERT_NAME \
     S3_BUCKET S3_KEY S3_KEY_TEMPLATE BACKUP_KEY_TEMPLATE \
-    DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL \
+    DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL RENEW_ALL REMOVE_ORPHANS \
     ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED \
     EMAIL AGREE_TOS EFF_EMAIL_SIGNUP GPG_SYMMETRIC_KEY \
     AWS_EXTRA_ARGS GPG_EXTRA_ARGS CERTBOT_EXTRA_ARGS
@@ -257,7 +257,7 @@ certbotbot_read_env_file() {
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
     case "$key" in
-      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|BACKUP_KEY_TEMPLATE|DATED_BACKUP_ENABLED|BACKUP_RETENTION_COUNT|UPLOAD_NO_RENEWAL|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED|EMAIL|AGREE_TOS|EFF_EMAIL_SIGNUP|ACME_ENVIRONMENT) ;;
+      DOMAIN|ADDITIONAL_SANS|INCLUDE_SUBDOMAINS|CERT_NAME|S3_BUCKET|S3_KEY|S3_KEY_TEMPLATE|BACKUP_KEY_TEMPLATE|DATED_BACKUP_ENABLED|BACKUP_RETENTION_COUNT|UPLOAD_NO_RENEWAL|RENEW_ALL|ARCHIVE_ENCRYPTION|ARCHIVE_MIGRATION|ARCHIVE_MIGRATION_BACKUP_CONFIRMED|EMAIL|AGREE_TOS|EFF_EMAIL_SIGNUP|ACME_ENVIRONMENT) ;;
       *) certbotbot_error 'unknown configuration key'; return 64 ;;
     esac
     if [[ -n "${seen[$key]+x}" ]]; then
@@ -315,12 +315,12 @@ certbotbot_config_resolve() {
         (( i+=1 ))
         continue
         ;;
-      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--aws-args|--gpg-args|--certbot-args)
+      --config|--domain|--san|--acme-environment|--include-subdomains|--cert-name|--s3-bucket|--s3-key|--s3-key-template|--backup-key-template|--dated-backup-enabled|--backup-retention-count|--upload-no-renewal|--renew-all|--archive-encryption|--archive-migration|--archive-migration-backup-confirmed|--aws-args|--gpg-args|--certbot-args)
         (( i + 1 < ${#args[@]} )) || { certbotbot_error 'option requires a value'; return 64; }
         value="${args[i+1]}"
         (( i+=2 ))
         ;;
-      --config=*|--domain=*|--san=*|--acme-environment=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*|--aws-args=*|--gpg-args=*|--certbot-args=*)
+      --config=*|--domain=*|--san=*|--acme-environment=*|--include-subdomains=*|--cert-name=*|--s3-bucket=*|--s3-key=*|--s3-key-template=*|--backup-key-template=*|--dated-backup-enabled=*|--backup-retention-count=*|--upload-no-renewal=*|--renew-all=*|--archive-encryption=*|--archive-migration=*|--archive-migration-backup-confirmed=*|--aws-args=*|--gpg-args=*|--certbot-args=*)
         value="${arg#*=}"
         arg="${arg%%=*}"
         (( i+=1 ))
@@ -368,6 +368,7 @@ certbotbot_config_resolve() {
       --dated-backup-enabled) key=DATED_BACKUP_ENABLED ;;
       --backup-retention-count) key=BACKUP_RETENTION_COUNT ;;
       --upload-no-renewal) key=UPLOAD_NO_RENEWAL ;;
+      --renew-all) key=RENEW_ALL ;;
       --archive-encryption) key=ARCHIVE_ENCRYPTION ;;
       --archive-migration) key=ARCHIVE_MIGRATION ;;
       --archive-migration-backup-confirmed) key=ARCHIVE_MIGRATION_BACKUP_CONFIRMED ;;
@@ -393,8 +394,8 @@ certbotbot_config_resolve() {
       return 64
     fi
   fi
-  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [BACKUP_RETENTION_COUNT]=0 [UPLOAD_NO_RENEWAL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false [ACME_ENVIRONMENT]=production)
-  for name in ACME_ENVIRONMENT DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
+  local -A defaults=([DOMAIN]='' [INCLUDE_SUBDOMAINS]=true [CERT_NAME]='' [S3_BUCKET]='' [DATED_BACKUP_ENABLED]=false [BACKUP_RETENTION_COUNT]=0 [UPLOAD_NO_RENEWAL]=false [RENEW_ALL]=false [ARCHIVE_ENCRYPTION]=auto [ARCHIVE_MIGRATION]=none [ARCHIVE_MIGRATION_BACKUP_CONFIRMED]=false [ACME_ENVIRONMENT]=production)
+  for name in ACME_ENVIRONMENT DOMAIN INCLUDE_SUBDOMAINS CERT_NAME S3_BUCKET DATED_BACKUP_ENABLED BACKUP_RETENTION_COUNT UPLOAD_NO_RENEWAL RENEW_ALL ARCHIVE_ENCRYPTION ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     value="${defaults[$name]}"
     if [[ -n "${CERTBOTBOT_FILE_VALUES[$name]+x}" ]]; then value="${CERTBOTBOT_FILE_VALUES[$name]}"; fi
     if [[ -n "${!name+x}" ]]; then value="${!name}"; fi
@@ -487,7 +488,7 @@ certbotbot_config_resolve() {
     certbotbot_error 'too many additional DNS identities'
     return 64
   fi
-  for name in INCLUDE_SUBDOMAINS DATED_BACKUP_ENABLED UPLOAD_NO_RENEWAL ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
+  for name in INCLUDE_SUBDOMAINS DATED_BACKUP_ENABLED UPLOAD_NO_RENEWAL RENEW_ALL ARCHIVE_MIGRATION_BACKUP_CONFIRMED; do
     key="CERTBOTBOT_$name"
     case "${!key}" in true|false) ;; *) certbotbot_error 'invalid boolean setting'; return 64 ;; esac
   done
@@ -554,8 +555,34 @@ certbotbot_config_resolve() {
     certbotbot_error 'invalid encryption key'
     return 64
   fi
-  [[ -n "$CERTBOTBOT_DOMAIN" ]] ||
-    { certbotbot_error 'DNS identity is required'; return 64; }
+  # ADR-058: a domainless bulk request must be genuinely unselected.
+  # Explicit empty DOMAIN never downgrades to the domainless exception.
+  CERTBOTBOT_SELECTED_REQUEST=true
+  if [[ -z "$CERTBOTBOT_DOMAIN" ]]; then
+    if [[ -n "${cli[DOMAIN]+x}" || -n "${DOMAIN+x}" ||
+      -n "${CERTBOTBOT_FILE_VALUES[DOMAIN]+x}" ]]; then
+      certbotbot_error 'invalid explicit DNS identity'
+      return 64
+    fi
+    if [[ "$CERTBOTBOT_RENEW_ALL" != true ]]; then
+      certbotbot_error 'DNS identity is required'
+      return 64
+    fi
+    if [[ -n "$CERTBOTBOT_CERT_NAME" ||
+      ${#CERTBOTBOT_ADDITIONAL_SANS[@]} -gt 0 ||
+      "$CERTBOTBOT_INCLUDE_SUBDOMAINS" != true ]]; then
+      certbotbot_error 'bulk renewal cannot use partial selected inputs'
+      return 64
+    fi
+    CERTBOTBOT_SELECTED_REQUEST=false
+  fi
+  # REMOVE_ORPHANS is not yet a supported option. Never allow an
+  # exported opt-in to compose with bulk renewal by accident.
+  if [[ "$CERTBOTBOT_RENEW_ALL" == true &&
+    "${REMOVE_ORPHANS-false}" == true ]]; then
+    certbotbot_error 'bulk renewal conflicts with orphan removal'
+    return 64
+  fi
   [[ -n "$CERTBOTBOT_S3_BUCKET" && -n "$CERTBOTBOT_S3_KEY" ]] ||
     { certbotbot_error 'S3 bucket and key are required'; return 64; }
   if [[ "$CERTBOTBOT_S3_KEY_IS_TEMPLATE" != true ]]; then
