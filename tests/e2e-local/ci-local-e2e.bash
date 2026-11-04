@@ -253,6 +253,27 @@ run_positive() {
     done
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
+    # Filter private diagnostic receipts against the same closed enum.
+    local category
+    for category in \
+      line-safety section-order comment-path \
+      assignment-syntax duplicate-field top-level-unknown-field \
+      canonical-path-archive_dir canonical-path-cert canonical-path-privkey \
+      canonical-path-chain canonical-path-fullchain top-level-version \
+      top-level-renew-before-expiry renewal-unknown-field renewal-config_dir \
+      renewal-work_dir renewal-logs_dir renewal-account \
+      renewal-authenticator renewal-server renewal-key_type \
+      renewal-dns_route53_propagation_seconds renewal-rsa_key_size renewal-elliptic_curve \
+      renewal-reuse_key renewal-pref_challs renewal-preferred_challenges \
+      acme-unknown-field acme-ari-retry-after unexpected-section \
+      missing-canonical-archive_dir missing-canonical-cert missing-canonical-privkey \
+      missing-canonical-chain missing-canonical-fullchain required-field-or-byte-count \
+      unclassified; do
+      if grep -Fqx -- "local-first-issue-host: bounded-renewal-category=$category" "$logfile"; then
+        error "bounded renewal category=$category"
+        break
+      fi
+    done
     return 74
   fi
   for flavor in development ordinary minified; do
