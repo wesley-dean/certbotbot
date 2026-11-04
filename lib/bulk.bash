@@ -44,7 +44,7 @@
 ## @endcode
 certbotbot_bulk_verify_inventory() {
   local config="$1" probe="$2" name
-  local -A expected=()
+  local -A allowed=()
   local -i count=0
   shift 2
   (( $# > 0 )) || {
@@ -52,11 +52,11 @@ certbotbot_bulk_verify_inventory() {
     return 65
   }
   for name in "$@"; do
-    [[ -z "${expected[$name]+x}" ]] || {
+    [[ -z "${allowed[$name]+x}" ]] || {
       printf '%s\n' 'certbotbot: duplicate expected certificate lineage' >&2
       return 65
     }
-    expected["$name"]=1
+    allowed["$name"]=1
   done
   certbotbot_state_inventory "$config" "$probe" || return $?
   (( ${#CERTBOTBOT_ARCHIVED_NAMES[@]} == $# )) || {
@@ -64,7 +64,7 @@ certbotbot_bulk_verify_inventory() {
     return 65
   }
   for name in "${CERTBOTBOT_ARCHIVED_NAMES[@]}"; do
-    [[ -n "${expected[$name]+x}" ]] || {
+    [[ -n "${allowed[$name]+x}" ]] || {
       printf '%s\n' 'certbotbot: unexpected archived certificate identity' >&2
       return 65
     }
