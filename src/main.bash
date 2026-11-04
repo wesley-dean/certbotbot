@@ -336,10 +336,8 @@ certbotbot_main() {
   set +x
   local CERTBOTBOT_GPG_SECRET=''
   if certbotbot_no_env_requested "$@"; then
-    CERTBOTBOT_NO_ENV=true
     certbotbot_disable_application_environment || return 64
   else
-    CERTBOTBOT_NO_ENV=false
     CERTBOTBOT_GPG_SECRET="${GPG_SYMMETRIC_KEY-}"
   fi
   export -n CERTBOTBOT_GPG_SECRET
@@ -347,8 +345,15 @@ certbotbot_main() {
   case "${1:-}" in
     --help|-h|help) certbotbot_usage; return 0 ;;
     --version|-V|version) certbotbot_version; return 0 ;;
-    register) CERTBOTBOT_COMMAND=register; shift; certbotbot_register_main "$@"; return $? ;;
+    register)
+      # shellcheck disable=SC2034
+      CERTBOTBOT_COMMAND=register
+      shift
+      certbotbot_register_main "$@"
+      return $?
+      ;;
   esac
+  # shellcheck disable=SC2034
   CERTBOTBOT_COMMAND=issue
   certbotbot_config_resolve "$@" || return $?
   certbotbot_identity_resolve || return $?
