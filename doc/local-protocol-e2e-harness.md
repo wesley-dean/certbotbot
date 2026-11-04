@@ -46,7 +46,7 @@ On startup, the script validates Docker Compose's resolved topology, verifies th
 
 ## Future integration boundaries
 
-Task #241 adds a bounded, test-only gateway and provider invocation gate, without changing the producer's public `production|staging` authority model. The actual engine-backed provider exchange remains unverified. Task #243 provides a minimal Route53 API stub that deliberately does **not** modify Pebble DNS, together with Pebble's always-valid challenge mode. The separate issue #252 proposes ID-preferred hosted-zone selection and remains open/unimplemented. Task #244 creates a synthetic bucket and uses the real built producer to register and issue. Subsequent tasks verify fresh-runner restore, no-op, second real ACME renewal order, negative isolation and CI. Do **not** mix those capabilities into this harness PR or substitute mocked protocol responses for acceptance evidence.
+Task #241 adds a bounded, test-only gateway and provider invocation gate, without changing the producer's public `production|staging` authority model. The actual engine-backed provider exchange remains unverified. Task #243 provides a minimal Route53 API stub that deliberately does **not** modify Pebble DNS, together with Pebble's always-valid challenge mode. Issue #252 adds explicit ID-first local zone selection, without changing the shipped producer or real DNS acceptance boundary. Task #244 creates a synthetic bucket and uses the real built producer to register and issue. Subsequent tasks verify fresh-runner restore, no-op, second real ACME renewal order, negative isolation and CI. Do **not** mix those capabilities into this harness PR or substitute mocked protocol responses for acceptance evidence.
 
 Do not direct ordinary `certbotbot` at this network except through a disposable, guarded test runner. Pebble accounts are **not** real Let's Encrypt staging accounts. Neither a valid image digest nor an HTTP readiness result guarantees interoperability with the installed Certbot, Route53 plugin, AWS CLI or SeaweedFS conditional S3 operations. Milestone #4's separately authorized live Let's Encrypt staging/AWS workflow remains untouched.
 
@@ -82,8 +82,18 @@ certificate issuance, SeaweedFS persistence, and native Certbot state, once
 those end-to-end tests are implemented and executed. The upstream plugin must
 still be verified to honor `AWS_ENDPOINT_URL_ROUTE_53` (Botocore's
 Route 53 service identifier is `route-53`); a public fallback is
-forbidden. The synthetic hosted zone currently uses a fixed test fixture; the
-ID/name selection enhancement in issue #252 is separately tracked.
+forbidden. The synthetic Route53 stub uses a fixed test fixture and requires one explicit,
+test-only selector before accepting provider requests:
+`LOCAL_E2E_ROUTE53_HOSTED_ZONE_ID` (preferred) or
+`LOCAL_E2E_ROUTE53_HOSTED_ZONE_NAME` (secondary). The sealed Compose profile
+supplies the fixed local ID. With only the name, the stub resolves an exact
+case-insensitive, terminal-dot-normalized match to its one authorized synthetic
+zone and permits a bounded `ListHostedZonesByName` API response. An explicit ID
+always takes precedence over a valid name; malformed or unknown IDs never fall
+back, and empty, malformed or missing configuration fails before HTTP startup.
+The upstream Certbot plugin still uses its own `ListHostedZones` request.
+Neither variable is a public certbotbot option, AWS zone lookup, or authorization
+to discover arbitrary domains. See [ADR-055](adr/ADR-055-explicit-id-first-local-route53-zone.md).
 
 Run `python3 -B tests/e2e-local/route53_bridge_test.py` for offline mock
 protocol checks. These are contract/unit tests only, not engine-backed

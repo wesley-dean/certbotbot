@@ -57,6 +57,9 @@ services:
     platform: linux/amd64
     user: "65534:65534"
     command: ["python3", "-I", "-B", "/opt/route53/route53_bridge.py"]
+    environment:
+      # Explicit local-only fixture. Never source a real AWS zone from the host.
+      LOCAL_E2E_ROUTE53_HOSTED_ZONE_ID: "ZLOCALONLY123456"
     volumes:
       - ./route53_bridge.py:/opt/route53/route53_bridge.py:ro
     read_only: true

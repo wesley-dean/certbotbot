@@ -294,6 +294,18 @@ fails for its native Certbot certificate. Mocked Bats cases exercise the
 three literal categories and ensure that private fixture content is not
 emitted. A green mocked check does not constitute real-protocol acceptance.
 
+## Explicit synthetic Route53 zone selection (issue #252)
+
+The local Route53 bridge requires an explicit synthetic hosted zone selector.
+The sealed Compose profile supplies `LOCAL_E2E_ROUTE53_HOSTED_ZONE_ID` with the
+fixed local fixture; `LOCAL_E2E_ROUTE53_HOSTED_ZONE_NAME` allows alternative
+name-only selection for this *same* fixture. The ID takes precedence when both
+are given, and malformed, missing, foreign or unknown selectors fail before the
+provider listener starts. Offline Python tests cover normalization, precedence,
+synthetic `ListHostedZonesByName`, multi-value TXT compatibility and refusals.
+They do not replace the complete real Pebble/SeaweedFS CI gate or prove live
+Route53/DNS-01 interoperability. See ADR-055 and the local harness guide.
+
 ## Mandatory local protocol E2E CI gate (milestone #16)
 
 The separate workflow
