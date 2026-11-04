@@ -51,6 +51,18 @@ mode-incompatible options return 64 before any remote operation.
 | `--archive-encryption MODE` | `ARCHIVE_ENCRYPTION` | `auto` | Reuse established plaintext or authenticated GPG policy without downgrades |
 | `--config FILE` | CLI only | `./.env` if present | Select strict literal, non-evaluated configuration data |
 
+The registration command also accepts `--no-env` (presence only) and
+the nonsecret `--aws-args JSON`, `--gpg-args JSON`, and
+`--certbot-args JSON` collections. The latter replace the matching
+`AWS_EXTRA_ARGS`, `GPG_EXTRA_ARGS`, or `CERTBOT_EXTRA_ARGS` exported
+environment collection, using the bounded JSON-array interface and
+allowlist in [ADR-056](adr/ADR-056-extra-provider-argv-and-no-env.md).
+For registration, Certbot's `--dns-route53-propagation-seconds`
+is not permitted. `--no-env` skips implicit files and application
+environment, including the only supported GPG secret, but leaves
+external AWS credentials intact. The combination of `--no-env`
+and `--config` is invalid.
+
 As with ordinary producer configuration, precedence is **CLI > explicitly
 exported environment > selected literal `.env` > built-in defaults**.
 A higher-priority malformed value fails; it never falls back.  The
