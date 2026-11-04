@@ -191,17 +191,20 @@ certbotbot_orphans_plan() {
   CERTBOTBOT_ORPHANS_TO_REMOVE=()
   certbotbot_orphans_selected_validate "$selected" || return $?
   certbotbot_state_inventory "$config" "$selected" || return $?
-  for name in "${CERTBOTBOT_ARCHIVED_NAMES[@]}"; do
-    original["$name"]=1
-  done
+  if [[ -n "${CERTBOTBOT_ARCHIVED_NAMES[0]+x}" ]]; then
+    for name in "${CERTBOTBOT_ARCHIVED_NAMES[@]}"; do
+      original["$name"]=1
+    done
+  fi
   for name in "${CERTBOTBOT_DESIRED_NAMES[@]}"; do
     if [[ "$name" != "$selected" && -z "${original[$name]+x}" ]]; then
       printf '%s\n' 'certbotbot: desired archived lineage is absent' >&2
       return 65
     fi
   done
-  for name in "${CERTBOTBOT_ARCHIVED_NAMES[@]}"; do
-    # Every original lineage must be legitimate, including those excluded.
+  if [[ -n "${CERTBOTBOT_ARCHIVED_NAMES[0]+x}" ]]; then
+    for name in "${CERTBOTBOT_ARCHIVED_NAMES[@]}"; do
+      # Every original lineage must be legitimate, including those excluded.
     certbotbot_renew_sans_read "$config/live/$name/cert.pem" || {
       printf '%s\n' 'certbotbot: unsafe original archived certificate' >&2
       return 65
@@ -215,10 +218,11 @@ certbotbot_orphans_plan() {
         break
       fi
     done
-    if [[ "$found" != true ]]; then
-      CERTBOTBOT_ORPHANS_TO_REMOVE+=("$name")
-    fi
-  done
+      if [[ "$found" != true ]]; then
+        CERTBOTBOT_ORPHANS_TO_REMOVE+=("$name")
+      fi
+    done
+  fi
   # The material verifier validates a name at a time. Restore the ordinary
   # selected-lineage classification for issuance or selected renewal.
   certbotbot_state_preflight "$config" "$selected" || return $?
@@ -266,8 +270,9 @@ certbotbot_orphans_apply() {
       return 65
     }
   done
-  for name in "${CERTBOTBOT_ORPHANS_TO_REMOVE[@]}"; do
-    if [[ "$name" == "$selected" || "$name" == *'*'* ]] ||
+  if [[ -n "${CERTBOTBOT_ORPHANS_TO_REMOVE[0]+x}" ]]; then
+    for name in "${CERTBOTBOT_ORPHANS_TO_REMOVE[@]}"; do
+      if [[ "$name" == "$selected" || "$name" == *'*'* ]] ||
       ! certbotbot_dns_valid "$name"; then
       return 65
     fi
@@ -286,8 +291,9 @@ certbotbot_orphans_apply() {
       printf '%s\n' 'certbotbot: scoped orphan deletion failed' >&2
       return 74
     fi
-    total=$((total + 1))
-  done
+      total=$((total + 1))
+    done
+  fi
 
   # Verify the exact remaining inventory and ALL survivor material.
   certbotbot_bulk_verify_inventory "$config" "$selected" \
