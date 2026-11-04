@@ -349,6 +349,24 @@ EOF
     fi
     ;;
   renew)
+    # Controlled multi-lineage fault modes for task #100 acceptance. Match
+    # exact validated archived names; these settings affect only mock Certbot.
+    if [[ -n "${LIFECYCLE_RENEW_FAIL_NAME:-}" &&
+      "$name" == "$LIFECYCLE_RENEW_FAIL_NAME" ]]; then
+      exit 9
+    fi
+    if [[ -n "${LIFECYCLE_RENEW_CHANGED_NAME:-}" &&
+      "$name" == "$LIFECYCLE_RENEW_CHANGED_NAME" ]]; then
+      LIFECYCLE_MODE=renew-changed
+    fi
+    if [[ -n "${LIFECYCLE_RENEW_NON_TARGET_MUTATION_NAME:-}" &&
+      "$name" == "$LIFECYCLE_RENEW_NON_TARGET_MUTATION_NAME" ]]; then
+      # Simulate a faulty provider silently mutating a different lineage.
+      # The real lifecycle must detect this before any S3 PutObject.
+      [[ -f "$config/renewal/other.org.conf" ]] || exit 91
+      printf '%s\n' 'unrequested-provider-mutation = true' \
+        >>"$config/renewal/other.org.conf"
+    fi
     [[ "$LIFECYCLE_MODE" == certbot-failure ]] && exit 9
     if [[ "$LIFECYCLE_MODE" == renew-partial-failure ]]; then
       printf '%s\n' '{"meta":"interrupted"}' \
@@ -402,5 +420,7 @@ MOCK
   unset GPG_SYMMETRIC_KEY CERTBOTBOT_GPG_SECRET ARCHIVE_ENCRYPTION
   unset ARCHIVE_MIGRATION ARCHIVE_MIGRATION_BACKUP_CONFIRMED
   unset DATED_BACKUP_ENABLED
+  unset LIFECYCLE_RENEW_FAIL_NAME LIFECYCLE_RENEW_CHANGED_NAME
+  unset LIFECYCLE_RENEW_NON_TARGET_MUTATION_NAME
   export UPLOAD_NO_RENEWAL=false INCLUDE_SUBDOMAINS=true
 }

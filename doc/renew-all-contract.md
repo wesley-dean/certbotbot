@@ -1,9 +1,10 @@
 # RENEW_ALL: Archived-Lineage Bulk Renewal Design Contract
 
 **Design status:** Accepted ADR-058 under merged PR #283 (task #98).
-**Implementation status:** Task #99 implements the opt-in path; its branch
-must pass review and tests before a release can claim this behavior.
-The broader independent clean-runner acceptance matrix remains task #100.
+**Implementation status:** Task #99 is merged in PR #285. Opt-in bulk
+behavior is implemented; task #100 adds independent public-executable
+acceptance evidence for this contract, and live provider testing remains
+separately scoped to milestone #4.
 See [ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md).
 
 ## Intent and ordinary compatibility
