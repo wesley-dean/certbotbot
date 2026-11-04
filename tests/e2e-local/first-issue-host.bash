@@ -199,6 +199,9 @@ run_lifecycle() (
   log="$tmp/bootstrap.log"
   # Destroy the runner, account keys, client caches and logs even if a step
   # fails. No logs are printed from inside the untrusted provider process.
+  # Literal stage receipts remain bounded even if a later command exits via
+  # errexit before its own fixed diagnostic is printed.
+  problem 'lifecycle-phase=first-issuance'
   if ! run_phase "$image" "$cert_ca" bootstrap >"$log" 2>&1; then
     # Only script-owned literal failure messages may escape this private log.
     # Raw Certbot, AWS, ACME and container output remains discarded.
@@ -313,6 +316,7 @@ run_lifecycle() (
     { problem 'bootstrap did not supply a valid object identity'; return 65; }
 
   result="$tmp/verify.log"
+  problem 'lifecycle-phase=first-readback'
   if ! run_phase "$image" "$cert_ca" verify "$digest" >"$result" 2>&1; then
     problem 'independent fresh runner could not verify stored certificate'
     return 74
@@ -331,6 +335,8 @@ run_lifecycle() (
   # producer flavor, proving no new order was added to Pebble's DB.
   count_before="$(pebble_order_count)" || return $?
   for flavor in development ordinary minified; do
+    # Flavor is drawn exclusively from the literal fixed loop above.
+    problem "lifecycle-phase=noop-$flavor"
     if ! run_phase "$image" "$cert_ca" noop "$flavor" "$digest" \
       >"$tmp/noop-$flavor.log" 2>&1; then
       problem 'fresh-runner selected renewal/no-op failed'
@@ -349,6 +355,7 @@ run_lifecycle() (
   # S3 state, requests exactly one selected renewal using a one-shot private
   # force marker, and publishes through the unchanged public producer.
   count_before="$(pebble_order_count)" || return $?
+  problem 'lifecycle-phase=second-order'
   if ! run_phase "$image" "$cert_ca" renew "$digest" \
     >"$tmp/renew.log" 2>&1; then
     problem 'isolated second real Certbot renewal or S3 republication failed'
@@ -369,6 +376,7 @@ run_lifecycle() (
 
   # A third-party real S3 download from an entirely new container must
   # independently establish remote archive and certificate identity.
+  problem 'lifecycle-phase=renewed-readback'
   if ! run_phase "$image" "$cert_ca" verify "$renewed_digest" \
     >"$tmp/renew-verify.log" 2>&1; then
     problem 'fresh independent validator rejected renewed S3 archive'
@@ -382,6 +390,7 @@ run_lifecycle() (
   # Nothing in the renewed archive may silently force later public renewals.
   # The same normal, unchanged no-op behavior must hold in another fresh
   # runner even after the deliberate one-shot renewal completed.
+  problem 'lifecycle-phase=post-renewal-noop'
   if ! run_phase "$image" "$cert_ca" noop ordinary "$renewed_digest" \
     >"$tmp/noop-after-renew.log" 2>&1; then
     problem 'normal post-renewal check failed or unexpectedly republished'
