@@ -82,8 +82,18 @@ certificate issuance, SeaweedFS persistence, and native Certbot state, once
 those end-to-end tests are implemented and executed. The upstream plugin must
 still be verified to honor `AWS_ENDPOINT_URL_ROUTE_53` (Botocore's
 Route 53 service identifier is `route-53`); a public fallback is
-forbidden. The synthetic hosted zone currently uses a fixed test fixture; the
-ID/name selection enhancement in issue #252 is separately tracked.
+forbidden. The synthetic Route53 stub uses a fixed test fixture and requires one explicit,
+test-only selector before accepting provider requests:
+`LOCAL_E2E_ROUTE53_HOSTED_ZONE_ID` (preferred) or
+`LOCAL_E2E_ROUTE53_HOSTED_ZONE_NAME` (secondary). The sealed Compose profile
+supplies the fixed local ID. With only the name, the stub resolves an exact
+case-insensitive, terminal-dot-normalized match to its one authorized synthetic
+zone and permits a bounded `ListHostedZonesByName` API response. An explicit ID
+always takes precedence over a valid name; malformed or unknown IDs never fall
+back, and empty, malformed or missing configuration fails before HTTP startup.
+The upstream Certbot plugin still uses its own `ListHostedZones` request.
+Neither variable is a public certbotbot option, AWS zone lookup, or authorization
+to discover arbitrary domains. See [ADR-055](adr/ADR-055-explicit-id-first-local-route53-zone.md).
 
 Run `python3 -B tests/e2e-local/route53_bridge_test.py` for offline mock
 protocol checks. These are contract/unit tests only, not engine-backed
