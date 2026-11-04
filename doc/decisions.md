@@ -383,6 +383,25 @@ rollback or concurrent-writer safety.
 
 See [ADR-058](adr/ADR-058-opt-in-archived-lineage-bulk-renewal.md).
 
+### ADR-059: Explicit Desired-Lineage Membership and Bounded Orphan Removal
+
+`REMOVE_ORPHANS` defaults to `false` and ordinary runs continue to
+preserve every unselected lineage. An explicitly opted-in destructive run
+requires a separate, nonempty **complete** desired-lineage identity set
+(with collection-level CLI, environment or literal-file precedence), plus
+a valid selected certificate included in that set. Only complete,
+canonical archived lineages absent from the exact desired set may be
+pruned from their own renewal, live and archive paths in the private
+workspace; protected account data and surviving lineages remain.
+Selected issuance/renewal must succeed before deletion, and complete
+poststate verification must succeed before one-key publication.
+Simultaneous `RENEW_ALL=true` is rejected; an empty or ambiguous set
+never grants delete-all authority. This decision specifies task #95's
+future interface and does **not** itself implement deletion.
+
+See [ADR-059](adr/ADR-059-explicit-desired-lineage-orphan-removal.md)
+and the [orphan removal scope matrix](orphan-removal-contract.md).
+
 ### ADR-031: Opt-In Authenticated GnuPG Encryption of the Shared Archive
 
 The one existing S3 archive may optionally be wrapped in a versioned,
