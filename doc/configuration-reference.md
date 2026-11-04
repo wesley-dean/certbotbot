@@ -118,6 +118,68 @@ dependency, not an additional certbotbot parser key. Do not invent
 `--gpg-key`, `--renew-all`, `--remove-orphans`, `--backend`,
 `--dns-provider`, or `--archive-format`: none is supported here.
 
+## No-environment mode and additional provider arguments
+
+`--no-env` is a presence-only flag (default off) on ordinary producer
+and `register` commands. It disables all **application** environment
+configuration, including `GPG_SYMMETRIC_KEY` and optional extra-argv
+collections, and skips the implicit `./.env` file. Explicit CLI options,
+positional arguments and built-in defaults still apply. Combining
+`--no-env` and an explicit `--config FILE` is an error. A malformed
+discovered `.env` is not parsed in no-env mode, and no application
+environment value is used as a fallback.
+
+External AWS CLI credentials, profiles, network settings, and OS state
+(`PATH`, `HOME`, etc.) remain the external tools' responsibility and
+are **not** cleared by this flag. Because `GPG_SYMMETRIC_KEY` has no
+CLI or file alternative, `--no-env` cannot decrypt or publish an
+encrypted archive with the current interface. Explicit `gpg-ocb` mode
+without a secret fails; automatic mode without a secret selects
+plaintext but still refuses mismatched encrypted remote input.
+
+Three optional, independently selected argument collections can be
+supplied on both producer commands:
+
+| CLI flag | Exported environment | Applies to |
+| --- | --- | --- |
+| `--aws-args JSON` | `AWS_EXTRA_ARGS` | Producer-owned AWS CLI S3 calls, including registration and backup/retention |
+| `--gpg-args JSON` | `GPG_EXTRA_ARGS` | Symmetric GnuPG encryption calls and capability probes only |
+| `--certbot-args JSON` | `CERTBOT_EXTRA_ARGS` | Allowed Certbot probes, registration, selected issuance and renewal |
+
+Each value is **one JSON array of strings**, not a shell command line.
+For example, `'["--cli-read-timeout","45"]'` is two argv elements;
+the array `[]` means none and overrides an environment collection.
+CLI replaces environment **as a whole**, without appending or merging;
+there is no `.env` tier for these collections. The JSON string
+encoding preserves individual boundaries, spaces, quotes and repeated
+flags; however, strict option validation rejects empty, positional,
+control-character and unsupported elements. A maximum of 16 strings
+and 4096 JSON bytes applies per collection. Values cannot use shell
+evaluation or `--flag=value` shorthand. Invalid input is not logged.
+
+**The allowlist is deliberately narrow:**
+
+| Program | Permitted additional flags | Values / restrictions |
+| --- | --- | --- |
+| AWS CLI | `--cli-connect-timeout`, `--cli-read-timeout` | Separate canonical decimal 1–600 |
+| GnuPG | `--compress-level`, `--no-compress` | Level 0–9; mutually exclusive compression switches; encryption only |
+| Certbot | `--max-log-backups` | Separate decimal 1–1000; all permitted Certbot invocations |
+| Certbot | `--dns-route53-propagation-seconds` | Separate decimal 1–300; selected issuance/renewal only, forbidden in `register` |
+
+Allowed extra tokens appear after Certbotbot's required named options
+and before positional operands, preserving token order. These flags
+do **not** permit arbitrary provider endpoints, Certbot forced/global
+renewal, S3 resource/conditional-write overrides, changing GnuPG cipher
+or passphrase controls, or disabling certificate validation. There is
+no generic upstream option passthrough.
+
+`jq` and `base64` are conditional runtime tools needed **only when
+a nonempty extra-argument selection is present**. An ordinary invocation
+without extra arguments has no new dependency. Do not include secrets
+in provider argv: operating-system process inspection may expose them.
+Use native credential mechanisms instead. See
+[ADR-056](adr/ADR-056-extra-provider-argv-and-no-env.md).
+
 ## Literal configuration-file grammar
 
 The selected `.env` file is a **restricted data format**, not a Bash
