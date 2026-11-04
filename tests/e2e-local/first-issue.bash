@@ -441,6 +441,50 @@ NOOP_PRODUCER_REFUSALS
         fi
       fi
     fi
+    # Issue #272 disposable experiment: on a proven metadata-only rewrite,
+    # repeat exactly one ordinary producer invocation against the new S3
+    # state. Never feed its raw logs to the outer process. The original
+    # unexpected-publication refusal below is retained unchanged.
+    if [[ "$receipt_status" == checked && "$receipt_publish" == true &&
+      "$object_delta" == changed && "$renewal_delta" == changed ]]; then
+      local replay_status=failed replay_publish=absent
+      local replay_object=unreadable replay_renewal=unreadable
+      if issuer "$flavor" >"$workspace/noop-replay.log" 2>&1; then
+        if grep -Fq 'certbotbot: checked ' "$workspace/noop-replay.log"; then
+          replay_status=checked
+        elif grep -Fq 'certbotbot: issued ' "$workspace/noop-replay.log"; then
+          replay_status=issued
+        else
+          replay_status=other
+        fi
+        if grep -Fq '; published=false' "$workspace/noop-replay.log"; then
+          replay_publish=false
+        elif grep -Fq '; published=true' "$workspace/noop-replay.log"; then
+          replay_publish=true
+        fi
+      fi
+      if fetch_archive "$workspace/noop-replay-after.tar.gz" >/dev/null 2>&1; then
+        if cmp -s "$workspace/failed-noop-after.tar.gz" \
+          "$workspace/noop-replay-after.tar.gz"; then
+          replay_object=unchanged
+        else
+          replay_object=changed
+        fi
+        if tar -xOzf "$workspace/noop-replay-after.tar.gz" \
+          "./renewal/$NAME.conf" >"$workspace/noop-replay-after.conf" 2>/dev/null; then
+          if cmp -s "$workspace/failed-noop-after.conf" \
+            "$workspace/noop-replay-after.conf"; then
+            replay_renewal=unchanged
+          else
+            replay_renewal=changed
+          fi
+        fi
+      fi
+      error "noop-replay-status=$replay_status"
+      error "noop-replay-published=$replay_publish"
+      error "noop-replay-object=$replay_object"
+      error "noop-replay-renewal=$replay_renewal"
+    fi
     error "noop-receipt-status=$receipt_status"
     error "noop-receipt-publication=$receipt_publish"
     error "noop-object=$object_delta"
