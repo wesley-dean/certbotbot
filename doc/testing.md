@@ -302,7 +302,8 @@ runs on push and manual dispatch, without cloud secrets or credentials.
 Unlike the static Bats suite, it builds all checksum-verified producer
 flavors, starts pinned Pebble and SeaweedFS images on a private Docker
 network, and drives actual ACME registration, first issuance, independent
-SeaweedFS readback, three fresh-runner no-ops, an intentional second real
+SeaweedFS readback, one independently verified native metadata-only stabilization,
+three strictly nonpublishing fresh-runner no-ops, an intentional second real
 ACME order/renewal, and independent replacement verification.
 
 The workflow also requires **all seven** negative scenarios to preserve

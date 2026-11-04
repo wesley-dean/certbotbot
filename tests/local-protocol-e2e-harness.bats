@@ -539,6 +539,27 @@ setup() {
   bash -n "$ci"
 }
 
+@test "one-time real metadata stabilization precedes all three strict no-ops" {
+  run bash "$FIRST_ISSUE" stabilize malformed-digest
+  [ "$status" -eq 64 ]
+  [[ "$output" == *'invalid stabilization archive digest'* ]]
+  grep -Fq 'stabilize) stabilize "$workspace" "$2"' "$FIRST_ISSUE"
+  grep -Fq 'stabilized_archive_sha256=' "$FIRST_ISSUE"
+  grep -Fq 'stabilized_cert_der_sha256=' "$FIRST_ISSUE"
+  grep -Fq 'native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true' "$FIRST_HOST"
+  grep -Fq 'lifecycle-phase=metadata-stabilization' "$FIRST_HOST"
+  grep -Fq 'lifecycle-phase=stabilized-readback' "$FIRST_HOST"
+  grep -Fq 'lifecycle_stage=metadata-stabilization' "$CI_LOCAL_RUNNER"
+  grep -Fq 'lifecycle_stage=stabilized-readback' "$CI_LOCAL_RUNNER"
+  grep -Fq "for flavor in development ordinary minified; do" "$FIRST_HOST"
+  grep -Fq 'fresh_runner_noop=$flavor' "$FIRST_HOST" || \
+    grep -Fq 'restored_noop=%s; no_new_order=true; no_republish=true' "$FIRST_HOST"
+  grep -Fq 'certbotbot-local-e2e-stabilize' "$FIRST_HOST"
+  bash -n "$FIRST_ISSUE"
+  bash -n "$FIRST_HOST"
+  bash -n "$CI_LOCAL_RUNNER"
+}
+
 @test "native no-op failure diagnostics are a closed, private-log allowlist" {
   local runner="$REPO_ROOT/tests/e2e-local/first-issue.bash"
   local host="$REPO_ROOT/tests/e2e-local/first-issue-host.bash"

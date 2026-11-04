@@ -330,6 +330,47 @@ run_lifecycle() (
   printf '%s\n' "local-first-issue-host: archive_sha256=$digest"
   sed -n '/^local-first-issue: independently_verified_cert_der_sha256=/p' "$result"
 
+  # A newly issued real Certbot lineage may perform one legitimate,
+  # metadata-only durable update on its first ordinary check (ADR-054).
+  # Treat it as an explicit, independently verified stabilization, never
+  # as one of the three strict non-due no-op acceptance results.
+  count_before="$(pebble_order_count)" || return $?
+  problem 'lifecycle-phase=metadata-stabilization'
+  if ! run_phase "$image" "$cert_ca" stabilize "$digest" \
+    >"$tmp/stabilize.log" 2>&1; then
+    problem 'native metadata-only stabilization failed'
+    return 74
+  fi
+  local stabilized_digest='' stabilized_cert=''
+  stabilized_digest="$(sed -nE \
+    's/^local-first-issue: stabilized_archive_sha256=([0-9a-f]{64})$/\1/p' \
+    "$tmp/stabilize.log")"
+  stabilized_cert="$(sed -nE \
+    's/^local-first-issue: stabilized_cert_der_sha256=([0-9a-f]{64})$/\1/p' \
+    "$tmp/stabilize.log")"
+  [[ "$stabilized_digest" =~ ^[0-9a-f]{64}$ &&
+    "$stabilized_digest" != "$digest" &&
+    "$stabilized_cert" == "$old_cert" ]] ||
+    { problem 'native stabilization did not retain the issued certificate'; return 65; }
+  count_after="$(pebble_order_count)" || return $?
+  [[ "$count_after" == "$count_before" ]] ||
+    { problem 'metadata stabilization unexpectedly added an ACME order'; return 65; }
+
+  # Independent validator starts with no shared private files, and proves
+  # the new S3 object contains the identical real issued leaf certificate.
+  problem 'lifecycle-phase=stabilized-readback'
+  if ! run_phase "$image" "$cert_ca" verify "$stabilized_digest" \
+    >"$tmp/stabilized-verify.log" 2>&1; then
+    problem 'independent native stabilization readback failed'
+    return 74
+  fi
+  grep -Fqx "local-first-issue: independently_verified_cert_der_sha256=$old_cert" \
+    "$tmp/stabilized-verify.log" ||
+    { problem 'stabilized object changed initial certificate identity'; return 65; }
+  digest="$stabilized_digest"
+  printf '%s\n' \
+    'local-first-issue-host: native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true'
+
   # The pinned Pebble server records a nonsecret counter for every new order.
   # A no-op succeeds only when this count remains unchanged for each exact
   # producer flavor, proving no new order was added to Pebble's DB.
@@ -675,7 +716,7 @@ main() {
   fi
   # No remote image pull, package installation, or source compilation here.
   # Cleanup is deliberately scoped to this project's known ephemeral runner names.
-  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable certbotbot-local-e2e-isolation >/dev/null 2>&1 || true' EXIT
+  trap 'docker rm -f certbotbot-local-e2e-bootstrap certbotbot-local-e2e-verify certbotbot-local-e2e-stabilize certbotbot-local-e2e-noop-development certbotbot-local-e2e-noop-ordinary certbotbot-local-e2e-noop-minified certbotbot-local-e2e-renew certbotbot-local-e2e-baseline certbotbot-local-e2e-fault-ca-production certbotbot-local-e2e-fault-s3-unavailable certbotbot-local-e2e-fault-corrupt-archive certbotbot-local-e2e-fault-acme-order-rejected certbotbot-local-e2e-fault-route53-unavailable certbotbot-local-e2e-fault-s3-put-reject certbotbot-local-e2e-fault-acme-unavailable certbotbot-local-e2e-isolation >/dev/null 2>&1 || true' EXIT
   case "$action" in
     probe) run_isolation_probe "$image" ;;
     run) run_lifecycle "$image" ;;

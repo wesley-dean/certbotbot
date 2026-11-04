@@ -488,6 +488,40 @@ allowlisted test double. Genuine Let's Encrypt staging, AWS Route53 DNS
 propagation and Amazon S3 IAM/interoperability remain the separate
 milestone #4 manual staging acceptance, under ADR-043.
 
+## Native Post-Issuance Metadata Stabilization (ADR-054)
+
+The real challenge-validation-bypassed Pebble/Certbot [run
+41780291675](https://github.com/wesley-dean/certbotbot/actions/runs/41780291675)
+showed a successful non-due certificate check with `published=true`:
+the genuine SeaweedFS object's bytes changed, the selected renewal
+configuration changed, and no new ACME order appeared.  A disposable
+unchanged-producer replay [run
+41781308764](https://github.com/wesley-dean/certbotbot/actions/runs/41781308764)
+then returned `checked; published=false`, with both archive and renewal
+configuration unchanged.  These observations support one native
+metadata-only stabilization immediately following real first issuance.
+
+Under ADR-054 the local positive workflow first verifies the initial issued
+object independently, then runs exactly one **separate real producer
+stabilization**, with `UPLOAD_NO_RENEWAL=false`.  It permits that *single*
+durable renewal-metadata publication only after independently checking that
+the ACME account identity, selected lineage, and matching certificate/key
+are unchanged.  The host must independently show no extra Pebble ACME
+order. A *new* verifier runner then checks the exact replacement SeaweedFS
+object and the original certificate DER before updating its expected
+archive digest.
+
+Only after that setup does the workflow count the three required strict
+fresh-runner non-due no-ops (development, ordinary, and minified).
+**Each of those three must still avoid all S3 rewrites and all new ACME
+orders**, preserve exact object identity, and pass independent certificate
+checks.  The genuine second order, separate replacement readback, ordinary
+post-renewal no-op, seven negative scenarios, pre/post no-egress proofs,
+and complete private-network cleanup remain mandatory. The local test
+still does not validate actual DNS-01 propagation, AWS Route53, Amazon S3,
+or Let's Encrypt. Do not simulate normalization, forge renewal metadata,
+suppress legitimate producer publication, or bypass negative assertions.
+
 For a first no-op failure, the same confidentiality boundary applies at the
 runner's individual subchecks: an exact finite checkpoint identifies before-
 and after-archive readback, private account and leaf validation, producer

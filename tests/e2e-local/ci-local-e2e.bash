@@ -260,6 +260,10 @@ run_positive() {
           lifecycle_stage=first-issuance ;;
         'local-first-issue-host: lifecycle-phase=first-readback')
           lifecycle_stage=first-readback ;;
+        'local-first-issue-host: lifecycle-phase=metadata-stabilization')
+          lifecycle_stage=metadata-stabilization ;;
+        'local-first-issue-host: lifecycle-phase=stabilized-readback')
+          lifecycle_stage=stabilized-readback ;;
         'local-first-issue-host: lifecycle-phase=noop-development')
           lifecycle_stage=noop-development ;;
         'local-first-issue-host: lifecycle-phase=noop-ordinary')
@@ -331,6 +335,8 @@ run_positive() {
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
     return 74
   fi
+  require_receipt "$logfile" \
+    'local-first-issue-host: native_metadata_stabilization=true; no_new_order=true; independent_s3_readback=true' || return $?
   for flavor in development ordinary minified; do
     require_receipt "$logfile" \
       "local-first-issue-host: restored_noop=$flavor; no_new_order=true; no_republish=true" ||
