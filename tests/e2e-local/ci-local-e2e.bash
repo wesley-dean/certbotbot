@@ -251,7 +251,31 @@ run_positive() {
         break
       fi
     done
+    # The host owns these literal checkpoints; all private provider output is
+    # discarded. Report only the last recognized phase, never a raw log line.
+    local lifecycle_stage=not-reported receipt
+    while IFS= read -r receipt; do
+      case "$receipt" in
+        'local-first-issue-host: lifecycle-phase=first-issuance')
+          lifecycle_stage=first-issuance ;;
+        'local-first-issue-host: lifecycle-phase=first-readback')
+          lifecycle_stage=first-readback ;;
+        'local-first-issue-host: lifecycle-phase=noop-development')
+          lifecycle_stage=noop-development ;;
+        'local-first-issue-host: lifecycle-phase=noop-ordinary')
+          lifecycle_stage=noop-ordinary ;;
+        'local-first-issue-host: lifecycle-phase=noop-minified')
+          lifecycle_stage=noop-minified ;;
+        'local-first-issue-host: lifecycle-phase=second-order')
+          lifecycle_stage=second-order ;;
+        'local-first-issue-host: lifecycle-phase=renewed-readback')
+          lifecycle_stage=renewed-readback ;;
+        'local-first-issue-host: lifecycle-phase=post-renewal-noop')
+          lifecycle_stage=post-renewal-noop ;;
+      esac
+    done <"$logfile"
     error "real Pebble certificate lifecycle or S3 publication failed: $reason"
+    error "bounded local lifecycle stage=$lifecycle_stage"
     error "bounded synthetic Route53: checkpoint=$checkpoint; refusal=$refusal"
     return 74
   fi
