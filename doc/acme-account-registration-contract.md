@@ -26,7 +26,7 @@ This contract does not authorize a third-party CA, account deletion,
 certificate issuance, new cloud resources, extra S3 keys, unrequested
 backup cleanup, or automatic registration during renewal.
 
-## Proposed CLI
+## Implemented registration CLI
 
 ```text
 certbotbot register [registration options]
@@ -38,6 +38,10 @@ positional operand.  Registration-specific options require a value,
 accept both `--name VALUE` and `--name=VALUE`, and may occur in any
 order after `register`.  Unknown, duplicated scalar, empty and
 mode-incompatible options return 64 before any remote operation.
+`certbotbot register --help` (`-h`, `help` as the first
+registration argument) displays **registration-specific** usage without
+cloud access. `register --version` is not supported; use the
+**top-level** `certbotbot --version`.
 
 | CLI | Environment / literal `.env` | Default | Registration behavior |
 | --- | --- | --- | --- |
@@ -66,9 +70,13 @@ and `--config` is invalid.
 As with ordinary producer configuration, precedence is **CLI > explicitly
 exported environment > selected literal `.env` > built-in defaults**.
 A higher-priority malformed value fails; it never falls back.  The
-registrar must allow only keys relevant to registration in its selected
-configuration file, or explicitly document a compatible common
-configuration with strict rejection of irrelevant active settings.
+current registrar accepts only `EMAIL`, `AGREE_TOS`,
+`EFF_EMAIL_SIGNUP`, `ACME_ENVIRONMENT`, `S3_BUCKET`,
+`S3_KEY`, `S3_KEY_TEMPLATE` and `ARCHIVE_ENCRYPTION`
+as literal-file keys. **Issuer-only keys in the chosen file fail**
+before registration. They cannot be carried through a shared file and
+silently ignored. The [complete registration/issuer source inventory](producer-option-inventory.md)
+is the crosswalk for first-time operator and Jenkins examples.
 Secrets follow existing environment-only GPG policy; neither the email
 nor any key material is printed in ordinary output.
 
@@ -82,10 +90,12 @@ The supported CA mapping is exact:
 No arbitrary URL, `--staging` synonym, hidden fallback, or automatic
 environment selection based on downloaded archive contents is supported.
 The operator should use separate S3 keys for staging and production.
-Until a separate ADR authorizes CA selection in ordinary issuance, an
-account-only **staging** archive is suitable for the **separately selected**
-staging issuer under ADR-042 after its implementation and verification;
-it remains unsuitable for a production-selected invocation.
+ADR-042 already authorizes the ordinary issuer's **explicitly selected
+staging** mode. An account-only staging archive is suitable for that
+issuer under the **same** CA and S3 key; it remains unsuitable for a
+production-selected invocation. Ordinary production mode stays the
+compatibility default and does not search for a matching account on
+another endpoint.
 
 ## Certbot Invocation
 
@@ -107,10 +117,10 @@ certbot register
 ```
 
 The vertical-bar line means **exactly one** of the two EFF preferences,
-not shell syntax.  The implementation must verify whether
-`--no-directory-hooks` is valid for its installed Certbot registration
-path and remove that flag **only if** registration itself cannot execute
-directory hooks; it must never import host-global hook state.
+not shell syntax.  The shipped registrar supplies `--no-directory-hooks` during
+registration, and its account verification path also disables
+directory hooks. This is an implemented guard against importing
+host-global hook state, not a proposed optional argument.
 No `certonly`, `run`, `renew`, `--force-renewal`, route53
 plugin operation or DNS challenge is part of registration.
 
@@ -187,8 +197,11 @@ fixtures shipped as artifacts, or failed-command diagnostics.
 
 ## Mock Acceptance Scope
 
-Tasks #58/#59 should use deterministic mocked AWS CLI and Certbot
-processes representing production and staging endpoints.  Use real
+Tasks #58/#59 added deterministic mocked AWS CLI and Certbot
+acceptance for production and staging endpoints. The evidence is
+documented in [the mock verification record](acme-registration-mock-evidence.md).
+The existing tests are a maintained regression suite, **not**
+proof of live ACME or AWS IAM interoperability.  Use real
 GNU tar/gzip, private workspaces, and the **actual generated** development,
 ordinary and minified producer executables.  Ensure tests assert:
 

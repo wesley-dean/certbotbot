@@ -3,8 +3,13 @@
 This is the producer's **public input contract**, based on the checked-in
 `src/main.bash`, `lib/config.bash`, `lib/identity.bash`,
 `lib/filename.bash`, `lib/crypto.bash`, `lib/bulk.bash`, related Bats
- tests, and Accepted ADR-020–034 plus ADR-058. It documents the ordinary standalone producer,
-including its development and minified representations. The **separate**
+tests, and Accepted ADR-020–034, ADR-041/042, ADR-056, and
+ADR-058/059. It documents the ordinary standalone producer,
+including its development and minified representations. The [shipped-option
+inventory](producer-option-inventory.md) audits every recognized ordinary and
+registration option against the actual entrypoints and parsers, including
+command applicability, environment/file tiers, and operator-sensitive
+combinations. The **separate**
 read-only `certbotbot-client.bash` has a different CLI; see the
 [client settings reference](client-settings.md).
 
@@ -62,7 +67,11 @@ arguments, is an error. `--` terminates option parsing; everything
 following it is treated as a positional operand, so only one such
 primary name is accepted. Unknown flags, missing option values and
 duplicates of single-valued options fail with status 64.
-**Only `--san` is repeatable.**
+**Only `--san NAME` and `--desired-cert-name NAME` are repeatable**
+in the ordinary producer; they are **different whole-collection
+settings**, both requiring a nonempty value for each occurrence. Every
+other value-taking ordinary option is single-occurrence, including the
+three provider JSON vectors.
 
 `--help` and `--version` are fast-path commands **only when first**
 in the argument vector. The source also accepts `-h` and `help` as
@@ -92,9 +101,13 @@ appear once. No project `CONFIG` environment variable exists.
 ### Canonical input inventory
 
 The table lists **every producer application setting** recognized by
-`lib/config.bash`. Environment and literal-file keys are identically
-spelled unless noted. "Required" means that an effective usable value
-must exist at execution time; inputs can be inherited from a lower tier.
+`lib/config.bash`, along with its command-line fast paths. Environment
+and literal-file keys are identically spelled unless noted; provider JSON
+collections are explicitly **environment/CLI only**. "Required" means
+that an effective usable value must exist at execution time; inputs can
+be inherited from a lower tier. The `register` subcommand has a
+**distinct, smaller** accepted list; see the
+[separate registrar matrix](producer-option-inventory.md#separate-register-command-complete-allowed-settings).
 
 | CLI option | Environment / `.env` key | Default | Accepted value / effect |
 | --- | --- | --- | --- |
@@ -324,10 +337,13 @@ See [multi-SAN](multi-san-contract.md),
 ### `S3_BUCKET`, `S3_KEY`, and `S3_KEY_TEMPLATE`
 
 `S3_BUCKET` is required and must name an **already provisioned**
-bucket holding a seeded object with a registered production ACME
-account. The project validates that a nonempty bucket was selected,
-but actual AWS region, endpoint, credentials, bucket accessibility,
-and authorization depend on the external AWS CLI/IAM environment.
+bucket holding a seeded object with a registered ACME account
+matching the **selected** production or staging environment. Only
+the explicit `register` command can create
+a first account-only object after proving the key genuinely absent.
+The project validates that a nonempty bucket was selected, but actual
+AWS region, endpoint, credentials, bucket accessibility, and
+authorization depend on the external AWS CLI/IAM environment.
 
 `S3_KEY` is the **literal** current object name, defaulting to
 `latest.tar.gz`. The literal parser rejects an empty name, a leading
@@ -498,7 +514,9 @@ PutObject outcome can remain uncertain on error; this operation does
 not revoke certificates or erase prior backups, versions or deployed keys.
 
 Successful runs append a bounded `orphan desired=N; removed=N;
-published=true|false` status. Simultaneous `REMOVE_ORPHANS=true`
+published=true|false` status. This is separate from the selected-lineage
+outcome and its own `published` field; it does not print the removed
+certificate identities. Simultaneous `REMOVE_ORPHANS=true`
 and `RENEW_ALL=true` are incompatible and fail before S3 access.
 See [ADR-059](adr/ADR-059-explicit-desired-lineage-orphan-removal.md)
 and the [full scope matrix](orphan-removal-contract.md).
@@ -671,7 +689,9 @@ runtime secret-mount and role strategies in depth.
 A successful selected-only operation prints a **nonsecret** outcome
 identifying the selected lineage and current `s3://bucket/key` with
 `published=true|false`. Explicit bulk mode instead reports bounded
-aggregate counts and `published=true|false`, without listing identities. Dated backup and retention fields
+aggregate counts and `published=true|false`, without listing identities.
+Successful orphan-removal mode appends bounded desired/removed counts
+after the selected outcome, without enumerating deleted certificate names. Dated backup and retention fields
 are added when those features are enabled, for example
 `backup=confirmed|skipped` and
 `retention=completed|skipped; deleted=N`.
@@ -706,8 +726,10 @@ and [retention safety](retention-safety-verification.md).
 
 ## Implementation and verification sources
 
+- [Audited producer/registration option matrix](producer-option-inventory.md)
 - [Public CLI](../src/main.bash) and
-  [configuration resolver](../lib/config.bash)
+  [configuration resolver](../lib/config.bash) and
+  [registration parser](../lib/register-config.bash)
 - [Identity derivation](../lib/identity.bash) and
   [filename resolver](../lib/filename.bash)
 - [Authenticated archive adapter](../lib/crypto.bash)
