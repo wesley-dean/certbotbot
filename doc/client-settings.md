@@ -1,5 +1,10 @@
 # Standalone Client CLI and Settings Reference
 
+For the complete first-certificate lifecycle, including manual provisioning,
+account-only registration, subsequent issuance and private verification,
+see the [administrator walkthrough](administrator-first-certificate.md).
+The client does not install or renew any certificate.
+
 This is the operator-facing reference for the independently released
 `certbotbot-client.bash`. The client **reads** one existing current S3
 archive and privately restores the complete supported Certbot state. It does
