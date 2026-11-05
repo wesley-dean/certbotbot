@@ -12,7 +12,7 @@ Most *nonsecret scalar* settings use **CLI > explicitly exported application env
 
 Both value-taking parsers accept \`--option VALUE\` and \`--option=VALUE\`. Ordinary positional \`DNS_NAME\` and \`--domain\` are alternatives; supplying both as CLI operands is an error. Ordinary \`--\` ends option parsing and leaves at most one positional identity. Duplicate scalar options fail. Only **two ordinary CLI names are repeatable**: \`--san NAME\` and \`--desired-cert-name NAME\`. JSON provider vectors are each **one** CLI option with a complete JSON-array value; repeating the flag does not append. Registration has **no** repeatable option.
 
-The ordinary \`--help\`/\`-h\`/\`help\` and \`--version\`/\`-V\`/\`version\` aliases work as **first-argument** fast paths. They do not authorize network activity. The registrar does not accept \`register --help\` or \`register --version\` as options: use the ordinary top-level help and the registration reference.
+The ordinary \`--help\`/\`-h\`/\`help\` and \`--version\`/\`-V\`/\`version\` aliases work as **first-argument** fast paths. They do not authorize network activity. The registrar also accepts \`register --help\`, \`register -h\`, or \`register help\` **as its first registration argument**; these print registration-specific usage without S3 or ACME. It does **not** implement \`register --version\`; use top-level \`--version\` for build identity.
 
 ## Ordinary producer: every recognized public setting
 
@@ -79,7 +79,7 @@ Registration is selected with **first argument \`register\`**, then zero DNS ope
 | \`--gpg-args JSON\` | \`GPG_EXTRA_ARGS\` | **No** | \`[]\` | Same bounded authenticated-encryption tuning vector |
 | \`--certbot-args JSON\` | \`CERTBOT_EXTRA_ARGS\` | **No** | \`[]\` | \`--dns-route53-propagation-seconds\` is **forbidden** during registration |
 
-Only \`EMAIL\`, \`AGREE_TOS\`, \`EFF_EMAIL_SIGNUP\`, \`ACME_ENVIRONMENT\`, \`S3_BUCKET\`, \`S3_KEY\`, \`S3_KEY_TEMPLATE\` and \`ARCHIVE_ENCRYPTION\` are permitted as **registration file keys**. The shared literal reader recognizes other issuer-specific file keys but **the registration parser rejects them** rather than ignoring them. To register under \`--no-env\`, provide contact email, affirmative TOS, bucket/key and optional CA choice via supported explicit CLI options; no application environment/file setting survives that mode.
+First-argument registration \`--help\` (aliases \`-h\`, \`help\`) is a local usage-only fast path implemented in \`lib/register.bash\`. Only \`EMAIL\`, \`AGREE_TOS\`, \`EFF_EMAIL_SIGNUP\`, \`ACME_ENVIRONMENT\`, \`S3_BUCKET\`, \`S3_KEY\`, \`S3_KEY_TEMPLATE\` and \`ARCHIVE_ENCRYPTION\` are permitted as **registration file keys**. The shared literal reader recognizes other issuer-specific file keys but **the registration parser rejects them** rather than ignoring them. To register under \`--no-env\`, provide contact email, affirmative TOS, bucket/key and optional CA choice via supported explicit CLI options; no application environment/file setting survives that mode.
 
 In particular, **ordinary** \`--san\`, \`--domain\`, \`--cert-name\`, backups/retention, \`--upload-no-renewal\`, \`--renew-all\`, \`--remove-orphans\`, \`--desired-cert-name\`, archive migration, and backup confirmation are **not** accepted \`register\` CLI options. Normal issuance does **not** accept \`--email\`, \`--agree-tos\` or \`--eff-email-signup\` as CLI options. This command separation is intentional and must be preserved by Jenkins and administrator guides.
 
