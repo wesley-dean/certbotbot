@@ -90,6 +90,19 @@ extract() {
   [ ! -e "$MOCK_ARGS" ]
 }
 
+@test "single-letter DNS labels are allowed and malformed labels fail locally" {
+  export DOMAIN=a.b.c
+  run bash "$ROOT/validate.bash"
+  [ "$status" -eq 0 ]
+  export DOMAIN=a..c
+  run bash "$ROOT/validate.bash"
+  [ "$status" -eq 64 ]
+  export DOMAIN=example.com
+  run bash "$ROOT/validate.bash"
+  [ "$status" -eq 64 ]
+  [ ! -e "$MOCK_ARGS" ]
+}
+
 @test "ordinary invocation emits supported CLI not registration or a key" {
   run bash "$ROOT/invoke.bash"
   [ "$status" -eq 0 ]
