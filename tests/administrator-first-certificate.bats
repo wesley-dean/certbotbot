@@ -51,7 +51,7 @@ setup() {
       number++
       inside=1
       target=sprintf("%s/block-%02d.bash",dir,number)
-      printf "%d\\n", NR > sprintf("%s/block-%02d.line",dir,number)
+      printf "%d\n", NR > sprintf("%s/block-%02d.line",dir,number)
       next
     }
     $0 == fence && inside { inside=0; close(target); next }
@@ -61,7 +61,7 @@ setup() {
   for file in "$scratch"/block-*.bash; do
     run bash -n "$file"
     if [ "$status" -ne 0 ]; then
-      printf 'Syntax error in fenced Bash example %s, guide line %s:\\n%s\\n' \\
+      printf 'Syntax error in fenced Bash example %s, guide line %s:\n%s\n' \
         "${file##*/}" "$(cat "${file%.bash}.line")" "$output" >&3
       rm -rf -- "$scratch"
       return 1
