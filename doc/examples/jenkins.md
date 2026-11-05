@@ -1,5 +1,9 @@
 # Jenkins: manual, validated certbotbot producer example
 
+For first-time setup, finish the [complete administrator walkthrough](../administrator-first-certificate.md)
+before installing this manually invoked renewal example. This job
+cannot provision AWS resources or register a Let's Encrypt account.
+
 The [reviewable Jenkinsfile](Jenkinsfile) is an **example only**, deliberately
 under `doc/examples/` rather than the repository root. Merging it does
 not create or schedule a Jenkins job, issue a certificate, change S3,
