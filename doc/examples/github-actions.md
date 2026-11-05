@@ -1,5 +1,10 @@
 # GitHub Actions: manually authorized certificate producer
 
+The [first-certificate administrator guide](../administrator-first-certificate.md)
+covers manual AWS provisioning, registration, first issuance and independent
+client verification **before** activating this protected workflow.
+This workflow is not a bootstrap or scheduled certificate installer.
+
 The [example workflow](certbotbot.yml) is maintained **only** under
 `doc/examples/`, not `.github/workflows/`. It is **inert** in this
 repository until a maintainer deliberately copies a reviewed revision
