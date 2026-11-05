@@ -55,14 +55,17 @@ teardown() { rm -rf -- "$ROOT"; }
 
 extract() {
   local name="$1" destination="$2"
+  # Groovy triple-single strings are non-interpolating, but do decode
+  # backslash escapes. Undo the single layer added for Groovy before
+  # Bash parsing and executing the exact shell body Jenkins receives.
   awk -v begin="# BEGIN CERTBOTBOT_JENKINS_$name" \
     -v end="# END CERTBOTBOT_JENKINS_$name" '
     $0 == begin { on=1; found=1; next }
     $0 == end { complete=1; exit }
     on { print }
     END { if (!found || !complete) exit 1 }
-  ' "$BATS_TEST_DIRNAME/../doc/examples/Jenkinsfile" >"$destination" ||
-    return 1
+  ' "$BATS_TEST_DIRNAME/../doc/examples/Jenkinsfile" |
+    sed 's/\\\\/\\/g' >"$destination" || return 1
   [[ -s "$destination" ]]
 }
 
