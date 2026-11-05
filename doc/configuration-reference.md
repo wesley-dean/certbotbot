@@ -3,7 +3,7 @@
 This is the producer's **public input contract**, based on the checked-in
 `src/main.bash`, `lib/config.bash`, `lib/identity.bash`,
 `lib/filename.bash`, `lib/crypto.bash`, `lib/bulk.bash`, related Bats
- tests, and Accepted ADR-020–034, ADR-041/042, ADR-056, and
+tests, and Accepted ADR-020–034, ADR-041/042, ADR-056, and
 ADR-058/059. It documents the ordinary standalone producer,
 including its development and minified representations. The [shipped-option
 inventory](producer-option-inventory.md) audits every recognized ordinary and
@@ -338,9 +338,8 @@ See [multi-SAN](multi-san-contract.md),
 
 `S3_BUCKET` is required and must name an **already provisioned**
 bucket holding a seeded object with a registered ACME account
-matching the **selected** production or staging environment. The selected bucket/key must already hold a compatible account archive
-for **the requested CA** (`production` by default, or deliberately
-selected `staging`); only the explicit `register` command can create
+matching the **selected** production or staging environment. Only
+the explicit `register` command can create
 a first account-only object after proving the key genuinely absent.
 The project validates that a nonempty bucket was selected, but actual
 AWS region, endpoint, credentials, bucket accessibility, and
