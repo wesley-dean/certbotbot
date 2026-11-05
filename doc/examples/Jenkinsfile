@@ -103,16 +103,14 @@ dns_name() {
     [[ "$allow_wild" == true ]] || return 1
     name="${name#\\*.}"
   fi
-  [[ "$name" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9](\\.[a-z0-9][a-z0-9-]*[a-z0-9])+$ ||
-     "$name" =~ ^[a-z0-9](\\.[a-z0-9][a-z0-9-]*[a-z0-9])+$ ||
-     "$name" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9](\\.[a-z0-9])+$ ||
-     "$name" =~ ^[a-z0-9](\\.[a-z0-9])+$ ]] || return 1
-  [[ "${#name}" -le 253 ]] || return 1
+  [[ "$name" != .* && "$name" != *. && "$name" != *..* &&
+     "$name" == *.* && "$name" =~ ^[a-z0-9.-]+$ ]] || return 1
   local -a labels=()
   IFS=. read -r -a labels <<< "$name"
+  (( ${#labels[@]} >= 2 )) || return 1
   for part in "${labels[@]}"; do
-    [[ "${#part}" -le 63 && "$part" != -* && "$part" != *- ]] ||
-      return 1
+    [[ "${#part}" -ge 1 && "${#part}" -le 63 &&
+       "$part" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || return 1
   done
 }
 csv_names() {
