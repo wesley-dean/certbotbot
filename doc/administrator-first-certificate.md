@@ -206,7 +206,7 @@ Also independently verify the release attestations using the
 approved GitHub CLI and release workflow identities before executing
 the files; passing `sha256sum --check` alone is insufficient
 because the sidecars are acquired from the same source. See the
-[README's pinned-release example](../README.md#quick-start-existing-account-and-seeded-archive).
+[operator quick start's pinned-release example](operator-quickstart.md#quick-start-existing-account-and-seeded-archive).
 The examples below presume you are now in the trusted directory
 containing both verified executables, **not** an arbitrary checkout or
 a directory with unreviewed `.env`.
