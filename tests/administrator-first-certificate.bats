@@ -40,19 +40,36 @@ setup() {
   done
 }
 
-@test "all fenced Bash examples pass Bash syntax without any cloud requests" {
-  local generated
-  generated="$(mktemp)" || return 1
-  awk '
+@test "every fenced Bash example parses independently without cloud requests" {
+  local scratch file checked=0
+  scratch="$(mktemp -d)" || return 1
+  # Extract actual fenced bash sources as separate numbered local files.
+  # This is syntax verification only: NONE of the examples are executed.
+  awk -v dir="$scratch" '
     BEGIN { fence=sprintf("%c%c%c",96,96,96) }
-    $0 == fence "bash" { inside=1; blocks++; next }
-    $0 == fence && inside { inside=0; complete++; print ""; next }
-    inside { print }
-    END { if (inside || blocks != complete || blocks < 7) exit 1 }
-  ' "$DOC" >"$generated" || { rm -f "$generated"; return 1; }
-  run bash -n "$generated"
-  rm -f "$generated"
-  [ "$status" -eq 0 ]
+    $0 == fence "bash" {
+      number++
+      inside=1
+      target=sprintf("%s/block-%02d.bash",dir,number)
+      printf "%d\\n", NR > sprintf("%s/block-%02d.line",dir,number)
+      next
+    }
+    $0 == fence && inside { inside=0; close(target); next }
+    inside { print > target }
+    END { if (inside || number < 7) exit 1 }
+  ' "$DOC" || { rm -rf -- "$scratch"; return 1; }
+  for file in "$scratch"/block-*.bash; do
+    run bash -n "$file"
+    if [ "$status" -ne 0 ]; then
+      printf 'Syntax error in fenced Bash example %s, guide line %s:\\n%s\\n' \\
+        "${file##*/}" "$(cat "${file%.bash}.line")" "$output" >&3
+      rm -rf -- "$scratch"
+      return 1
+    fi
+    ((checked+=1))
+  done
+  rm -rf -- "$scratch"
+  [ "$checked" -ge 7 ]
 }
 
 @test "manual privileged steps are labeled and placeholders are guarded" {
