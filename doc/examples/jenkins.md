@@ -34,9 +34,9 @@ and [README registration walkthrough](../../README.md#explicit-account-registrat
 **before** activating this renewal job. Story #284's full
 "I want a certificate for example.com" administrator tutorial is tracked
 separately in [task #293](https://github.com/wesley-dean/certbotbot/issues/293);
-its AWS bucket/IAM provisioning reference is tracked in
-[task #292](https://github.com/wesley-dean/certbotbot/issues/292).
-Neither prerequisite has been silently implemented in this Jenkins example.
+its separate [manual AWS bucket-bootstrap and scoped IAM reference](aws-bucket-bootstrap.md)
+is delivered under [task #292](https://github.com/wesley-dean/certbotbot/issues/292).
+Neither prerequisite is run or provisioned by this Jenkins example.
 
 **Important:** `example.com` is a reserved illustrative name. Do
 not use it or its subdomains for live issuance. Replace it with an
