@@ -49,9 +49,9 @@ state. Ordinary issuance refuses absent/unsafe state.
 ## 1. Choose an environment and exactly one authoritative S3 key
 
 For a first exercise, use the **Let's Encrypt staging CA** and a
-**separate staging S3 object key**. Staging certificates are **not
-trusted by production browsers and clients**; do not deploy them to a
-production service as publicly trusted certificates. The ordinary
+**separate staging S3 object key**. Staging certificates are **not publicly trusted** by production browsers
+and clients; do not deploy them to a production service as if they
+were publicly trusted. The ordinary
 producer defaults to **production** unless
 `--acme-environment staging` is explicitly supplied; registration
 also defaults to production. Never allow those defaults to silently
