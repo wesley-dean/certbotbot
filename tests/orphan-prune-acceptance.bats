@@ -75,7 +75,7 @@ accept_member_same() {
     diff -qr "$before/archive/$name" "$after/archive/$name" >/dev/null ||
     return 1
   for part in cert chain fullchain privkey; do
-    [[ "$(readlink -- "$before/live/$name/$part.pem")" ==
+    [[ "$(readlink -- "$before/live/$name/$part.pem")" == \
       "$(readlink -- "$after/live/$name/$part.pem")" ]] || return 1
   done
   [ "$(stat -c '%a' "$before/archive/$name/privkey1.pem")" -eq 600 ]
