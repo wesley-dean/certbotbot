@@ -1,5 +1,10 @@
 # Release Verification
 
+The [first-certificate administrator guide](administrator-first-certificate.md)
+uses **both** independently shipped products from one reviewed release
+and requires separate expected digests and attestations before any
+credentialed operator action. This release contract remains authoritative.
+
 The release workflow calculates a semantic version from Conventional Commits
 without creating a tag, validates the **exact bytes intended for
 publication**, and creates the GitHub release/tag only after all testing,
