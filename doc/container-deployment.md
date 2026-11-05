@@ -1,5 +1,10 @@
 # Running certbotbot in an Ephemeral Container
 
+Administrators without an initialized S3 bucket, IAM role and
+account archive should use the [first-certificate walkthrough](administrator-first-certificate.md)
+before running this container. The container neither provisions
+AWS resources nor performs implicit registration or deployment.
+
 This is the operator deployment and security guide for the **one-shot
 certificate producer**. It covers the production [root Dockerfile](../Dockerfile)
 and [Docker/rootless-Podman quick start](examples/docker-podman.md).

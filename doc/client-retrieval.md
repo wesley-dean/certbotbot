@@ -1,5 +1,9 @@
 # Separate Client: Read-Only S3 Retrieval (Task #52)
 
+The [first-certificate administrator guide](administrator-first-certificate.md)
+illustrates using the independent read-only client **after** an explicit
+registration and successful first issuance, under a separate reader role.
+
 Status: implemented in **maintained development source** under approved task
 [#52](https://github.com/wesley-dean/certbotbot/issues/52). Task #53 integrated plaintext extraction and late activation in maintained
 source. Task [#54](https://github.com/wesley-dean/certbotbot/issues/54)
