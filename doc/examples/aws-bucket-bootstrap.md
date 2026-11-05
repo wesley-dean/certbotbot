@@ -111,6 +111,8 @@ done
   "$BUCKET" != *..* ]] || exit 64
 [[ "$CURRENT_KEY" == *.tar.gz && "$CURRENT_KEY" != */* ]] || exit 64
 [[ "$DOMAIN" =~ ^[a-z0-9.-]+$ && "$DOMAIN" == *.* ]] || exit 64
+# Keep region selection explicit for every administrative S3 operation.
+export AWS_DEFAULT_REGION="$REGION"
 
 caller="$(aws --profile "$ADMIN_PROFILE" sts get-caller-identity \
   --query Account --output text)" || exit $?
@@ -342,8 +344,8 @@ add managed `head-object` and conditional `put-object`;
 `list-objects-v2`, managed `head-object` and conditional
 `delete-object`. The separate [read-only client](../client-retrieval.md)
 is not part of the producer role. [ADR-020](../adr/ADR-020-one-selected-certificate-and-one-durable-archive.md),
-[ADR-033](../adr/ADR-033-conditional-dated-backup-publication.md),
-[ADR-034](../adr/ADR-034-safe-retention-of-managed-dated-backups.md)
+[ADR-033](../adr/ADR-033-opt-in-dated-backup-publication.md),
+[ADR-034](../adr/ADR-034-scoped-conditional-managed-backup-retention.md)
 and [ADR-041](../adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md)
 govern the corresponding operations.
 
