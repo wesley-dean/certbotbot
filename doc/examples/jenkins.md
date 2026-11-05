@@ -307,3 +307,11 @@ See [source-verified configuration](../configuration-reference.md),
 [trust model](../mvp-certificate-state-threat-model.md),
 [client retrieval](../client-retrieval.md),
 and [ADR-019](../adr/ADR-019-authoritative-approval-labels.md).
+For Pipeline parameter/directive semantics and literal shell script handling,
+see the official [Jenkins Pipeline syntax](https://www.jenkins.io/doc/book/pipeline/syntax/)
+and [Credentials Binding step](https://www.jenkins.io/doc/pipeline/steps/credentials-binding/)
+documentation. Groovy's triple-single quoted strings do not interpolate
+`$VARIABLE`, but still interpret backslash escapes; the maintained
+Jenkinsfile doubles backslashes so the evaluated Bash receives literal
+regex/printf escapes. Its offline tests unescape that one Groovy layer
+before running the extracted scripts.
