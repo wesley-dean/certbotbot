@@ -225,9 +225,12 @@ metadata checks. Retention adds narrow list/HEAD/ETag-
 conditional DeleteObject permissions for a validated namespace.
 S3 KMS keys, bucket policy, hosted-zone scope and the role
 session's permission boundary may impose further constraints.
-This guidance is **not** a deployable IAM JSON policy;
-permissions must be reviewed against the actual S3/Route53
-calls and account context.
+The [separate manual bucket-bootstrap and scoped IAM guide](aws-bucket-bootstrap.md)
+and its [reviewable runtime policy template](aws-iam-policy.json) derive
+the exact base operations from current repo adapters and the Certbot
+Route53 plugin. The template contains **unresolved placeholders** and
+does not provision a role or prove access. Additional dated backup,
+retention, KMS, or multi-zone authority needs independent review.
 
 Keep the OIDC trust policy restricted to the exact expected
 GitHub audience/subject and the GitHub environment's deployment

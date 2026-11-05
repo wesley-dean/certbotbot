@@ -34,9 +34,9 @@ and [README registration walkthrough](../../README.md#explicit-account-registrat
 **before** activating this renewal job. Story #284's full
 "I want a certificate for example.com" administrator tutorial is tracked
 separately in [task #293](https://github.com/wesley-dean/certbotbot/issues/293);
-its AWS bucket/IAM provisioning reference is tracked in
-[task #292](https://github.com/wesley-dean/certbotbot/issues/292).
-Neither prerequisite has been silently implemented in this Jenkins example.
+its separate [manual AWS bucket-bootstrap and scoped IAM reference](aws-bucket-bootstrap.md)
+is delivered under [task #292](https://github.com/wesley-dean/certbotbot/issues/292).
+Neither prerequisite is run or provisioned by this Jenkins example.
 
 **Important:** `example.com` is a reserved illustrative name. Do
 not use it or its subdomains for live issuance. Replace it with an
@@ -60,8 +60,8 @@ actually delegated Route53 zone controlled by the operator.
    release URLs or CLI extra-argv JSON. The job deliberately relies
    on external AWS credential delivery and does not define
    `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` or a role creation step.
-   The detailed scoped runtime IAM policy is a separate review under
-   #292; this example alone does not grant or prove permissions.
+   See the [operator-owned S3/Route53 IAM policy example](aws-bucket-bootstrap.md)
+   from #292; this Jenkins job itself neither grants nor proves permissions.
 3. Provision the account **before** ordinary issuance by explicitly
    running `certbotbot register` with the correct email, affirmative
    TOS consent and matching selected Let's Encrypt environment, against
