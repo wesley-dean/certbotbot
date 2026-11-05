@@ -1,5 +1,10 @@
 # Configuration and CLI Reference
 
+For an operator starting without a dedicated bucket or registered account,
+the [first-certificate walkthrough](administrator-first-certificate.md)
+puts these supported options into their correct manual order. It does
+not create real AWS resources or run on CI.
+
 This is the producer's **public input contract**, based on the checked-in
 `src/main.bash`, `lib/config.bash`, `lib/identity.bash`,
 `lib/filename.bash`, `lib/crypto.bash`, `lib/bulk.bash`, related Bats
