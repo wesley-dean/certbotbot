@@ -173,13 +173,16 @@ This is a **production-adjacent example, not an unattended setup
 script or evidence of a live service test**. Prepare the prerequisites
 before executing any credentialed command:
 
-1. **Account and archive:** Register a suitable production
-   Let's Encrypt account **outside certbotbot**. Populate an existing
-   S3 bucket and current object with a valid full Certbot-state
-   `tar.gz` containing that account, including its registration
-   metadata and private key. An account-only archive is allowed
-   for the initial certificate issuance; a missing archive or
-   missing account is **not**.
+1. **Account and archive:** Before ordinary issuance, seed an existing
+   bucket/key with a valid full Certbot-state `tar.gz` containing an
+   account matching the selected Let's Encrypt CA (production by
+   default, or explicit staging). Use the supported **separate**
+   `certbotbot register` command to initialize a *positively missing*
+   current key with native account-only state after reviewing the
+   terms and configuring the bucket/IAM identity, or verify an
+   independently prepared compatible account archive. An account-only
+   archive is allowed for initial issuance; a missing archive or
+   missing account is **not** accepted by ordinary issuance.
 2. **DNS and AWS identity:** Provision a Route53 hosted zone for
    the requested DNS-01 challenges and a trusted AWS CLI identity
    with narrowly scoped S3 reads/writes and necessary Route53
@@ -306,7 +309,10 @@ upstream options and require `jq` and `base64` only when configured.
 See [ADR-056](doc/adr/ADR-056-extra-provider-argv-and-no-env.md).
 The [full configuration reference](doc/configuration-reference.md)
 is authoritative for values, edge cases, precedence and all
-public flags.
+public flags. The [source-checked producer/register option inventory](doc/producer-option-inventory.md)
+additionally distinguishes registration-only options, repeatable
+whole-collection settings, environment-only provider JSON vectors,
+secret-only values, and implemented/destructive bulk-mode support.
 
 | CLI | Environment / literal `.env` | Default or purpose |
 | --- | --- | --- |
@@ -318,6 +324,9 @@ public flags.
 | `--s3-bucket` | `S3_BUCKET` | **Required** existing bucket |
 | `--s3-key` or `--s3-key-template` | `S3_KEY` or `S3_KEY_TEMPLATE` | Current object; default literal `latest.tar.gz` |
 | `--upload-no-renewal` | `UPLOAD_NO_RENEWAL` | `false`; do not republish an unchanged verified no-op |
+| `--renew-all` | `RENEW_ALL` | `false`; opt in to checked due-renewal of every original validated archived lineage, without implicit issuance |
+| `--remove-orphans` | `REMOVE_ORPHANS` | `false`; **destructive** opt-in, requires an explicit complete desired lineage set and selected certificate |
+| `--desired-cert-name` (repeatable) | `DESIRED_CERT_NAMES` | No default; complete desired set for orphan pruning, CLI list or comma-separated environment/file list |
 | `--dated-backup-enabled` | `DATED_BACKUP_ENABLED` | `false`; opt in to an additional dated recovery object |
 | `--backup-key-template` | `BACKUP_KEY_TEMPLATE` | `archive-{YEAR}{MONTH}{DOM}.tar.gz`; naming alone does not enable publishing |
 | `--backup-retention-count` | `BACKUP_RETENTION_COUNT` | `0`; **no deletion** unless positive and dated backups enabled |
