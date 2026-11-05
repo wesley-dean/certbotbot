@@ -34,7 +34,7 @@ archive, recovery lock, a Jenkins job, scheduled timer, consumer
 installation, or new producer API. It never invokes `register`.
 For a **first-time setup**, use the separate, operator-run
 [`certbotbot register` contract](../acme-account-registration-contract.md)
-and [README registration walkthrough](../../README.md#explicit-account-registration)
+and [operator registration walkthrough](../operator-quickstart.md#explicit-account-registration)
 **before** activating this renewal job. Story #284's full
 "I want a certificate for example.com" administrator tutorial is tracked
 separately in [task #293](https://github.com/wesley-dean/certbotbot/issues/293);

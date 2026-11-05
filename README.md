@@ -54,7 +54,7 @@ producer; neither is required.
 The current producer supports **S3 storage**, **gzip-compressed GNU tar**
 state archives (optionally inside an authenticated GPG envelope), and
 **Certbot with Route53 DNS-01**. It relies on a **previously registered
-Let's Encrypt account for the **selected CA** (production by default, or
+Let's Encrypt account for the selected CA** (production by default, or
 explicit staging) and an **already seeded S3 archive**. Never mix staging
 and production account state within one archive or S3 object key.
 
@@ -96,180 +96,32 @@ specific trust boundaries and failure assumptions.
 
 ## How the pieces fit
 
-```mermaid
-flowchart LR
-    operator[Operator-managed scheduler, AWS IAM and secrets]
-
-    subgraph runner[Trusted ephemeral Linux, Docker or Podman runner]
-        cli[certbotbot Bash producer]
-        private[Private temporary Certbot config, work and logs]
-        verify[Archive, lineage, SAN, key and candidate verification]
-        cli --> private
-        private --> verify
-        verify --> cli
-    end
-
-    subgraph aws[Operator-provisioned AWS resources]
-        current[(Existing S3 current archive)]
-        backups[(Optional dated S3 recovery copies)]
-        route53[Existing Route53 hosted zones]
-    end
-
-    acme[Existing Let's Encrypt account and ACME service]
-    consumer[Separate read-only client or operator download]
-    service[Operator-managed certificate installation and TLS reload]
-
-    operator --> cli
-    current -->|Restore existing account and lineages| cli
-    cli -->|Selected DNS-01 challenge| route53
-    route53 <--> acme
-    cli -->|Verified, conditional current publication| current
-    cli -.->|Opt-in dated backup and retention| backups
-    current -->|Independent read| consumer
-    consumer -->|Operator-controlled installation| service
-```
-
-An archive is the **contents of the Certbot configuration root**
-(`/etc/letsencrypt`) using validated relative members and canonical
-renewal metadata. The exact configured **current S3 bucket/key**
-(default `latest.tar.gz`) is authoritative. A successful certificate
-run does not imply downstream deployment. A failed or interrupted
-S3 PutObject may have changed the remote object even if the
-producer returns nonzero: the operation is **not** a transaction.
-
-For administrators beginning with a delegated Route53 zone but **no bucket,
-IAM role, seeded account or certificate**, follow the
-[complete first-certificate walkthrough](doc/administrator-first-certificate.md)
-and its separately reviewed [AWS bucket/IAM runbook](doc/examples/aws-bucket-bootstrap.md)
-before ordinary issuance. Those instructions are operator-run examples,
-not active GitHub Actions or cloud provisioning.
+The one-shot producer restores validated Certbot account and certificate
+state from S3, runs the selected Route53 DNS-01 operation, verifies the
+candidate state, and conditionally republishes the current archive.
+Installation and TLS reloads remain operator responsibilities. See the
+[architecture diagram and lifecycle walkthrough](doc/operator-quickstart.md#how-the-pieces-fit)
+and [full lifecycle contract](doc/how-it-works.md).
 
 ## Explicit account registration
 
-The account-provisioning command is separate from certificate issuance.
-It requires a contact email, an existing S3 bucket, and affirmative consent
-to the Let's Encrypt subscriber terms.  EFF email signup defaults to
-`true` and may be disabled explicitly.  Production is the default CA;
-select `--acme-environment staging` when testing, with a **different S3
-key** to keep account contexts separate.  For example, after reviewing
-the terms and configuring AWS credentials:
-
-```bash
-./certbotbot.bash register \
-  --email operator@example.org \
-  --agree-tos true \
-  --eff-email-signup false \
-  --s3-bucket my-existing-certificates \
-  --s3-key latest.tar.gz
-```
-
-The address and bucket are illustrative.  The command uses isolated
-Certbot state, a verified account-only tar archive and conditional S3
-publication.  No certificate is issued.  A confirmed missing S3 key is
-permitted only for explicit registration; access errors and ambiguous state
-are fatal.  The ordinary issuer accepts a *separate*, explicitly selected staging
-CA and archive under ADR-042. Registration never implicitly starts issuance;
-any milestone 4 live test must explicitly use staging and must never reach
-Let's Encrypt production.
-See [the registration contract](doc/acme-account-registration-contract.md)
-and [ADR-041](doc/adr/ADR-041-explicit-acme-account-registration-and-state-initialization.md).
+Use the separate `certbotbot register` command to initialize native
+account-only state in an existing S3 bucket. It requires an email address,
+affirmative subscriber-terms consent, and a selected CA; it does not request
+a certificate. Keep staging and production account state in different keys.
+See the [registration walkthrough](doc/operator-quickstart.md#explicit-account-registration)
+and [registration contract](doc/acme-account-registration-contract.md).
 
 ## Quick start: existing account and seeded archive
 
-This is a **production-adjacent example, not an unattended setup
-script or evidence of a live service test**. Prepare the prerequisites
-before executing any credentialed command:
+Ordinary issuance requires an existing compatible Let's Encrypt account,
+a seeded S3 archive, an existing Route53 zone, correctly scoped AWS access,
+and a trusted, independently verified release executable. Use the
+[operator quick start](doc/operator-quickstart.md#quick-start-existing-account-and-seeded-archive)
+for the complete prerequisites, immutable release download and attestation
+checks, and failure/recovery guidance.
 
-1. **Account and archive:** Before ordinary issuance, seed an existing
-   bucket/key with a valid full Certbot-state `tar.gz` containing an
-   account matching the selected Let's Encrypt CA (production by
-   default, or explicit staging). Use the supported **separate**
-   `certbotbot register` command to initialize a *positively missing*
-   current key with native account-only state after reviewing the
-   terms and configuring the bucket/IAM identity, or verify an
-   independently prepared compatible account archive. An account-only
-   archive is allowed for initial issuance; a missing archive or
-   missing account is **not** accepted by ordinary issuance.
-2. **DNS and AWS identity:** Provision a Route53 hosted zone for
-   the requested DNS-01 challenges and a trusted AWS CLI identity
-   with narrowly scoped S3 reads/writes and necessary Route53
-   TXT-change and status-check permissions. Configure AWS region,
-   network access and credential delivery separately. If dated
-   backups or retention are enabled, review their additional
-   conditional-write/list/delete permissions first.
-3. **Trusted Linux toolchain:** Install Bash **4.3+**, AWS CLI
-   **v2**, Certbot with the `dns-route53` plugin,
-   OpenSSL, GNU tar/gzip and standard file/hash utilities.
-   GnuPG **2.4.7+ with working AES-256/OCB support** is
-   additionally required for encrypted archives. The runner
-   must keep its temporary Certbot workspace private.
-4. **Reviewed release artifact:** Choose an immutable reviewed
-   release tag, verify the [release checks and provenance](doc/release-verification.md),
-   and obtain an **independently verified** SHA-256 for the
-   ordinary `certbotbot.bash` executable. Never treat the
-   downloaded executable and its same-origin checksum alone as
-   sufficient proof of release trust.
-5. **Only one writer per current key:** Schedule and coordinate
-   certificate jobs so that two producers cannot concurrently
-   modify the same authoritative bucket/key, even across
-   Jenkins, GitHub Actions, containers and other hosts.
-
-With the GitHub CLI, a trusted `sha256sum` implementation and
-the expected digest obtained **out-of-band from your review**,
-the following shell example fails closed until its placeholders
-are replaced:
-
-```bash
-set -euo pipefail
-umask 077
-
-RELEASE_TAG='vREPLACE_WITH_REVIEWED_TAG'
-EXPECTED_SHA256='REPLACE_WITH_INDEPENDENTLY_REVIEWED_64_HEX_DIGEST'
-
-[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-[[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]]
-
-mkdir -m 0700 ./certbotbot-release
-cd ./certbotbot-release
-gh release download "$RELEASE_TAG" \
-  --repo wesley-dean/certbotbot \
-  --pattern certbotbot.bash \
-  --pattern certbotbot.bash.sha256
-
-sha256sum --check certbotbot.bash.sha256
-actual="$(sha256sum certbotbot.bash | awk '{print $1}')"
-[[ "$actual" == "$EXPECTED_SHA256" ]]
-gh attestation verify certbotbot.bash \
-  --repo wesley-dean/certbotbot >/dev/null
-gh attestation verify certbotbot.bash.sha256 \
-  --repo wesley-dean/certbotbot >/dev/null
-
-bash -n certbotbot.bash
-chmod 0700 certbotbot.bash
-./certbotbot.bash --help
-./certbotbot.bash --version
-```
-
-For the **standalone Bash tools**, rather than the container image,
-the ordinary producer and separate read-only client are available from
-[GitHub Releases](https://github.com/wesley-dean/certbotbot/releases).
-You can also use [`vet`](https://github.com/vet-run/vet) to download,
-inspect, lint (when ShellCheck is available), and explicitly approve
-a remote release script **before executing it**, for example:
-
-~~~bash
-vet https://github.com/wesley-dean/certbotbot/releases/latest/download/certbotbot.bash --help
-vet https://github.com/wesley-dean/certbotbot/releases/latest/download/certbotbot-client.bash --help
-~~~
-
-`vet` runs the fetched script for this invocation; it does not install
-a permanent copy or replace independent release and attestation checks.
-Use the release assets above when you need locally installed executables.
-
-The download commands intentionally do **not** contact S3, Route53
-or ACME. Once the real account, archive, permissions and selected
-domain have been **independently prepared**, an ordinary invocation
-from that private directory looks like:
+Once those prerequisites are independently established, an example invocation is:
 
 ```bash
 ./certbotbot.bash \
@@ -278,23 +130,9 @@ from that private directory looks like:
   example.com
 ```
 
-Here `my-existing-certificates` and `example.com` are **illustrative
-values**, not provisioned resources. The default
-`INCLUDE_SUBDOMAINS=true` also requests the complementary wildcard
-SAN, so `example.com` normally requests both `example.com`
-and `*.example.com`. Use `--include-subdomains false`
-when only the literal name is desired. For a stable lineage
-across SAN changes, use an explicit `--cert-name`.
-
-A successful run prints a nonsecret selected-lineage and
-`s3://bucket/key` status containing `published=true`
-or `published=false`. An unchanged, validated no-op is still
-success and normally skips the remote write. A failed provider,
-unsafe archive, mismatched certificate/key or incomplete candidate
-must not authorize publication; after an attempted remote write,
-the remote state can be **uncertain**. Inspect the current object
-independently rather than blindly retrying a failed or partial
-publication. See [failure and recovery details](doc/how-it-works.md).
+These are illustrative names, not provisioned resources. By default, the
+selected DNS name also requests its complementary apex/wildcard SAN. A
+successful command does not install or deploy the resulting certificate.
 
 ## Common configuration
 
@@ -467,38 +305,18 @@ PRs, or deploy certificates to consumer servers.
 
 ## Credential-free local protocol E2E CI
 
-The dedicated [local protocol E2E workflow](.github/workflows/local-protocol-e2e.yml)
-runs automatically on repository pushes and by manual dispatch. It builds
-the actual public producer artifacts, uses real Certbot and containerized
-Pebble/SeaweedFS, verifies independent S3 archive restoration and a
-second authentic ACME renewal order, and executes seven isolated negative
-scenarios. Real no-egress and private staging TLS checks are mandatory;
-the job has no real cloud credentials or host-published service ports.
-
-**This local mode intentionally bypasses DNS-01 challenge validation**
-(`PEBBLE_VA_ALWAYS_VALID=1`) and mocks only the Route53 API. Its success
-does not establish Amazon S3, Route53 DNS propagation, or Let's Encrypt
-staging interoperability. The separately authorized live milestone 4
-acceptance remains required. See the
-[isolated E2E operations and evidence guide](doc/local-protocol-e2e-harness.md)
-and [ADR-047](doc/adr/ADR-047-mocked-route53-local-lifecycle-e2e.md).
-The CI workflow fails closed if a real Docker-backed lifecycle stage cannot
-be proved; it does not silently skip a missing container engine.
-
-
-
+The [local protocol CI workflow](.github/workflows/local-protocol-e2e.yml)
+exercises real Certbot, Pebble, and SeaweedFS using isolated test fixtures.
+DNS-01 validation is intentionally bypassed, and Route53 is stubbed;
+success does **not** prove live AWS or Let's Encrypt integration.
+See [testing and CI](doc/testing-and-ci.md#credential-free-local-protocol-e2e-ci).
 
 ## Manual staging E2E acceptance
 
-Milestone 4's real Let's Encrypt staging acceptance is operator-controlled,
-using the separate [manual staging workflow](doc/milestone-4-live-staging-workflow.md)
-and governing [ADR-043](doc/adr/ADR-043-manual-staging-live-e2e-workflow.md).
-The workflow is never invoked from a pull request. It requires a trusted
-`main` dispatch, explicit staging selection, an independently seeded staging
-account-only S3 key, and a deliberate operator authorization. It does not
-register an account, contact Let's Encrypt production, or provide ordinary
-release publication authority. The successful fixture-only Bats suite does
-not constitute real staging evidence.
+Real Let's Encrypt staging and AWS acceptance requires a separately
+authorized, operator-triggered test. See the
+[staging acceptance overview](doc/testing-and-ci.md#manual-staging-e2e-acceptance)
+and [manual staging workflow](doc/milestone-4-live-staging-workflow.md).
 
 ## Building, testing and contributing
 
@@ -523,35 +341,15 @@ are prepared. `make test-report` writes JUnit output.
 
 ### Testing regimen
 
-Our testing regimen combines fast source checks with behavior and integration
-acceptance. `make check` validates maintained Bash syntax and ShellCheck;
-`make test` runs the full Bats behavior inventory against each of the three
-checksum-verified producer flavors (development, ordinary, and minified),
-including fixture-based positive and fail-closed negative cases. CI also
-verifies artifact integrity, compatibility, OCI runtime behavior, and
-security and lint findings. The independent shipped certificate client has
-its own behavior and authenticated-decryption qualification gates.
+`make check` validates maintained source; `make test` exercises
+all three verified producer flavors. CI also checks the independent
+client, OCI runtime, release provenance, and local protocol lifecycle.
+See the [testing and CI overview](doc/testing-and-ci.md),
+[detailed testing contracts](doc/testing.md), and
+[release verification](doc/release-verification.md).
 
-The separate [local protocol E2E workflow](.github/workflows/local-protocol-e2e.yml)
-uses real Certbot, Pebble ACME, and SeaweedFS on an isolated Docker network.
-It requires initial issuance, independent archive readback, one verified
-post-issuance renewal-metadata stabilization, strict no-republish no-ops
-across all three producer flavors, a second real ACME order and replacement,
-seven negative scenarios, isolation probes, and cleanup. Pebble bypasses
-DNS challenge validation and Route53 is stubbed, so this is **not** proof
-of interoperability with live Route53, Amazon S3, or Let's Encrypt.
-That remains the separate, manually authorized milestone 4 staging gate.
-
-The broad Test, OCI, and local protocol E2E workflows run on branch pushes;
-MegaLinter runs on pull-request events, while other security and release
-workflows follow their configured triggers. A green individual job does not
-replace the complete required check set for the exact candidate commit.
-See [testing guidance](doc/testing.md) and the
-[local E2E harness guide](doc/local-protocol-e2e-harness.md) for details.
-`make format` applies the repository's shfmt profile,
-`make adr-index` generates temporary ADR navigation,
-and `make docs` generates Doxygen reference output
-without committing generated files.
+`make format` applies the shfmt profile; `make adr-index` and
+`make docs` generate ignored reference output.
 
 The eight release assets comprise the three producer
 flavors (`certbotbot.dev.bash`, `certbotbot.bash`,
@@ -603,104 +401,21 @@ and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## GitHub issue metadata synchronization
 
-The repository includes a GitHub Actions workflow and two independent Bash
-scripts for synchronizing GitHub's native issue relationships and optionally
-GitHub Projects v2 Status. This is repository administration tooling, not part
-of the certificate producer or its releases.
-
-Prerequisites for local use: `gh`, `jq`, and an exported `GH_TOKEN` with
-appropriate permissions. In Actions, native relationships use the built-in
-token with `issues: write`; only optional Projects synchronization requires
-the repository secret `GH_TOKEN`. The workflow accepts no dispatch inputs; issue events
-process the affected issue, and a manual dispatch or weekly scheduled run
-processes the entire backlog.
-
-```bash
-export GH_REPO=wesley-dean/certbotbot
-bash scripts/update_issue_parent_child_relationships.bash --issue 100
-bash scripts/update_issue_parent_child_relationships.bash --all
-
-# Projects integration is optional and disabled by default:
-export PROJECT_NUMBER=0
-bash scripts/update_issue_project_status.bash --issue 100
-
-# To enable Projects v2, set a positive project number and ensure GH_TOKEN
-# has permission to update the target Project.
-export PROJECT_NUMBER=12
-export PROJECT_OWNER=wesley-dean
-bash scripts/update_issue_project_status.bash --all
-```
-
-Set repository Actions variable `PROJECT_NUMBER` to the appropriate positive
-GitHub Projects number to enable project synchronization. Unset, empty, or
-`0` skips the Projects job without affecting relationship reconciliation.
-An optional `PROJECT_OWNER` variable overrides the repository owner.
-
-Run the isolated mock checks with
-`bash tests/issue-metadata-sync.bash`. Existing native parents are not
-silently replaced when their Markdown declaration disagrees; failures
-must be investigated. Project synchronization mirrors only status and does
-not update approvals, issue closure, or milestones. See
-[ADR-044](doc/adr/ADR-044-github-issue-metadata-synchronization.md).
+Native issue relationships and optional GitHub Projects v2 status are
+maintained by separate repository administration scripts, outside the
+certificate-management product. See the
+[GitHub issue and Kanban automation guide](doc/github-issue-automation.md#github-issue-metadata-synchronization)
+for authentication, commands, safety checks, and governance.
 
 ### Native issue dependency synchronization
 
-To add native GitHub blocking relationships, write a dedicated level-two `Blocked by` section with one bare issue reference
-per line, for example `- #89` followed by `- #90`. References in
-`Dependencies and Governing Decisions` are NOT blocking dependencies.
-Dependency synchronization is temporarily disabled in Actions pending audit
-and cleanup of incorrectly created relationships.
-The script adds missing native blockers, verifies them, and preserves existing
-relationships; it never removes them or infers dependencies from parentage.
-
-```bash
-export GH_REPO=wesley-dean/certbotbot
-# GH_TOKEN must be available, as with the other issue scripts.
-bash scripts/update_issue_dependencies.bash --issue 100
-bash scripts/update_issue_dependencies.bash --all
-# Offline mocked checks:
-bash tests/issue-dependencies-sync.bash
-```
-
-The existing issue metadata workflow invokes this script independently using
-its built-in token with `issues: write`, and its dedicated read-only PR test
-workflow checks the mocked behavior. See [ADR-045](doc/adr/ADR-045-native-issue-dependency-synchronization.md).
+Dependency synchronization remains **disabled in Actions** pending an
+audit. See [the documented safety boundary](doc/github-issue-automation.md#native-issue-dependency-synchronization).
 
 ### Read-only Markdown Kanban report
 
-Generate a Markdown board directly from live GitHub Issues:
-
-```bash
-GH_REPO=wesley-dean/certbotbot bash scripts/render_issue_kanban.bash > kanban.md
-# Or use --repo owner/repo; gh CLI authentication is required.
-```
-
-The report displays Todo, In Progress, and Done columns, with High, Medium
-(default/normal), and Low priority rows. Only issues currently carrying the
-`approved` label appear, and declined/not-planned closures are excluded.
-Approved technical tasks are indented under an approved parent story when
-they share a cell; other approved tasks are included in a standalone/cross-lane
-group rather than being hidden or misrepresented. This is a point-in-time
-read-only report, not a GitHub Projects board or a new source of lifecycle
-state. Run `bash tests/issue-kanban-report.bash` for mocked validation.
+See [how to render the issue-derived board](doc/github-issue-automation.md#read-only-markdown-kanban-report).
 
 ### Publish Kanban into a managed issue
 
-The metadata workflow also publishes the Markdown board to the exact issue
-title `Development Kanban` on issue events, manual dispatch, and schedule.
-It creates the issue if no exact title matches. Once created, the issue body
-includes a `managed-by` marker, so future runs can safely replace its
-contents. An existing issue with the same title but no marker is **not**
-overwritten; duplicate exact-title matches also fail closed.
-
-Local execution (requires `GH_TOKEN` with `issues: write`):
-
-```bash
-GH_REPO=wesley-dean/certbotbot bash scripts/publish_issue_kanban.bash
-# Override the title for manual use:
-bash scripts/publish_issue_kanban.bash --title 'Development Kanban'
-```
-
-The generated issue is deliberately unlabeled and unapproved. It is excluded
-from the board, and the Actions job skips issue events for the generated title.
-Use `bash tests/issue-kanban-publisher.bash` for offline mock checks.
+See [how the managed issue is created and updated](doc/github-issue-automation.md#publish-kanban-into-a-managed-issue).
