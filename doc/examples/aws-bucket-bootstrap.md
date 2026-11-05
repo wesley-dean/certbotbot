@@ -15,7 +15,9 @@ Let's Encrypt account. `example.com` is reserved documentation text and
 must **never** be submitted for a real certificate. The administrator
 chooses a private bucket, current object key, AWS region and constrained
 runtime identity. This page stops **before** executing `certbotbot register`
-or issuing any certificate; the complete walkthrough is task #293.
+or issuing any certificate; continue with the
+[complete first-certificate walkthrough](../administrator-first-certificate.md)
+to register the account, issue, verify and plan renewals.
 
 ## Authority and threat boundaries
 
