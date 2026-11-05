@@ -1,6 +1,7 @@
-// EXAMPLE ONLY: copy into a separately reviewed Jenkins job to activate.
-// The default release pin is intentionally invalid. No timer trigger is defined.
-// This job runs a certificate producer with real S3/Route53 authority when enabled.
+// EXAMPLE ONLY: copy into a separately reviewed, administrator-controlled job.
+// No triggers, SCM checkout, account registration, resource provisioning or deploy.
+// All default-off dangerous choices require an authorized manual build.
+// This is deliberately NOT a credentialed PR job.
 pipeline {
   agent { label 'certbotbot-trusted-linux' }
 
@@ -12,86 +13,299 @@ pipeline {
   }
 
   parameters {
-    string(name: 'DOMAIN', defaultValue: 'example.com',
-      description: 'Primary DNS name; replace the documentation placeholder')
-    string(name: 'S3_BUCKET', defaultValue: '',
-      description: 'Existing seeded certificate archive bucket (required)')
-    string(name: 'S3_KEY', defaultValue: 'latest.tar.gz',
-      description: 'Existing current object; never point at a dated recovery key')
+    booleanParam(name: 'CONFIRM_RUN', defaultValue: false,
+      description: 'I have reviewed the target, role, archive and expected effects for THIS manual build')
+    string(name: 'DOMAIN', defaultValue: '',
+      description: 'Primary DNS name for selected operation; empty only for domainless RENEW_ALL')
+    string(name: 'ADDITIONAL_SANS', defaultValue: '',
+      description: 'Optional comma-separated additional SANs, no spaces; passed as repeated --san')
     string(name: 'CERT_NAME', defaultValue: '',
-      description: 'Optional stable non-wildcard Certbot lineage name')
+      description: 'Optional exact stable lineage name; REQUIRED here for REMOVE_ORPHANS')
     choice(name: 'INCLUDE_SUBDOMAINS', choices: ['true', 'false'],
-      description: 'Complement every requested apex or wildcard name')
+      description: 'Include complementary apex/wildcard SANs')
+    choice(name: 'ACME_ENVIRONMENT', choices: ['staging', 'production'],
+      description: 'Default staging; production requires a separate matching account and key')
+    string(name: 'S3_BUCKET', defaultValue: '',
+      description: 'Pre-existing authorized bucket with a seeded account archive')
+    choice(name: 'CURRENT_KEY_MODE', choices: ['literal', 'template'],
+      description: 'Select exact current S3_KEY or frozen-date S3_KEY_TEMPLATE')
+    string(name: 'S3_KEY', defaultValue: 'latest.tar.gz',
+      description: 'Literal current key used when CURRENT_KEY_MODE=literal')
+    string(name: 'S3_KEY_TEMPLATE', defaultValue: '',
+      description: 'Current date template when CURRENT_KEY_MODE=template')
+    string(name: 'BACKUP_KEY_TEMPLATE', defaultValue: 'archive-{YEAR}{MONTH}{DOM}.tar.gz',
+      description: 'Backup naming; this does not itself enable remote backup writes')
     choice(name: 'DATED_BACKUP_ENABLED', choices: ['false', 'true'],
-      description: 'Opt in only after reviewing managed backup permissions')
+      description: 'Opt in to one additional verified managed backup write')
     string(name: 'BACKUP_RETENTION_COUNT', defaultValue: '0',
-      description: '0 disables deletion; positive values can delete older backups')
-    choice(name: 'ARCHIVE_ENCRYPTION', choices: ['none', 'gpg-ocb'],
-      description: 'Selected existing archive mode; do not use for migration')
+      description: '0 means never delete; 1-10000 may delete older managed objects')
+    choice(name: 'UPLOAD_NO_RENEWAL', choices: ['false', 'true'],
+      description: 'Permit publication of a fully verified unchanged archive')
+    choice(name: 'RENEW_ALL', choices: ['false', 'true'],
+      description: 'Opt in to due-renewal checks for all original archived lineages')
+    choice(name: 'REMOVE_ORPHANS', choices: ['false', 'true'],
+      description: 'DESTRUCTIVE: delete only complete archived lineages missing from desired set')
+    string(name: 'DESIRED_CERT_NAMES', defaultValue: '',
+      description: 'When pruning: complete comma-separated exact lineage set to RETAIN')
+    choice(name: 'ARCHIVE_ENCRYPTION', choices: ['none', 'gpg-ocb', 'auto'],
+      description: 'Plaintext by default; gpg-ocb binds a Jenkins Secret text credential')
+    choice(name: 'ARCHIVE_MIGRATION', choices: ['none', 'plaintext-to-gpg-ocb'],
+      description: 'One-time migration only after independent plaintext recovery backup')
+    choice(name: 'ARCHIVE_MIGRATION_BACKUP_CONFIRMED', choices: ['false', 'true'],
+      description: 'Acknowledge independent recoverable backup only with migration')
+    choice(name: 'CONFIG_MODE', choices: ['none', 'no-env', 'reviewed-file'],
+      description: 'none uses clean cwd; no-env suppresses application env; file is admin-owned')
+    text(name: 'AWS_EXTRA_ARGS', defaultValue: '[]',
+      description: 'JSON string array: --cli-connect-timeout/--cli-read-timeout only')
+    text(name: 'GPG_EXTRA_ARGS', defaultValue: '[]',
+      description: 'JSON string array: --compress-level or --no-compress only')
+    text(name: 'CERTBOT_EXTRA_ARGS', defaultValue: '[]',
+      description: 'JSON string array: bounded Certbot logging/user-agent and DNS wait controls')
   }
 
   environment {
-    // Replace BOTH with independently reviewed immutable release values.
-    // The SHA is operator-pinned separately from the downloaded sidecar.
+    // Both literals MUST be replaced with independently reviewed immutable data.
     CERTBOTBOT_RELEASE_TAG = 'REPLACE_WITH_REVIEWED_TAG'
     CERTBOTBOT_RELEASE_SHA256 = 'REPLACE_WITH_REVIEWED_SHA256'
-    // AWS region and role/credential chain come from the trusted agent.
+    // Only an administrator can provision or change this root-owned file.
+    CERTBOTBOT_REVIEWED_CONFIG_FILE = '/etc/certbotbot/jenkins.env'
+    // The trusted agent configures AWS role/region outside Jenkins parameters.
   }
 
   stages {
-    stage('Validate operator preconditions') {
+    stage('Validate all operator inputs before network operations') {
       steps {
         sh '''#!/usr/bin/env bash
+# BEGIN CERTBOTBOT_JENKINS_VALIDATE
 set -euo pipefail
 set +x
 umask 077
-[[ "$CERTBOTBOT_RELEASE_TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || {
-  printf '%s\\n' 'Choose a reviewed immutable release tag before enabling this job' >&2
-  exit 64
+export LC_ALL=C
+fail() { printf 'certbotbot Jenkins: invalid %s\\n' "$1" >&2; exit 64; }
+boolean() { [[ "$2" == true || "$2" == false ]] || fail "$1"; }
+
+# An explicit manual authorization is required even to download an artifact.
+[[ "$CONFIRM_RUN" == true ]] || fail 'run confirmation'
+[[ "$CERTBOTBOT_RELEASE_TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]] ||
+  fail 'reviewed immutable release tag'
+[[ "$CERTBOTBOT_RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]] ||
+  fail 'independent release digest'
+[[ "$S3_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ &&
+   "$S3_BUCKET" != *..* ]] || fail 'existing bucket'
+
+# Jenkins is deliberately stricter than the producer's DNS normalizer:
+# canonical lowercase, valid interior hyphens, no shell interpolation.
+dns_name() {
+  local name="$1" allow_wild="$2" part
+  [[ -n "$name" && "${#name}" -le 253 && "$name" == "${name,,}" ]] ||
+    return 1
+  if [[ "$name" == \\*.* ]]; then
+    [[ "$allow_wild" == true ]] || return 1
+    name="${name#\\*.}"
+  fi
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9](\\.[a-z0-9][a-z0-9-]*[a-z0-9])+$ ||
+     "$name" =~ ^[a-z0-9](\\.[a-z0-9][a-z0-9-]*[a-z0-9])+$ ||
+     "$name" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9](\\.[a-z0-9])+$ ||
+     "$name" =~ ^[a-z0-9](\\.[a-z0-9])+$ ]] || return 1
+  [[ "${#name}" -le 253 ]] || return 1
+  local -a labels=()
+  IFS=. read -r -a labels <<< "$name"
+  for part in "${labels[@]}"; do
+    [[ "${#part}" -le 63 && "$part" != -* && "$part" != *- ]] ||
+      return 1
+  done
 }
-[[ "$CERTBOTBOT_RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
-  printf '%s\\n' 'Pin the reviewed producer SHA-256 before enabling this job' >&2
-  exit 64
+csv_names() {
+  local kind="$1" raw="$2" cap="$3" name
+  local -a items=()
+  [[ -n "$raw" ]] || return 0
+  [[ "$raw" != ,* && "$raw" != *, && "$raw" != *,,* &&
+     "$raw" != *[[:space:]]* && "$raw" != *[[:cntrl:]]* ]] ||
+    fail "$kind"
+  IFS=, read -r -a items <<< "$raw"
+  (( ${#items[@]} <= cap )) || fail "$kind"
+  for name in "${items[@]}"; do
+    if [[ "$kind" == 'desired lineages' ]]; then
+      dns_name "$name" false || fail "$kind"
+    else
+      dns_name "$name" true || fail "$kind"
+    fi
+  done
 }
-[[ -n "$S3_BUCKET" && "$S3_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ &&
-  "$S3_BUCKET" != *..* ]] || {
-  printf '%s\\n' 'Configure an existing valid S3 bucket' >&2
-  exit 64
-}
-[[ -n "$DOMAIN" && "$DOMAIN" != example.com ]] || {
-  printf '%s\\n' 'Replace the example primary DNS name with a reviewed identity' >&2
-  exit 64
-}
-[[ -n "$S3_KEY" && "$S3_KEY" != -* && "$S3_KEY" != */* &&
-  "$S3_KEY" != *[[:space:]]* ]] || {
-  printf '%s\\n' 'Invalid S3 current object key' >&2
-  exit 64
-}
-[[ "$INCLUDE_SUBDOMAINS" == true || "$INCLUDE_SUBDOMAINS" == false ]]
-[[ "$DATED_BACKUP_ENABLED" == true || "$DATED_BACKUP_ENABLED" == false ]]
-[[ "$ARCHIVE_ENCRYPTION" == none || "$ARCHIVE_ENCRYPTION" == gpg-ocb ]]
-if [[ "$BACKUP_RETENTION_COUNT" != 0 ]]; then
-  [[ "$BACKUP_RETENTION_COUNT" =~ ^[1-9][0-9]*$ &&
-    "${#BACKUP_RETENTION_COUNT}" -le 5 ]] || exit 64
-  (( 10#$BACKUP_RETENTION_COUNT <= 10000 )) || exit 64
-  [[ "$DATED_BACKUP_ENABLED" == true ]] || {
-    printf '%s\\n' 'Retention requires explicitly enabled dated backups' >&2
-    exit 64
-  }
+# Explicitly selected domains must not use reserved example.com.
+if [[ -n "$DOMAIN" ]]; then
+  dns_name "$DOMAIN" true || fail 'primary DNS name'
+  case "$DOMAIN" in example.com|*.example.com) fail 'reserved example domain' ;; esac
 fi
-for tool in bash aws certbot openssl tar gzip sha256sum curl; do
+[[ -z "$CERT_NAME" ]] || dns_name "$CERT_NAME" false || fail 'lineage name'
+csv_names 'additional SANs' "$ADDITIONAL_SANS" 99
+csv_names 'desired lineages' "$DESIRED_CERT_NAMES" 100
+
+boolean INCLUDE_SUBDOMAINS "$INCLUDE_SUBDOMAINS"
+boolean DATED_BACKUP_ENABLED "$DATED_BACKUP_ENABLED"
+boolean UPLOAD_NO_RENEWAL "$UPLOAD_NO_RENEWAL"
+boolean RENEW_ALL "$RENEW_ALL"
+boolean REMOVE_ORPHANS "$REMOVE_ORPHANS"
+boolean ARCHIVE_MIGRATION_BACKUP_CONFIRMED "$ARCHIVE_MIGRATION_BACKUP_CONFIRMED"
+[[ "$ACME_ENVIRONMENT" == staging || "$ACME_ENVIRONMENT" == production ]] ||
+  fail 'ACME environment'
+[[ "$ARCHIVE_ENCRYPTION" == none || "$ARCHIVE_ENCRYPTION" == auto ||
+   "$ARCHIVE_ENCRYPTION" == gpg-ocb ]] || fail 'archive encryption'
+[[ "$ARCHIVE_MIGRATION" == none ||
+   "$ARCHIVE_MIGRATION" == plaintext-to-gpg-ocb ]] || fail 'migration mode'
+
+# The template check rejects separators, unresolved tokens, traversal, and
+# control characters. The producer still enforces the full frozen-date policy.
+template() {
+  local source="$1" rendered
+  [[ "$source" == *.tar.gz && "$source" != */* &&
+     "$source" != *..* && "${#source}" -le 255 ]] || return 1
+  rendered="${source//\\{YEAR\\}/2026}"
+  rendered="${rendered//\\{MONTH\\}/11}"
+  rendered="${rendered//\\{DOM\\}/04}"
+  [[ "$rendered" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\\.tar\\.gz$ &&
+     "$rendered" != *..* && "${#rendered}" -le 255 ]]
+}
+case "$CURRENT_KEY_MODE" in
+  literal)
+    [[ -n "$S3_KEY" && "$S3_KEY" != -* && "$S3_KEY" != */* &&
+       "$S3_KEY" != *[[:space:]]* && "$S3_KEY" != *[[:cntrl:]]* ]] ||
+      fail 'current literal object key'
+    ;;
+  template)
+    template "$S3_KEY_TEMPLATE" || fail 'current key template'
+    ;;
+  *) fail 'current key mode' ;;
+esac
+template "$BACKUP_KEY_TEMPLATE" || fail 'backup key template'
+
+[[ "$BACKUP_RETENTION_COUNT" == 0 ||
+   ( "$BACKUP_RETENTION_COUNT" =~ ^[1-9][0-9]{0,4}$ &&
+     "${#BACKUP_RETENTION_COUNT}" -le 5 ) ]] ||
+  fail 'retention count'
+if [[ "$BACKUP_RETENTION_COUNT" != 0 ]]; then
+  (( 10#$BACKUP_RETENTION_COUNT <= 10000 )) || fail 'retention count'
+  [[ "$DATED_BACKUP_ENABLED" == true ]] ||
+    fail 'retention requires dated publication'
+fi
+if [[ "$ARCHIVE_MIGRATION" == none ]]; then
+  [[ "$ARCHIVE_MIGRATION_BACKUP_CONFIRMED" == false ]] ||
+    fail 'migration confirmation without migration'
+else
+  [[ "$ARCHIVE_ENCRYPTION" == gpg-ocb &&
+     "$ARCHIVE_MIGRATION_BACKUP_CONFIRMED" == true ]] ||
+    fail 'migration mode and recovery confirmation'
+fi
+[[ "$RENEW_ALL" != true || "$REMOVE_ORPHANS" != true ]] ||
+  fail 'conflicting bulk/destructive modes'
+if [[ -z "$DOMAIN" ]]; then
+  [[ "$RENEW_ALL" == true && "$CERT_NAME" == '' &&
+     "$ADDITIONAL_SANS" == '' && "$INCLUDE_SUBDOMAINS" == true ]] ||
+    fail 'domainless bulk-only invocation'
+fi
+if [[ "$REMOVE_ORPHANS" == true ]]; then
+  [[ -n "$DOMAIN" && -n "$CERT_NAME" &&
+     -n "$DESIRED_CERT_NAMES" ]] || fail 'destructive scope'
+  # For this Jenkins example, explicit CERT_NAME is required to eliminate
+  # ambiguity about derived lineage identity; the product allows derivation.
+  local_match=false
+  IFS=, read -r -a desired <<< "$DESIRED_CERT_NAMES"
+  declare -A distinct=()
+  for name in "${desired[@]}"; do
+    [[ -z "${distinct[$name]+x}" ]] || fail 'duplicate desired lineage'
+    distinct["$name"]=1
+    [[ "$name" != "$CERT_NAME" ]] || local_match=true
+  done
+  [[ "$local_match" == true ]] || fail 'selected lineage absent from desired set'
+fi
+
+case "$CONFIG_MODE" in
+  none) : ;; # Use a newly created, .env-free private download directory.
+  no-env)
+    [[ "$ARCHIVE_ENCRYPTION" != gpg-ocb ]] ||
+      fail 'no-env discards the encryption key'
+    ;;
+  reviewed-file)
+    file="$CERTBOTBOT_REVIEWED_CONFIG_FILE"
+    [[ "$file" == /etc/certbotbot/jenkins.env &&
+       -f "$file" && -r "$file" && ! -L "$file" ]] ||
+      fail 'reviewed configuration path'
+    # The administrator, not this job, owns this nonsecret literal file.
+    [[ "$(stat -c '%u' -- "$file")" == 0 ]] ||
+      fail 'reviewed configuration ownership'
+    mode="$(stat -c '%a' -- "$file")"
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || fail 'reviewed configuration mode'
+    (( (8#$mode & 022) == 0 )) || fail 'writable reviewed configuration'
+    ;;
+  *) fail 'configuration mode' ;;
+esac
+
+# This local-only independent JSON validation prevents provider argv that
+# are syntactically valid but outside ADR-056's exact provider allowlist.
+command -v jq >/dev/null || { printf '%s\\n' 'Missing jq' >&2; exit 69; }
+provider_args() {
+  local provider="$1" json="$2" flag value limit i=0
+  local has_level=false has_no_compress=false
+  local -a tokens=()
+  [[ -n "$json" && "${#json}" -le 4096 ]] || fail "$provider JSON"
+  jq -e 'type == "array" and length <= 16 and
+    all(.[]; type == "string" and
+      (explode | all(. >= 32 and . != 127)))' <<< "$json" >/dev/null 2>&1 ||
+    fail "$provider JSON"
+  mapfile -t tokens < <(jq -r '.[]' <<< "$json")
+  while (( i < ${#tokens[@]} )); do
+    flag="${tokens[i]}"
+    case "$provider:$flag" in
+      AWS:--cli-connect-timeout|AWS:--cli-read-timeout) limit=600 ;;
+      GPG:--compress-level) limit=9; has_level=true ;;
+      GPG:--no-compress)
+        has_no_compress=true
+        (( i+=1 ))
+        continue ;;
+      CERTBOT:--max-log-backups) limit=1000 ;;
+      CERTBOT:--dns-route53-propagation-seconds) limit=300 ;;
+      CERTBOT:--user-agent-comment)
+        (( i+1 < ${#tokens[@]} )) || fail "$provider argv pair"
+        value="${tokens[i+1]}"
+        [[ -n "$value" && "${#value}" -le 80 ]] &&
+          printf '%s\\n' "$value" |
+          grep -Eq '^[A-Za-z0-9][A-Za-z0-9 ._()"-]*$' ||
+          fail "$provider user-agent value"
+        (( i+=2 ))
+        continue ;;
+      *) fail "$provider option allowlist" ;;
+    esac
+    (( i+1 < ${#tokens[@]} )) || fail "$provider argv pair"
+    value="${tokens[i+1]}"
+    [[ "$value" =~ ^(0|[1-9][0-9]{0,3})$ ]] ||
+      fail "$provider numeric value"
+    [[ "$provider" == GPG || "$value" != 0 ]] ||
+      fail "$provider numeric range"
+    (( 10#$value <= limit )) || fail "$provider numeric range"
+    (( i+=2 ))
+  done
+  [[ "$has_level" != true || "$has_no_compress" != true ]] ||
+    fail 'GnuPG compression conflict'
+}
+provider_args AWS "$AWS_EXTRA_ARGS"
+provider_args GPG "$GPG_EXTRA_ARGS"
+provider_args CERTBOT "$CERTBOT_EXTRA_ARGS"
+
+for tool in bash aws certbot openssl tar gzip sha256sum curl stat; do
   command -v "$tool" >/dev/null || {
     printf 'Missing trusted runner tool: %s\\n' "$tool" >&2
     exit 69
   }
 done
 (( BASH_VERSINFO[0] > 4 ||
-   (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3) )) || exit 69
+  (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3) )) || exit 69
 aws --version 2>&1 | grep -Eq '^aws-cli/2\\.' || exit 69
 if [[ "$ARCHIVE_ENCRYPTION" == gpg-ocb ]]; then
+  [[ "$CONFIG_MODE" != no-env ]] || fail 'no-env encryption'
   command -v gpg >/dev/null || exit 69
 fi
-# This checks local tool availability, not real AWS or ACME permission.
+# Validation success only; none of these probes authorizes provider access.
+# END CERTBOTBOT_JENKINS_VALIDATE
 '''
       }
     }
@@ -110,9 +324,9 @@ target="$WORKSPACE/.certbotbot-example"
 mkdir -m 0700 -- "$target"
 cd -- "$target"
 url="https://github.com/wesley-dean/certbotbot/releases/download/$CERTBOTBOT_RELEASE_TAG"
-curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \\
+curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
   --output certbotbot.bash "$url/certbotbot.bash"
-curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \\
+curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
   --output certbotbot.bash.sha256 "$url/certbotbot.bash.sha256"
 [[ -s certbotbot.bash && -f certbotbot.bash.sha256 &&
   ! -L certbotbot.bash && ! -L certbotbot.bash.sha256 ]]
@@ -129,31 +343,72 @@ chmod 0700 certbotbot.bash
       }
     }
 
-    stage('Execute verified selected-lineage producer') {
+    stage('Execute reviewed ordinary producer') {
       steps {
         script {
-          // Groovy never interpolates parameters or any secret into this script.
-          // Bash receives each value as one quoted argv item, without eval.
+          // The single-quoted Groovy script cannot interpolate build inputs
+          // or credentials. All data is passed as literal Bash argv entries.
           String invokeProducer = '''#!/usr/bin/env bash
+# BEGIN CERTBOTBOT_JENKINS_INVOKE
 set -euo pipefail
 set +x
 umask 077
 producer="$WORKSPACE/.certbotbot-example/certbotbot.bash"
 [[ -f "$producer" && ! -L "$producer" ]] || exit 69
+cd -- "$WORKSPACE/.certbotbot-example" # No implicit workspace .env.
 args=(--s3-bucket "$S3_BUCKET"
-  --s3-key "$S3_KEY"
+  --acme-environment "$ACME_ENVIRONMENT"
   --include-subdomains "$INCLUDE_SUBDOMAINS"
+  --backup-key-template "$BACKUP_KEY_TEMPLATE"
   --dated-backup-enabled "$DATED_BACKUP_ENABLED"
   --backup-retention-count "$BACKUP_RETENTION_COUNT"
-  --upload-no-renewal false
-  --archive-encryption "$ARCHIVE_ENCRYPTION")
+  --upload-no-renewal "$UPLOAD_NO_RENEWAL"
+  --renew-all "$RENEW_ALL"
+  --remove-orphans "$REMOVE_ORPHANS"
+  --archive-encryption "$ARCHIVE_ENCRYPTION"
+  --archive-migration "$ARCHIVE_MIGRATION"
+  --archive-migration-backup-confirmed "$ARCHIVE_MIGRATION_BACKUP_CONFIRMED"
+  --aws-args "$AWS_EXTRA_ARGS"
+  --gpg-args "$GPG_EXTRA_ARGS"
+  --certbot-args "$CERTBOT_EXTRA_ARGS")
+case "$CURRENT_KEY_MODE" in
+  literal) args+=(--s3-key "$S3_KEY") ;;
+  template) args+=(--s3-key-template "$S3_KEY_TEMPLATE") ;;
+  *) exit 64 ;;
+esac
+case "$CONFIG_MODE" in
+  none) : ;;
+  no-env) args+=(--no-env) ;;
+  reviewed-file)
+    args+=(--config "$CERTBOTBOT_REVIEWED_CONFIG_FILE") ;;
+  *) exit 64 ;;
+esac
 if [[ -n "$CERT_NAME" ]]; then
   args+=(--cert-name "$CERT_NAME")
 fi
-args+=("$DOMAIN")
-# Do not capture/suppress exit status. Current PUT can be uncertain and
-# dated-backup/retention partial success must fail the calling build.
+if [[ -n "$ADDITIONAL_SANS" ]]; then
+  IFS=, read -r -a sans <<< "$ADDITIONAL_SANS"
+  for name in "${sans[@]}"; do args+=(--san "$name"); done
+fi
+if [[ -n "$DESIRED_CERT_NAMES" ]]; then
+  IFS=, read -r -a desired <<< "$DESIRED_CERT_NAMES"
+  for name in "${desired[@]}"; do
+    args+=(--desired-cert-name "$name")
+  done
+fi
+# Empty Jenkins parameters are exported, but an explicitly empty
+# DESIRED_CERT_NAMES env is invalid even when pruning is disabled.
+unset DESIRED_CERT_NAMES
+if [[ -n "$DOMAIN" ]]; then
+  args+=(--domain "$DOMAIN")
+else
+  # Domainless bulk must be genuinely unselected under ADR-058.
+  unset DOMAIN
+fi
+# Do not mask exit status, echo command argv, or copy private state.
+# A failed S3 PUT may have written remotely despite a nonzero status.
 exec bash "$producer" "${args[@]}"
+# END CERTBOTBOT_JENKINS_INVOKE
 '''
           if (params.ARCHIVE_ENCRYPTION == 'gpg-ocb') {
             withCredentials([
@@ -163,7 +418,8 @@ exec bash "$producer" "${args[@]}"
               sh(script: invokeProducer)
             }
           } else {
-            // Plaintext runs do not bind or inherit a GPG secret by design.
+            // "none" and "auto" deliberately bind no encryption secret.
+            // The latter therefore resolves to plaintext by default.
             sh(script: invokeProducer)
           }
         }
@@ -173,8 +429,7 @@ exec bash "$producer" "${args[@]}"
 
   post {
     always {
-      // Removes the downloaded executable and any workspace data.
-      // Runtime certificate state is owned/cleaned by the producer itself.
+      // No certs, account archives, credential outputs, or other artifacts.
       deleteDir()
     }
   }
