@@ -1,5 +1,10 @@
 # Explicit ACME Account Registration Contract
 
+Follow the [first-certificate administrator walkthrough](administrator-first-certificate.md)
+for manual AWS provisioning, the separate account-only registration,
+same-CA first issuance and verified client readback. Registration is
+never implicit in an ordinary producer run.
+
 **Status:** Accepted design under milestone #7 task #57, implemented
 under task #58, with task #59 providing black-box mocked cross-runner
 continuity and failure verification.  See
