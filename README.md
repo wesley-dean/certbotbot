@@ -420,6 +420,12 @@ guide for those options and for secure runtime examples. These commands
 do not establish that a release image has already been published or
 accepted in either registry.
 
+Operators starting without an S3 bucket can consult the
+[manual AWS bucket-bootstrap and least-privilege runtime IAM guide](doc/examples/aws-bucket-bootstrap.md);
+the accompanying [IAM policy template](doc/examples/aws-iam-policy.json)
+is intentionally uninstantiated and is not run by this repository.
+The account must then be explicitly registered before ordinary issuance.
+
 The [Docker/rootless Podman published-image quick start](doc/examples/docker-podman.md#use-an-independently-verified-published-image)
 includes direct `docker`/`podman` pull, label inspection, nonroot
 read-only run examples, and the additional prerequisites for real
