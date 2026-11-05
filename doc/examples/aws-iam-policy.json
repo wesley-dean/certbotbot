@@ -1,0 +1,57 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InspectDedicatedBucketAndClassifyMissingCurrentKey",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::REPLACE_WITH_PRIVATE_BUCKET"
+    },
+    {
+      "Sid": "ReadAndPublishOnlyTheAuthoritativeCurrentObject",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::REPLACE_WITH_PRIVATE_BUCKET/REPLACE_WITH_CURRENT_KEY.tar.gz"
+    },
+    {
+      "Sid": "DiscoverHostedZoneForCertbotRoute53Plugin",
+      "Effect": "Allow",
+      "Action": "route53:ListHostedZones",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PollCertbotSubmittedRecordChange",
+      "Effect": "Allow",
+      "Action": "route53:GetChange",
+      "Resource": "arn:aws:route53:::change/*"
+    },
+    {
+      "Sid": "ChangeOnlyExpectedDNS01TXTRecordInApprovedZone",
+      "Effect": "Allow",
+      "Action": "route53:ChangeResourceRecordSets",
+      "Resource": "arn:aws:route53:::hostedzone/REPLACE_WITH_HOSTED_ZONE_ID",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "route53:ChangeResourceRecordSetsRecordTypes": [
+            "TXT"
+          ],
+          "route53:ChangeResourceRecordSetsActions": [
+            "UPSERT",
+            "DELETE"
+          ],
+          "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
+            "_acme-challenge.REPLACE_WITH_LOWERCASE_DOMAIN"
+          ]
+        },
+        "Null": {
+          "route53:ChangeResourceRecordSetsRecordTypes": "false",
+          "route53:ChangeResourceRecordSetsActions": "false",
+          "route53:ChangeResourceRecordSetsNormalizedRecordNames": "false"
+        }
+      }
+    }
+  ]
+}
