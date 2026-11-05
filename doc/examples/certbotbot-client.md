@@ -1,5 +1,10 @@
 # Standalone Certificate Client Examples
 
+See the [first-certificate administrator walkthrough](../administrator-first-certificate.md)
+for the preceding bucket, IAM, account registration and issuance steps.
+These read-only examples begin **after** the authoritative current
+S3 object already exists.
+
 The separately distributed `certbotbot-client.bash` consumes **one current**
 certificate-state archive from an existing S3 bucket/key. It can decrypt the producer's authenticated AES-256/OCB archive but never
 issues, renews, installs, or uploads certificates.
