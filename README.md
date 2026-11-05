@@ -445,6 +445,9 @@ publication or certificate issuance in your environment.
 
 ### Operator examples
 
+Start with the [from-zero-S3 first-certificate guide](doc/administrator-first-certificate.md)
+before activating any certificate-maintenance automation.
+
 Examples under `doc/examples/` are **references, not active
 production automation**:
 
