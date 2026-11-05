@@ -137,6 +137,13 @@ run does not imply downstream deployment. A failed or interrupted
 S3 PutObject may have changed the remote object even if the
 producer returns nonzero: the operation is **not** a transaction.
 
+For administrators beginning with a delegated Route53 zone but **no bucket,
+IAM role, seeded account or certificate**, follow the
+[complete first-certificate walkthrough](doc/administrator-first-certificate.md)
+and its separately reviewed [AWS bucket/IAM runbook](doc/examples/aws-bucket-bootstrap.md)
+before ordinary issuance. Those instructions are operator-run examples,
+not active GitHub Actions or cloud provisioning.
+
 ## Explicit account registration
 
 The account-provisioning command is separate from certificate issuance.
