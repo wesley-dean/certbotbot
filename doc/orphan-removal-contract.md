@@ -4,7 +4,10 @@
 `--remove-orphans`, `--desired-cert-name`, and
 `DESIRED_CERT_NAMES` inputs are implemented by task #96;
 review, CI and merge must complete before claiming released support.
-Task #97 remains responsible for independent acceptance testing.
+Task #97 adds independent public-executable acceptance tests and
+fresh-runner/fault-mode evidence; the implementation was merged under PR #288.
+The complete acceptance matrix and evidence limits are documented in
+[Testing](testing.md).
 
 ## Why an extra desired-set input is mandatory
 

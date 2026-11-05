@@ -102,6 +102,52 @@ exact generated producer and checksum sidecar, and the regular CI
 build/handoff verifies artifact provenance, release flavors, and
 minimum Bash 4.3 compatibility.
 
+## Destructive orphan reconciliation acceptance (milestone 15, task #97)
+
+`REMOVE_ORPHANS` is an explicit destructive opt-in governed by
+[ADR-059](adr/ADR-059-explicit-desired-lineage-orphan-removal.md) and
+[the desired-lineage contract](orphan-removal-contract.md). The
+implementation-level tests in `tests/orphan-prune.bats` cover basic
+false/true paths, input validation, and safe no-op publication. The
+separate `tests/orphan-prune-acceptance.bats` adds independent
+black-box public-executable verification.
+
+The existing verified-artifact CI matrix executes both files for the
+development, ordinary, and minified producer flavors, including
+checksums and Bash 4.3 compatibility. Tests use synthetic AWS and
+Certbot process doubles, real OpenSSL-generated certificates and
+keys, and GNU tar/gzip:
+
+- Default false preserves unrelated lineages. Explicit true with a
+  complete desired set prunes only validated excluded lineages,
+  including when retained certificates have overlapping SANs or
+  the desired name ordering differs from archive member ordering.
+- A selected issuance/renewal and deliberate prune can share one
+  complete published archive. Surviving unrelated certificate keys,
+  history, symlinks and renewal metadata, as well as original account
+  material and private-key permissions, are compared before/after.
+- A separate fresh runner restores the resulting archive, verifies
+  both surviving names and confirmed absence of pruned members, and
+  leaves no invocation-owned filesystem residue.
+- Missing/invalid/duplicate desired names, unresolved nonselected
+  members, conflicting bulk flags, unsafe symlinks and invalid
+  certificates must be refused without deleting an invalid lineage
+  or publishing partial state.
+- Failed selected issuance/renewal, non-target provider mutation
+  and failed candidate packaging cannot trigger an intentional S3
+  write. Simulated S3 response loss deliberately shows that remote
+  publication can have occurred despite a nonzero local status.
+- CLI/environment/literal-file collection precedence, `--no-env`,
+  encrypted archives (where GnuPG supports authenticated OCB),
+  unchanged-republication policy and log privacy are also covered
+  across the targeted and earlier lifecycle test suites.
+
+These tests do **not** establish live Route53 DNS/IAM, real S3 behavior,
+real Let's Encrypt staging ACME compatibility, certificate revocation,
+erasure from historical backups/S3 versions, or distributed locking.
+The operator must serialize writers and plan recovery separately;
+milestone #4 owns the live staging evidence.
+
 ## Artifact Matrix
 
 `make test` runs the suite against the development, stripped, and minified
