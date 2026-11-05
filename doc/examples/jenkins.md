@@ -60,8 +60,8 @@ actually delegated Route53 zone controlled by the operator.
    release URLs or CLI extra-argv JSON. The job deliberately relies
    on external AWS credential delivery and does not define
    `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` or a role creation step.
-   The detailed scoped runtime IAM policy is a separate review under
-   #292; this example alone does not grant or prove permissions.
+   See the [operator-owned S3/Route53 IAM policy example](aws-bucket-bootstrap.md)
+   from #292; this Jenkins job itself neither grants nor proves permissions.
 3. Provision the account **before** ordinary issuance by explicitly
    running `certbotbot register` with the correct email, affirmative
    TOS consent and matching selected Let's Encrypt environment, against
