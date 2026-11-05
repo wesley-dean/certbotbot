@@ -190,9 +190,9 @@ EXPECTED_CLIENT_SHA256='REPLACE_WITH_REVIEWED_CLIENT_SHA256'
    "$EXPECTED_CLIENT_SHA256" =~ ^[0-9a-f]{64}$ ]] || exit 64
 sha256sum --check certbotbot.bash.sha256
 sha256sum --check certbotbot-client.bash.sha256
-[[ "$(sha256sum certbotbot.bash | awk '{print $1}')" ==
+[[ "$(sha256sum certbotbot.bash | awk '{print $1}')" == \
    "$EXPECTED_PRODUCER_SHA256" ]] || exit 65
-[[ "$(sha256sum certbotbot-client.bash | awk '{print $1}')" ==
+[[ "$(sha256sum certbotbot-client.bash | awk '{print $1}')" == \
    "$EXPECTED_CLIENT_SHA256" ]] || exit 65
 bash -n certbotbot.bash
 bash -n certbotbot-client.bash
