@@ -98,10 +98,12 @@ gate_inventory() {
   GATE_REQUIRED=()
 
   for revision in "$base" "$head"; do
-    paths=$(gate_files "$revision")
+    paths=$(gate_files "$revision") ||
+      gate_die "unable to enumerate workflow files: ${revision}"
     while IFS= read -r path; do
       [[ -n "$path" ]] || continue
-      directive=$(gate_declaration "$revision" "$path")
+      directive=$(gate_declaration "$revision" "$path") ||
+        gate_die "invalid workflow declaration: ${path}"
       if [[ "$directive" == true ]]; then
         GATE_REQUIRED["$path"]=1
       fi
