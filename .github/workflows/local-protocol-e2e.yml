@@ -1,4 +1,5 @@
 ---
+## test-gate:required=true
 name: Local protocol E2E (challenge validation bypassed)
 
 # ADR-048: heavyweight tests run on push, not on pull_request.
