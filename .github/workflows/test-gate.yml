@@ -1,0 +1,47 @@
+---
+name: Test gate (proof of concept)
+
+# This is deliberately not a required branch-protection check yet.
+# Its workflow and script come from the PR revision, so do not treat the POC
+# as an independently trusted security enforcement boundary.
+# yamllint disable-line rule:truthy
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: read
+
+concurrency:
+  group: test-gate-poc-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-gate:
+    name: test-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      pull-requests: read
+    steps:
+      - name: Checkout base and candidate commit history as untrusted data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate Bash inspector syntax
+        run: bash -n ci/test-gate.bash
+
+      - name: Inspect required workflows and poll their status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEST_GATE_MAX_ATTEMPTS: '60'
+          TEST_GATE_POLL_SECONDS: '30'
+        run: bash ci/test-gate.bash run
