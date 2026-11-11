@@ -38,6 +38,23 @@ and `make docs` generates Doxygen reference output
 without committing generated files.
 
 
+## Cross-workflow test gate POC
+
+The experimental [test-gate](test-gate-poc.md) GitHub Actions job polls the
+GitHub Actions API to observe explicitly marked required workflows while
+preserving the Test, OCI, local E2E, and MegaLinter workflows' existing
+event triggers and parallel scheduling. The comment form is
+`## test-gate:required=true`, with optional whitespace around its
+punctuation and a default of `false`. Requirements from the protected
+base and proposed revisions are combined, so a PR cannot exempt itself by
+removing a required marker.
+
+This gate is **not yet an enforced protection**. Its current implementation
+is executed from the PR candidate revision, and therefore is not a trusted
+authorization boundary. Existing required checks remain in effect. See
+[ADR-060](adr/ADR-060-cross-workflow-required-test-gate-poc.md) for the
+strict missing/disabled/skipped failure behavior and remaining hardening work.
+
 ## Credential-free local protocol E2E CI
 
 The dedicated [local protocol E2E workflow](../.github/workflows/local-protocol-e2e.yml)
