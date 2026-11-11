@@ -39,6 +39,14 @@ jobs:
       - name: Validate Bash inspector syntax
         run: bash -n ci/test-gate.bash
 
+      - name: Install Bats for isolated fixture verification
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats
+
+      - name: Run test-gate contract fixtures without network access
+        run: bats tests/test-gate.bats
+
       - name: Inspect required workflows and poll their status
         env:
           GH_TOKEN: ${{ github.token }}
