@@ -236,3 +236,45 @@ run_gate() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"fork PRs"* ]]
 }
+
+@test "accepts a PR-triggered run linked to the exact PR head" {
+  cat > "$sandbox/replies/runs.json" <<EOF
+{
+  "workflow_runs": [{
+    "id": 123,
+    "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "head_branch": "agent/test",
+    "event": "pull_request",
+    "pull_requests": [{"number": 99, "head": {"sha": "$head"}}],
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-11T13:00:00Z",
+    "run_attempt": 1
+  }]
+}
+EOF
+  run_gate
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"all 1 required workflows succeeded"* ]]
+}
+
+@test "rejects an unrelated PR-triggered successful run" {
+  cat > "$sandbox/replies/runs.json" <<EOF
+{
+  "workflow_runs": [{
+    "id": 123,
+    "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "head_branch": "agent/test",
+    "event": "pull_request",
+    "pull_requests": [{"number": 100, "head": {"sha": "$head"}}],
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-11T13:00:00Z",
+    "run_attempt": 1
+  }]
+}
+EOF
+  run_gate
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"timed out"* ]]
+}
