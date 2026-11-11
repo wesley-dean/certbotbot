@@ -734,3 +734,18 @@ under challenge-validation-bypassed Pebble, not expiry-window timing, DNS-01,
 or live provider interoperability.
 
 See [ADR-049](adr/ADR-049-isolated-real-acme-renewal-test-trigger.md).
+
+### ADR-060: Declarative Cross-Workflow Test Gate Proof of Concept
+
+A non-enforcing read-only `test-gate` prototype discovers optional
+`## test-gate:required=true|false` workflow metadata from both the protected
+base and candidate revision, then checks enabled state and exact-revision
+automatic test results through GitHub's Actions API. Missing, disabled, stale,
+skipped, cancelled, failed, or timed-out required workflows cannot satisfy
+the aggregate; upstream workflow parallelism remains intact. The new PR-run
+gate is deliberately **not** a trusted required status check, because candidate
+code could alter its own verifier; trusted execution and ruleset enforcement
+require a separate reviewed security design. No immutable-file policy,
+administrative bypass, or existing test-trigger change is introduced.
+
+See [ADR-060](adr/ADR-060-cross-workflow-required-test-gate-poc.md).
