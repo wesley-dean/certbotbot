@@ -217,9 +217,12 @@ gate_run() {
   [[ "$interval" =~ ^[0-9]+$ && "$interval" -le 60 ]] ||
     gate_die 'TEST_GATE_POLL_SECONDS must be in 0..60'
 
+  local inventory
   local -a required=()
-  mapfile -t required < <(gate_inventory "$base" "$head")
-  (("${#required[@]}" > 0)) || gate_die 'no required workflow inventory'
+  inventory=$(gate_inventory "$base" "$head") ||
+    gate_die 'required workflow inventory invalid'
+  [[ -n "$inventory" ]] || gate_die 'no required workflow inventory'
+  mapfile -t required <<< "$inventory"
   local path response run status conclusion id pending round
   for path in "${required[@]}"; do
     gate_require_active "$repo" "$path"
