@@ -7,7 +7,7 @@ name: Test gate (proof of concept)
 # yamllint disable-line rule:truthy
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
