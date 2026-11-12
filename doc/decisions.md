@@ -203,6 +203,12 @@ original approval-evidence rule following the v2.2.1 upgrade.
 
 See [ADR-018](adr/ADR-018-adopt-released-coding-standards.md).
 
+The current managed snapshot is `coding_standards@v3.2.0`, with all 54 files
+pinned through `.codingstandardrc`. The adopted three-phase process remains
+explicitly enabled and ADR-019 continues to govern issue approvals. This
+snapshot update does not change certificate behavior, CI check gates, or
+release/security authority.
+
 ### ADR-019: Treat Current GitHub Approval Labels as Authoritative
 
 With the adoption of `coding_standards@v2.2.1`, each issue's current

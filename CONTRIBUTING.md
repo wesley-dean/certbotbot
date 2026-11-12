@@ -33,8 +33,8 @@ Follow the committed
 `doc/standards/general/three-phase-development-governance.md`.
 Product Owner approval of user stories is required before technical
 planning; Technical Architect approval of linked technical tasks is
-required before execution. Under v2.2.1, each issue's current `approved`
-label is authoritative and sufficient for its own phase; a separate
+required before execution. Under ADR-019 and the currently adopted standards, each issue's current
+`approved` label is authoritative and sufficient for its own phase; a separate
 approval comment is not required. The approval decision must come from
 the authorized human or expressly designated authority, who may apply the
 label or direct an agent to do so for specific issues. Materially changed

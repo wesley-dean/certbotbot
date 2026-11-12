@@ -389,9 +389,10 @@ For support and project status, use
 and [GitHub Actions](https://github.com/wesley-dean/certbotbot/actions).
 The historical research record is in
 [doc/research/](doc/research/README.md).
-The project adopts a pinned released snapshot of
+The project adopts the complete `coding_standards@v3.2.0` released
 [coding standards](https://github.com/wesley-dean/coding_standards)
-through [`.codingstandardrc`](.codingstandardrc).
+snapshot under `doc/standards/`, with provenance recorded in
+[`.codingstandardrc`](.codingstandardrc).
 
 ## License
 
