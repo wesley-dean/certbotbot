@@ -221,7 +221,8 @@ links, or policies that no longer match the derived project's real contract.
 ## Released Coding Standards (ADR-018)
 
 The committed `doc/standards/` tree is the externally managed snapshot of the
-released standards declared in `.codingstandardrc`. Before modifying
+currently adopted `coding_standards@v3.2.0` release declared in
+`.codingstandardrc`. Before modifying
 repository content, identify and read the applicable standards. General and
 cross-cutting standards apply where relevant; language-specific standards
 apply only to the maintained content in that language. Files under
