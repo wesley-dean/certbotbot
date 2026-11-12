@@ -76,3 +76,23 @@ jobs:
             exit 1
           fi
           printf '%s\n' 'local-e2e-ci: private network and volume cleanup verified'
+
+  # Add an observable, test-prefixed alias without renaming historical
+  # required check contexts. This is non-authoritative POC evidence.
+  test-gate-alias:
+    name: test-local-protocol-e2e
+    needs: [local-protocol-e2e]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Forward Local Pebble/SeaweedFS aggregate result
+        env:
+          UPSTREAM_RESULT: ${{ needs.local-protocol-e2e.result }}
+        run: |
+          set -euo pipefail
+          [[ "$UPSTREAM_RESULT" == success ]] || {
+            printf '%s\n' "Required upstream job did not succeed: %s" "$UPSTREAM_RESULT" >&2
+            exit 1
+          }
