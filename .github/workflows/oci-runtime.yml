@@ -95,3 +95,23 @@ jobs:
         run: |
           set -euo pipefail
           bash tests/oci-lifecycle.bash podman certbotbot:oci-acceptance dist/certbotbot.bash
+
+  # Add an observable, test-prefixed alias without renaming historical
+  # required check contexts. This is non-authoritative POC evidence.
+  test-gate-alias:
+    name: test-oci-runtime
+    needs: [oci]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Forward Docker and rootless Podman aggregate result
+        env:
+          UPSTREAM_RESULT: ${{ needs.oci.result }}
+        run: |
+          set -euo pipefail
+          [[ "$UPSTREAM_RESULT" == success ]] || {
+            printf '%s\n' "Required upstream job did not succeed: %s" "$UPSTREAM_RESULT" >&2
+            exit 1
+          }
