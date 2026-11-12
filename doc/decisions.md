@@ -734,3 +734,16 @@ under challenge-validation-bypassed Pebble, not expiry-window timing, DNS-01,
 or live provider interoperability.
 
 See [ADR-049](adr/ADR-049-isolated-real-acme-renewal-test-trigger.md).
+
+### ADR-060: Try a Marketplace Regex Test Gate Without Replacing Required Checks
+
+A non-enforcing `test-gate` workflow uses the pinned `lewagon/wait-on-check-action`
+Marketplace action to observe check names matching `^test.*` on the PR head SHA.
+Three small result-forwarding `test-*` alias jobs preserve existing Test, OCI,
+and local E2E required-check identities and their independent branch-push triggers.
+The action can succeed before all expected checks appear and does not detect a
+disabled workflow when some other matching check succeeds, so it must not replace
+existing branch-protection checks. The experiment adds no custom polling script,
+workflow metadata, or security-bypass mechanism.
+
+See [ADR-060](adr/ADR-060-marketplace-regex-test-gate-poc.md).
