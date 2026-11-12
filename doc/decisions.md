@@ -740,3 +740,15 @@ under challenge-validation-bypassed Pebble, not expiry-window timing, DNS-01,
 or live provider interoperability.
 
 See [ADR-049](adr/ADR-049-isolated-real-acme-renewal-test-trigger.md).
+
+### ADR-061: Consolidate GitHub Actions Dependabot Version Updates
+
+The repository retains weekly GitHub Actions routine version updates and the
+seven-day cooldown while grouping eligible major, minor, and patch updates
+under one wildcard group. Security updates remain independent, and any
+major-containing group requires targeted manual review outside the existing
+non-major-only auto-merge path. Existing Dependabot PRs remain open until
+their updates are demonstrably superseded, and CI and release authority
+remain unchanged.
+
+See [ADR-061](adr/ADR-061-consolidate-github-actions-dependabot-maintenance.md).

@@ -394,6 +394,16 @@ The project adopts the complete `coding_standards@v3.2.0` released
 snapshot under `doc/standards/`, with provenance recorded in
 [`.codingstandardrc`](.codingstandardrc).
 
+## Dependency maintenance
+
+Routine GitHub Actions Dependabot version updates remain weekly with a
+seven-day cooldown. Eligible major, minor, and patch updates can share
+the `actions-version-updates` group, while security updates remain
+independent. A group containing a major upgrade requires targeted
+manual review and is excluded from the existing non-major auto-merge path.
+Existing Dependabot PRs are not automatically superseded. See
+[ADR-061](doc/adr/ADR-061-consolidate-github-actions-dependabot-maintenance.md).
+
 ## License
 
 Dedicated to the public domain under **CC0 1.0 Universal**.
