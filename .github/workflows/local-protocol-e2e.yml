@@ -89,7 +89,7 @@ jobs:
     steps:
       - name: Forward Local Pebble/SeaweedFS aggregate result
         env:
-          UPSTREAM_RESULT: ${{ needs.local-protocol-e2e.result }}
+          UPSTREAM_RESULT: ${{ needs['local-protocol-e2e'].result }}
         run: |
           set -euo pipefail
           [[ "$UPSTREAM_RESULT" == success ]] || {
