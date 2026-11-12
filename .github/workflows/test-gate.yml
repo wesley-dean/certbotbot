@@ -1,0 +1,40 @@
+---
+name: Test gate (Marketplace regex POC)
+
+# Experimental observation only. Do not add to branch protection until the
+# missing-check and trusted-execution gaps are independently resolved.
+# yamllint disable-line rule:truthy
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: marketplace-test-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  aggregate:
+    name: test-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - name: Wait for checks matching ^test.*
+        uses: lewagon/wait-on-check-action@369769072fe522a3a8a85c03c96af1e5242a1994 # v1.9.1
+        with:
+          # Push-triggered Test, OCI, and local E2E jobs report on PR HEAD.
+          # This is not the synthetic pull_request merge commit.
+          ref: ${{ github.event.pull_request.head.sha }}
+          repo-token: ${{ github.token }}
+          check-regexp: '^test.*'
+          running-workflow-name: test-gate
+          allowed-conclusions: success
+          fail-on-no-checks: true
+          checks-discovery-timeout: '3600'
+          wait-interval: '20'
