@@ -38,6 +38,28 @@ and `make docs` generates Doxygen reference output
 without committing generated files.
 
 
+## Marketplace regex test-gate trial
+
+The experimental [Marketplace regex gate](adr/ADR-060-marketplace-regex-test-gate-poc.md)
+adds a read-only pull-request job named `test-gate`. It uses the pinned
+`lewagon/wait-on-check-action` action to observe check names matching
+`^test.*` against the exact PR head SHA. Three lightweight `test-*` aliases
+forward the success/failure of the existing Test, OCI runtime, and local
+protocol E2E aggregates **without renaming existing required check contexts**.
+They add CI jobs, not product tests or parallel test scheduling changes.
+
+The gate is **observational, not enforced**. Regex selection only sees checks
+already registered with GitHub. It can report success before every intended
+test alias has appeared, and can miss disabled or omitted workflows when some
+other matching check succeeds. MegaLinter and CodeQL remain separate PR checks,
+and all existing required checks must remain configured independently.
+No branch-protection or ruleset change is included.
+
+The action uses `allowed-conclusions: success`,
+`fail-on-no-checks: true`, a 3600-second discovery timeout, and a bounded
+110-minute GitHub Actions job timeout. The POC has no custom API poller,
+`required` comment metadata, immutable-file rule, or privileged token.
+
 ## Credential-free local protocol E2E CI
 
 The dedicated [local protocol E2E workflow](../.github/workflows/local-protocol-e2e.yml)
