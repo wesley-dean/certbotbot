@@ -731,8 +731,8 @@ Milestone #16's genuine second-order test may use a single-use argument adapter
 inside its sealed, disposable runner to append `--force-renewal` and
 `--no-random-sleep-on-renew` to exactly one real installed Certbot renewal of
 the already-selected staging lineage. The latter bypasses only Certbot's
-up-to-eight-minute randomized delay, preventing a deterministic timeout
-without skipping any real renewal or verification steps.
+up-to-eight-minute randomized delay, preventing that delay from consuming
+the fixed runner timeout without skipping real renewal or verification.
 The public certbotbot producer remains unchanged and still enforces ordinary
 non-due no-op semantics under ADR-025; the adapter has no release or host
 installation path. Acceptance requires an actual additional Pebble order,
