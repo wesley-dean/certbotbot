@@ -5,7 +5,9 @@
 ## @details
 ## Test-only PATH adapter in the separately built local E2E runner, never in the
 ## public certbotbot distribution or release image. A private one-shot marker
-## permits appending --force-renewal to exactly one canonical staging renewal.
+## permits appending --force-renewal and --no-random-sleep-on-renew to exactly
+## one canonical staging renewal. The second option suppresses Certbot's
+## randomized renewal delay, which can exceed the runner's seven-minute limit.
 ## All normal Certbot operations are delegated unchanged; no ACME response,
 ## provider result, certificate or renewal config is synthesized. ADR-049.
 ## Marker/receipt live only in the runner's own mode-0700 tmpfs directory.
@@ -83,7 +85,7 @@ main() {
   rm -f -- "$INTENT" || return 65
   printf '%s\n' "real-certbot-selected-renewal-forced" >"$RECEIPT" || return 65
   chmod 600 -- "$RECEIPT" || return 65
-  exec "$REAL_CERTBOT" "$@" --force-renewal
+  exec "$REAL_CERTBOT" "$@" --force-renewal --no-random-sleep-on-renew
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

@@ -264,10 +264,14 @@ authorization directory and mode-0600 marker in its **own** disposable tmpfs.
 The adapter validates the exact selected `renew --cert-name test.e2e.test`,
 canonical staging `--server`, real account, private configuration directory
 and noninteractive no-hooks flags, then deletes the marker and executes
-the installed real Certbot **once** with `--force-renewal`. It leaves a
-nonsecret private receipt. The marker and receipt are destroyed with the
-container; the adapter is absent from the shipped producer, release OCI image
-and client.
+the installed real Certbot **once** with `--force-renewal` and
+`--no-random-sleep-on-renew`. The second flag disables only Certbot's
+up-to-eight-minute randomized pre-renewal delay, avoiding conflicts with
+the runner's seven-minute per-container timeout. Normal invocations do
+not receive either flag, and the actual second Pebble ACME order remains
+mandatory. The adapter leaves a nonsecret private receipt. The marker and
+receipt are destroyed with the container; the adapter is absent from the
+shipped producer, release OCI image and client.
 
 This does **not** prove the scheduling window of naturally due certificates.
 It proves that the unchanged producer correctly recognizes and validates a
