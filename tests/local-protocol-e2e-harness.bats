@@ -279,7 +279,7 @@ setup() {
   [ "$output" = 1 ]
 
   # Normal commands must still delegate with their original argv.
-  run grep -Fc 'exec "$REAL_CERTBOT" "$@"' "$CERTBOT_RENEW_ADAPTER"
+  run grep -Ec '^    exec "\$REAL_CERTBOT" "\$@"$' "$CERTBOT_RENEW_ADAPTER"
   [ "$status" -eq 0 ]
   [ "$output" = 2 ]
 
