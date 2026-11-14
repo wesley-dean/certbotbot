@@ -43,9 +43,8 @@ suppresses Certbot's randomized noninteractive renewal delay (up to eight
 minutes), which can exceed the seven-minute sealed runner timeout. It is
 permitted only for this one authorized test renewal; all other Certbot
 invocations retain their original argv. It must not synthesize responses,
-bypass Certbot's
-certificate checks, inject a foreign CA endpoint, or create external
-network routes. Only the original program owns account, lineage, and
+bypass Certbot's certificate checks, inject a foreign CA endpoint, or
+create external network routes. Only the original program owns account, lineage, and
 archive processing; the test wrapper has no AWS or ACME authority of
 its own beyond what the sandboxed Certbot already receives.
 
@@ -189,9 +188,9 @@ will provide broader fault injection; #247 owns the dedicated CI
 runtime gate.
 
 Review the exact new Certbot argument vector (including the narrowly scoped
-jitter-suppression option), marker ownership,
-failure/cleanup semantics, archive/account comparisons, and
-the observed second Pebble order in a real isolated engine run.
+jitter-suppression option), marker ownership, failure/cleanup semantics,
+archive/account comparisons, and the observed second Pebble order in a real
+isolated engine run.
 Static tests and GitHub PR checks are not sufficient to claim real
 protocol-level success.
 
