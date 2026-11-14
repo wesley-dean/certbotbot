@@ -38,7 +38,12 @@ and `--no-directory-hooks` options before consuming the marker.
 It rejects any attempted force on another command, another CA or
 lineage, absent or malformed arguments, or replay. The wrapper calls
 `/usr/bin/certbot` using an argv array and `exec`, adding
-`--force-renewal`. It must not synthesize responses, bypass Certbot's
+`--force-renewal` and `--no-random-sleep-on-renew` together. The latter
+suppresses Certbot's randomized noninteractive renewal delay (up to eight
+minutes), which can exceed the seven-minute sealed runner timeout. It is
+permitted only for this one authorized test renewal; all other Certbot
+invocations retain their original argv. It must not synthesize responses,
+bypass Certbot's
 certificate checks, inject a foreign CA endpoint, or create external
 network routes. Only the original program owns account, lineage, and
 archive processing; the test wrapper has no AWS or ACME authority of
@@ -145,6 +150,10 @@ public artifacts.
 - **Authorized force during the wrong phase:** No-op, registration,
   initial issuance, and independent verification runners do not create
   the marker. An unexpected invocation with a marker fails closed.
+- **Nondeterministic renewal delay:** Real Certbot can sleep for up to eight
+  minutes before noninteractive renewal. The single authorized forced test
+  invocation also suppresses that jitter; this does not affect any normal
+  certificate lifecycle or skip actual ACME work.
 - **False renewal reporting:** Both a changed certificate DER hash and
   exactly one additional Pebble order are mandatory; an unchanged object
   or an unreadable order log fails.
@@ -179,7 +188,8 @@ documentation and this ADR are within scope. A separate #246 task
 will provide broader fault injection; #247 owns the dedicated CI
 runtime gate.
 
-Review the exact new Certbot argument vector, marker ownership,
+Review the exact new Certbot argument vector (including the narrowly scoped
+jitter-suppression option), marker ownership,
 failure/cleanup semantics, archive/account comparisons, and
 the observed second Pebble order in a real isolated engine run.
 Static tests and GitHub PR checks are not sufficient to claim real
