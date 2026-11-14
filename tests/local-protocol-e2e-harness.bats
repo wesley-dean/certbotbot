@@ -268,8 +268,24 @@ setup() {
   [ "$status" -eq 0 ]
   run grep -F '"$E2E/certbot-force-renewal.bash"' "$FIRST_HOST"
   [ "$status" -eq 0 ]
-  run grep -F 'exec "$REAL_CERTBOT" "$@" --force-renewal' "$CERTBOT_RENEW_ADAPTER"
+  run grep -Fx '  exec "$REAL_CERTBOT" "$@" --force-renewal --no-random-sleep-on-renew' "$CERTBOT_RENEW_ADAPTER"
   [ "$status" -eq 0 ]
+}
+
+@test "renewal jitter suppression is confined to the authorized test-only Certbot invocation" {
+  # The two options appear together at exactly one authorized invocation.
+  run grep -Fc 'exec "$REAL_CERTBOT" "$@" --force-renewal --no-random-sleep-on-renew' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+  [ "$output" = 1 ]
+
+  # Normal commands must still delegate with their original argv.
+  run grep -Ec '^    exec "\$REAL_CERTBOT" "\$@"$' "$CERTBOT_RENEW_ADAPTER"
+  [ "$status" -eq 0 ]
+  [ "$output" = 2 ]
+
+  # No jitter option is introduced into the public producer or release image.
+  run grep -R -F -- '--no-random-sleep-on-renew' "$REPO_ROOT/src" "$REPO_ROOT/lib" "$REPO_ROOT/Dockerfile"
+  [ "$status" -eq 1 ]
 }
 
 @test "single-use real renewal adapter selects one account and private staging lineage" {
