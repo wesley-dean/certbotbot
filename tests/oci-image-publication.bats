@@ -156,7 +156,7 @@ teardown() {
   ! grep -Fq 'CERTBOTBOT_IMAGE_PUBLISH_ENABLED' "$workflow"
   grep -Fq 'name: oci-registry-publish' "$workflow"
   grep -Fq 'required_registries: dockerhub,ghcr' "$workflow"
-  grep -Fq 'uses: wesley-dean/publish_image@94d42d58eab435d50991f561f27382c4dc3cedb4' "$workflow"
+  grep -Fq 'uses: wesley-dean/publish_image@28f90b574acde9d9b3a6e1310daf5331825b5c4b' "$workflow"
   grep -Fq 'verified_release_ref: refs/tags/v' "$workflow"
   grep -Fq 'platforms: linux/amd64' "$workflow"
   grep -Fq 'name: verified-oci-gate-' "$gate"
