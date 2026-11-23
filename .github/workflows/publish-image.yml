@@ -160,7 +160,7 @@ jobs:
       # The merged upstream action is pinned to its reviewed merge SHA.
       - name: Publish verified release with the reviewed reusable action
         id: publisher
-        uses: wesley-dean/publish_image@28f90b574acde9d9b3a6e1310daf5331825b5c4b
+        uses: wesley-dean/publish_image@064db6148453d58fff928dbd57b19e6ae5c354d9
         with:
           github_ref: refs/tags/v${{ needs.verify.outputs.release_version }}
           repository_name: certbotbot
