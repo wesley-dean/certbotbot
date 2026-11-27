@@ -1,7 +1,7 @@
 # OCI producer only. ADR-038 as partially superseded by Alpine ADR-039.
 # The published Alpine 3.24.3 linux/amd64 manifest is immutable:
 # https://github.com/docker-library/repo-info/blob/master/repos/alpine/remote/3.24.3.md
-FROM alpine:3.24.3@sha256:c26612752c78b18faacd63c7d50f4592c2e7b0f25e0e20e82bd74e465c57ab0d
+FROM alpine:3.24.4@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
 
 ARG SOURCE_COMMIT
 ARG RELEASE_VERSION
