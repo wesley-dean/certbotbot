@@ -755,3 +755,15 @@ their updates are demonstrably superseded, and CI and release authority
 remain unchanged.
 
 See [ADR-061](adr/ADR-061-consolidate-github-actions-dependabot-maintenance.md).
+
+### ADR-062: Migrate Routine Dependency Updates to Central Renovate
+
+The repository explicitly enrolls in central Jenkins Renovate using root
+`renovate.json`, and scheduled Dependabot version updates are disabled.
+Independent Dependabot security updates and alerts, required CI, code-owner
+review, and immutable verified dependency pins remain protected. ADR-062
+partially supersedes ADR-061 solely for the routine update provider and its
+PR-limit rules; remaining supply-chain constraints continue to govern.
+Unverifiable SHA pins may temporarily use a version ref pending Renovate
+re-pinning, with that trust downgrade documented for review. See
+[ADR-062](adr/ADR-062-migrate-routine-dependency-updates-to-renovate.md).
